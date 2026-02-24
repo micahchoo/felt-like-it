@@ -272,7 +272,7 @@ draw.on('finish', (id: string | number) => {
 
 ### Granular Permissions
 
-`map_collaborators` records users invited to a map with a role (`viewer`, `commenter`, `editor`). Roles are stored but not yet enforced on tRPC procedures — enforcement is Phase 5 hardening.
+`map_collaborators` records users invited to a map with a role (`viewer`, `commenter`, `editor`). Roles are enforced on all tRPC procedures and the editor page load via `requireMapAccess()` in `$lib/server/geo/access.ts`.
 
 ```
 collaborators.invite({ mapId, email, role })
@@ -374,3 +374,113 @@ All services on `felt-network`. Health-check: `wget -qO- http://127.0.0.1:3000/`
 | `PUBLIC_MARTIN_URL` | `http://localhost:3001` | Browser-facing Martin vector tile URL. Set to `""` to disable. |
 | `NOMINATIM_URL` | _(unset)_ | Self-hosted Nominatim for address geocoding. Defaults to OSM Nominatim. |
 | `GEOCODING_USER_AGENT` | _(unset)_ | User-agent string sent with Nominatim requests. Required when geocoding is used. |
+
+---
+
+## Current State (Phase 5 complete, Feb 2026)
+
+**Tests:** 570 (web: 296 · geo-engine: 178 · shared-types: 96) · **Migrations:** 0000–0008 · **Services:** 5 · **svelte-check:** 0 errors · 0 warnings
+
+| Capability | Status |
+|---|---|
+| Auth: email/password + API Bearer keys (`flk_` prefix, SHA-256 hash-only storage) | ✅ |
+| Map dashboard: create, archive, clone, templates | ✅ |
+| MapLibre editor + 3 drawing tools (Point / LineString / Polygon) + undo/redo | ✅ |
+| Layer panel: reorder, toggle visibility, style editor, delete | ✅ |
+| Auto-styling: simple / categorical / numeric / choropleth / heatmap (deck.gl) | ✅ |
+| Import: GeoJSON, CSV, Shapefile, KML, GPX, GeoPackage (BullMQ background jobs) | ✅ |
+| Address geocoding via Nominatim (CSV `address` column → point layer) | ✅ |
+| PostGIS geoprocessing: Buffer, Convex Hull, Centroid, Dissolve, Union, Intersect, Clip | ✅ |
+| Spatial joins: point-in-polygon, nearest neighbor | ✅ |
+| Aggregation: count / sum / avg point-to-polygon | ✅ |
+| Measurement tools: distance, area, perimeter (Turf.js geodesic; ephemeral — no DB write) | ✅ |
+| Attribute data table: search, sort, filter, click-to-zoom | ✅ |
+| Ephemeral attribute filters per layer (MapLibre filter + DataTable sync) | ✅ |
+| FSL-compatible style schema (filters, interpolators, label blocks, choropleth, popup) | ✅ |
+| Rich annotation suite: text / emoji / GIF / image / link / IIIF NavPlace | ✅ |
+| Share via link (public / unlisted token; read-only viewer) | ✅ |
+| Embeddable maps (`/embed/[token]`; `frame-ancestors *`; iframe snippet copy button) | ✅ |
+| Comment threads: owner + collaborators + guest commenting via share token | ✅ |
+| Activity feed (`map_events` table; client-side logging) | ✅ |
+| Collaborator invitations: viewer / commenter / editor roles (enforced on all tRPC routers + editor page) | ✅ |
+| Audit log: tamper-evident BIGSERIAL hash chain; `appendAuditLog` on 11 mutations | ✅ |
+| GeoJSON export per layer (streaming `ST_AsGeoJSON`) | ✅ |
+| High-res PNG screenshot export (`pixelRatio: 2`) | ✅ |
+| Martin vector tiles: layers > 10 K features → `VectorTileSource` | ✅ |
+| Docker Compose: 5 services (web · worker · postgres · redis · martin) | ✅ |
+| Real-time collaboration (Yjs CRDT, presence, cursors) | ⬜ Phase 6 |
+| Team library (shared dataset repository) | ⬜ Phase 6 |
+| pino structured logging | ⬜ Phase 5b |
+| Rate limiting | ⬜ Phase 5b |
+| Export: GeoPackage / Shapefile / PDF | ⬜ Phase 5b |
+| Admin panel / `admin-cli.ts` | ⬜ Phase 5b |
+| S3 / MinIO file storage | ⬜ Phase 5b |
+| Tippecanoe tile pipeline | ⬜ Phase 5b |
+| CI pipeline (GitHub Actions) | ⬜ Phase 5b |
+| Playwright E2E tests | ⬜ Phase 5b |
+| SSO / SAML | ⬜ Phase 7 |
+| Raster support (GeoTIFF / COG) | ⬜ Phase 7 |
+| Helm chart | ⬜ Phase 7 |
+| Plugin system | ⬜ Phase 7 |
+
+---
+
+## Delta from Original Vision
+
+Compares `OriginalVision.md` to what was actually built. See `docs/plans/2026-02-24-roadmap-restructure-design.md` for the restructure rationale.
+
+### Deferred / Not Built
+
+| Feature | Original Phase | Target Phase |
+|---|---|---|
+| Yjs CRDT real-time editing | Phase 3 | Phase 6 |
+| Presence indicators / multiplayer cursors | Phase 3 | Phase 6 |
+| Team library (shared dataset repository) | Phase 3 | Phase 6 |
+| Tippecanoe tile pipeline | Phase 2 | Phase 5b |
+| pino structured JSON logging | Vision | Phase 5b |
+| Rate limiting in `hooks.server.ts` | Vision | Phase 5b |
+| CI pipeline (GitHub Actions) | Vision | Phase 5b |
+| Playwright E2E tests | Vision | Phase 5b |
+| Vitest coverage thresholds | Vision | Phase 5b |
+| GeoPackage / Shapefile / PDF export | Vision | Phase 5b |
+| Admin panel + `admin-cli.ts` | Vision | Phase 5b |
+| S3 / MinIO file storage | Vision | Phase 5b |
+| ADRs 004–006 | Vision | Phase 5b |
+| SSO / SAML (Arctic OIDC + SAML2) | Phase 5 | Phase 7 |
+| Raster support (GeoTIFF + COG) | Phase 5 | Phase 7 |
+| Helm chart (Kubernetes) | Phase 5 | Phase 7 |
+| Plugin system | Phase 5 | Phase 7 |
+| Regional hosting docs | Phase 5 | Phase 7 |
+
+### Implementation Divergences
+
+Where the final implementation differs from what `OriginalVision.md` specified.
+
+| Area | Vision | Actual |
+|---|---|---|
+| tRPC transport | `trpc-sveltekit` with WebSocket support | tRPC 11 native Fetch adapter (no WebSocket) |
+| `db/` package location | Standalone `packages/db/` package | Merged into `apps/web/src/lib/server/db/` |
+| Martin tile server | Custom `services/tile-server/` service | Stock `ghcr.io/maplibre/martin` Docker image |
+| Application logging | pino structured JSON | `console.warn/error` with `[INF/WRN/ERR]` prefix |
+| File storage | Local disk + S3/MinIO | Local disk volume only |
+| Rate limiting | `hooks.server.ts` rate limiter | Not implemented |
+| ESLint TypeScript rules | `no-explicit-any: error`; `no-unsafe-*`; `parserOptions.project` | `parserOptions.project` removed (TypeScript OOM); `no-unsafe-*` omitted |
+| Test coverage gates | `vitest.config.ts` thresholds enforced in CI | No thresholds; CI not configured |
+| Migration authoring | `drizzle-kit generate` + testcontainers integration tests | Hand-authored SQL (PostGIS geometry DDL); no testcontainers |
+| ADRs | 6+ decision records | 3 ADRs written (001–003); 004–006 planned for Phase 5b |
+| Comments access | Collaborator roles from day one | Initially owner-only; fixed in Phase 5 bug-squash |
+
+### Added Scope
+
+Features built that were not in `OriginalVision.md`.
+
+| Feature | Added in |
+|---|---|
+| FSL-compatible style schema (`version`, `config`, `label`, `filters`, `attributes`, `popup` blocks, zoom interpolators) | Phase 2 |
+| Choropleth styling with 9 ColorBrewer ramps + quantile / equal-interval classification | Phase 4 |
+| deck.gl heatmap overlay (`MapboxOverlay` + `HeatmapLayer`; `style.type === 'heatmap'`) | Phase 4 |
+| Rich annotation suite (text / emoji / GIF / image / link / IIIF NavPlace; PostGIS Point anchor) | Phase 4 |
+| Undo / redo store (command history for drawn features) | Phase 2 |
+| Tamper-evident audit log (BIGSERIAL hash chain with `pg_advisory_xact_lock` serialisation) | Phase 5 |
+| API keys (`flk_` prefix; SHA-256 hash-only storage; `hooks.server.ts` Bearer auth) | Phase 5 |
+| Dashboard "Shared with me" section (`maps.listCollaborating`) | Phase 5 |

@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
-import { db, maps, annotations } from '../../db/index.js';
+import { db, annotations } from '../../db/index.js';
+import { requireMapAccess } from '../../geo/access.js';
 import {
   CreateAnnotationSchema,
   UpdateAnnotationSchema,
@@ -76,15 +77,8 @@ export const annotationsRouter = router({
   list: protectedProcedure
     .input(z.object({ mapId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      // 1 — Ownership check
-      const [map] = await db
-        .select({ id: maps.id })
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      // 1 — Viewer+ access required to list annotations
+      await requireMapAccess(ctx.user.id, input.mapId, 'viewer');
 
       // 2 — Fetch annotations with decomposed anchor coordinates
       const result = await db.execute(sql`
@@ -104,15 +98,8 @@ export const annotationsRouter = router({
   create: protectedProcedure
     .input(CreateAnnotationSchema)
     .mutation(async ({ ctx, input }) => {
-      // 1 — Ownership check
-      const [map] = await db
-        .select({ id: maps.id })
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      // 1 — Commenter+ access required to create annotations
+      await requireMapAccess(ctx.user.id, input.mapId, 'commenter');
 
       // 2 — Insert with PostGIS anchor encoding
       // The anchor is a validated GeoJSON Point — ST_GeomFromGeoJSON handles SRID assignment.

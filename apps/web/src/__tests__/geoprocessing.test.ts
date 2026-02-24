@@ -13,8 +13,9 @@ vi.mock('$lib/server/db/index.js', () => ({
     delete:  vi.fn(),
     execute: vi.fn(),
   },
-  maps:   { id: {}, userId: {} },
-  layers: { id: {}, mapId: {}, zIndex: {} },
+  maps:             { id: {}, userId: {} },
+  layers:           { id: {}, mapId: {}, zIndex: {} },
+  mapCollaborators: { mapId: {}, userId: {}, role: {} },
 }));
 
 // Stub the PostGIS execution so tests don't need a real DB
@@ -51,7 +52,7 @@ const LAYER_ID     = 'cccccccc-0000-0000-0000-cccccccccccc';
 const LAYER_ID_B   = 'dddddddd-0000-0000-0000-dddddddddddd';
 const NEW_LAYER_ID = 'eeeeeeee-0000-0000-0000-eeeeeeeeeeee';
 
-const MOCK_MAP    = { id: MAP_ID };
+const MOCK_MAP    = { id: MAP_ID, userId: USER_ID };
 const MOCK_LAYER  = { id: LAYER_ID };
 const MOCK_LAYER_B = { id: LAYER_ID_B };
 const MOCK_NEW_LAYER = { id: NEW_LAYER_ID, name: 'Buffered Layer', mapId: MAP_ID, type: 'mixed', style: {}, visible: true, zIndex: 1, sourceFileName: null };

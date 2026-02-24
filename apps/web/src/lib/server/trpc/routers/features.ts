@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
-import { db, layers, maps, features } from '../../db/index.js';
+import { db, layers, features } from '../../db/index.js';
+import { requireMapAccess } from '../../geo/access.js';
 
 export const featuresRouter = router({
   /** Fetch all features for a layer as a GeoJSON FeatureCollection */
@@ -19,14 +20,8 @@ export const featuresRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Layer not found.' });
       }
 
-      const [map] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, layer.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied.' });
-      }
+      // Viewer+ access required to list features
+      await requireMapAccess(ctx.user.id, layer.mapId, 'viewer');
 
       const rows = await db.execute(sql`
         SELECT
@@ -76,14 +71,8 @@ export const featuresRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Layer not found.' });
       }
 
-      const [map] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, layer.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied.' });
-      }
+      // Editor+ access required to upsert features
+      await requireMapAccess(ctx.user.id, layer.mapId, 'editor');
 
       const upsertedIds: string[] = [];
 
@@ -140,14 +129,8 @@ export const featuresRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Layer not found.' });
       }
 
-      const [map] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, layer.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied.' });
-      }
+      // Editor+ access required to delete features
+      await requireMapAccess(ctx.user.id, layer.mapId, 'editor');
 
       await db
         .delete(features)

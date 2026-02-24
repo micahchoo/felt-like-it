@@ -13,8 +13,9 @@ vi.mock('$lib/server/db/index.js', () => ({
     delete:  vi.fn(),
     execute: vi.fn(),
   },
-  maps:        { id: {}, userId: {} },
-  annotations: { id: {}, mapId: {}, userId: {}, authorName: {}, anchorPoint: {}, content: {}, createdAt: {}, updatedAt: {} },
+  maps:             { id: {}, userId: {} },
+  annotations:      { id: {}, mapId: {}, userId: {}, authorName: {}, anchorPoint: {}, content: {}, createdAt: {}, updatedAt: {} },
+  mapCollaborators: { mapId: {}, userId: {}, role: {} },
 }));
 
 import { annotationsRouter } from '../lib/server/trpc/routers/annotations.js';

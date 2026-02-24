@@ -4,6 +4,7 @@ import {
   timestamp,
   boolean,
   integer,
+  bigserial,
   jsonb,
   uuid,
   index,
@@ -258,6 +259,40 @@ export const annotations = pgTable(
   ]
 );
 
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    /**
+     * Monotonic BIGSERIAL — used to impose a total order on the hash chain.
+     * JavaScript number is safe up to 2^53; we'll never exceed that.
+     */
+    seq: bigserial('seq', { mode: 'number' }).primaryKey(),
+    /** Null when the originating user account has been deleted. */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Dot-namespaced action verb — e.g. 'map.create', 'collaborator.invite'. */
+    action: text('action').notNull(),
+    /** Top-level entity kind: 'map', 'share', 'collaborator', 'apiKey'. */
+    entityType: text('entity_type').notNull(),
+    /** UUID (or other ID) of the affected entity, stored as text for flexibility. */
+    entityId: text('entity_id'),
+    /** Map this mutation belongs to. Null for account-level events (e.g. apiKey). */
+    mapId: uuid('map_id').references(() => maps.id, { onDelete: 'set null' }),
+    /** Structured context: title, role, accessLevel, etc. */
+    metadata: jsonb('metadata'),
+    /** chain_hash of the previous row; 64 zeros ('0'×64) for the first entry. */
+    prevHash: text('prev_hash').notNull(),
+    /** SHA-256(JSON.stringify(content) + prevHash) — tamper-detection hash. */
+    chainHash: text('chain_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('audit_log_map_id_idx').on(t.mapId),
+    index('audit_log_user_id_idx').on(t.userId),
+    index('audit_log_created_at_idx').on(t.createdAt),
+  ]
+);
+
 // ─── API Keys ─────────────────────────────────────────────────────────────────
 export const apiKeys = pgTable(
   'api_keys',
@@ -331,3 +366,4 @@ export type AnnotationRow = typeof annotations.$inferSelect;
 export type NewAnnotation = typeof annotations.$inferInsert;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 export type NewApiKey = typeof apiKeys.$inferInsert;
+export type AuditLogRow = typeof auditLog.$inferSelect;

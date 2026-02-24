@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { eq, and } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
-import { db, maps, layers } from '../../db/index.js';
+import { db, layers } from '../../db/index.js';
 import { GeoprocessingOpSchema } from '@felt-like-it/shared-types';
 import { runGeoprocessing, getOpLayerIds } from '../../geo/geoprocessing.js';
+import { requireMapAccess } from '../../geo/access.js';
 
 export const geoprocessingRouter = router({
   /**
@@ -22,15 +23,8 @@ export const geoprocessingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // 1 — Verify map ownership
-      const [map] = await db
-        .select({ id: maps.id })
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      // 1 — Editor+ access required to run geoprocessing
+      await requireMapAccess(ctx.user.id, input.mapId, 'editor');
 
       // 2 — Verify all input layers belong to this map.
       // One query per layer so eq()-only predicates work cleanly against mock columns in tests.

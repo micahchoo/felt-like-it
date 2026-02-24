@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { eq, and, desc, asc, count, sql } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
-import { db, maps, layers } from '../../db/index.js';
+import { db, maps, layers, mapCollaborators } from '../../db/index.js';
 import { CreateMapSchema, UpdateMapSchema } from '@felt-like-it/shared-types';
+import { appendAuditLog } from '../../audit/index.js';
 
 export const mapsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -45,10 +46,23 @@ export const mapsRouter = router({
       const [map] = await db
         .select()
         .from(maps)
-        .where(and(eq(maps.id, input.id), eq(maps.userId, ctx.user.id)));
+        .where(eq(maps.id, input.id));
 
       if (!map) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
+      }
+
+      // Owner sees the map immediately; collaborators (viewer+) may also access it.
+      if (map.userId !== ctx.user.id) {
+        const [collab] = await db
+          .select({ role: mapCollaborators.role })
+          .from(mapCollaborators)
+          .where(and(eq(mapCollaborators.mapId, input.id), eq(mapCollaborators.userId, ctx.user.id)));
+
+        if (!collab) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
+        }
+        // All collaborator roles (viewer / commenter / editor) can fetch the map.
       }
 
       const mapLayers = await db
@@ -82,6 +96,15 @@ export const mapsRouter = router({
       if (!map) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create map.' });
       }
+
+      void appendAuditLog({
+        userId: ctx.user.id,
+        action: 'map.create',
+        entityType: 'map',
+        entityId: map.id,
+        mapId: map.id,
+        metadata: { title: map.title },
+      });
 
       return map;
     }),
@@ -125,6 +148,15 @@ export const mapsRouter = router({
       if (!existing) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
       }
+
+      void appendAuditLog({
+        userId: ctx.user.id,
+        action: 'map.delete',
+        entityType: 'map',
+        entityId: input.id,
+        mapId: input.id,
+        metadata: { title: existing.title },
+      });
 
       await db.delete(maps).where(eq(maps.id, input.id));
       return { deleted: true };
@@ -186,6 +218,15 @@ export const mapsRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create map from template.' });
       }
 
+      void appendAuditLog({
+        userId: ctx.user.id,
+        action: 'map.createFromTemplate',
+        entityType: 'map',
+        entityId: newMap.id,
+        mapId: newMap.id,
+        metadata: { templateId: input.id, title: newMap.title },
+      });
+
       // Copy layer config (style, type, name) — do NOT copy features (templates are config-only starters)
       const templateLayers = await db
         .select()
@@ -236,6 +277,15 @@ export const mapsRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to clone map.' });
       }
 
+      void appendAuditLog({
+        userId: ctx.user.id,
+        action: 'map.clone',
+        entityType: 'map',
+        entityId: newMap.id,
+        mapId: newMap.id,
+        metadata: { sourceMapId: input.id, title: newMap.title },
+      });
+
       const origLayers = await db
         .select()
         .from(layers)
@@ -269,4 +319,28 @@ export const mapsRouter = router({
 
       return newMap;
     }),
+
+  /**
+   * List maps the caller has been invited to collaborate on (not their own maps).
+   * Returns each map's metadata plus the caller's role.
+   */
+  listCollaborating: protectedProcedure.query(async ({ ctx }) => {
+    const rows = await db
+      .select({
+        id: maps.id,
+        title: maps.title,
+        description: maps.description,
+        basemap: maps.basemap,
+        isArchived: maps.isArchived,
+        createdAt: maps.createdAt,
+        updatedAt: maps.updatedAt,
+        role: mapCollaborators.role,
+      })
+      .from(mapCollaborators)
+      .innerJoin(maps, and(eq(maps.id, mapCollaborators.mapId), eq(maps.isArchived, false)))
+      .where(eq(mapCollaborators.userId, ctx.user.id))
+      .orderBy(desc(maps.updatedAt));
+
+    return rows;
+  }),
 });

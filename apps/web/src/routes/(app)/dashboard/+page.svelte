@@ -173,5 +173,37 @@
         {/each}
       </div>
     {/if}
+
+    <!-- Shared with me -->
+    {#if data.sharedMaps.length > 0}
+      <div class="mt-12">
+        <h2 class="text-lg font-semibold text-white mb-4">Shared with me</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {#each data.sharedMaps as map (map.id)}
+            <div class="bg-slate-800 rounded-xl ring-1 ring-white/10 overflow-hidden hover:ring-blue-500/50 transition-all">
+              <a href="/map/{map.id}" class="block h-36 bg-slate-700 flex items-center justify-center">
+                <span class="text-4xl opacity-30">🗺</span>
+              </a>
+              <div class="p-4">
+                <div class="flex items-start justify-between gap-2">
+                  <a
+                    href="/map/{map.id}"
+                    class="flex-1 text-sm font-semibold text-white hover:text-blue-400 transition-colors truncate"
+                  >
+                    {map.title}
+                  </a>
+                  <span class="shrink-0 text-xs px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 ring-1 ring-white/10 capitalize">
+                    {map.role}
+                  </span>
+                </div>
+                <div class="mt-2 text-xs text-slate-400">
+                  {formatRelativeTime(new Date(map.updatedAt))}
+                </div>
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
   </main>
 </div>

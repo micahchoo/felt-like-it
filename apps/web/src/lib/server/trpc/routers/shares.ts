@@ -5,6 +5,7 @@ import { randomBytes } from 'crypto';
 import { router, publicProcedure, protectedProcedure } from '../init.js';
 import { db, shares, maps, layers } from '../../db/index.js';
 import { CreateShareSchema } from '@felt-like-it/shared-types';
+import { appendAuditLog } from '../../audit/index.js';
 
 function generateToken(): string {
   return randomBytes(16).toString('base64url');
@@ -37,6 +38,16 @@ export const sharesRouter = router({
           .set({ accessLevel: input.accessLevel })
           .where(eq(shares.id, existing.id))
           .returning();
+
+        void appendAuditLog({
+          userId: ctx.user.id,
+          action: 'share.update',
+          entityType: 'share',
+          entityId: existing.id,
+          mapId: input.mapId,
+          metadata: { accessLevel: input.accessLevel },
+        });
+
         return updated;
       }
 
@@ -49,6 +60,17 @@ export const sharesRouter = router({
           accessLevel: input.accessLevel,
         })
         .returning();
+
+      if (share) {
+        void appendAuditLog({
+          userId: ctx.user.id,
+          action: 'share.create',
+          entityType: 'share',
+          entityId: share.id,
+          mapId: input.mapId,
+          metadata: { accessLevel: input.accessLevel },
+        });
+      }
 
       return share;
     }),
@@ -81,6 +103,13 @@ export const sharesRouter = router({
       if (!map) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
       }
+
+      void appendAuditLog({
+        userId: ctx.user.id,
+        action: 'share.delete',
+        entityType: 'share',
+        mapId: input.mapId,
+      });
 
       await db.delete(shares).where(eq(shares.mapId, input.mapId));
       return { deleted: true };

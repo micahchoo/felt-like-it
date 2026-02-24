@@ -7,11 +7,12 @@ import type { User } from 'lucia';
 
 vi.mock('$lib/server/db/index.js', () => ({
   db: {
-    select:  vi.fn(),
-    insert:  vi.fn(),
-    update:  vi.fn(),
-    delete:  vi.fn(),
-    execute: vi.fn(),
+    select:      vi.fn(),
+    insert:      vi.fn(),
+    update:      vi.fn(),
+    delete:      vi.fn(),
+    execute:     vi.fn(),
+    transaction: vi.fn(),
   },
   maps:             { id: {}, userId: {} },
   users:            { id: {}, email: {}, name: {} },

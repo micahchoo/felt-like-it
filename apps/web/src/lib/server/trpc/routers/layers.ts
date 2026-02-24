@@ -2,22 +2,16 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { eq, and, sql } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
-import { db, layers, maps } from '../../db/index.js';
+import { db, layers } from '../../db/index.js';
 import { CreateLayerSchema, UpdateLayerSchema } from '@felt-like-it/shared-types';
+import { requireMapAccess } from '../../geo/access.js';
 
 export const layersRouter = router({
   list: protectedProcedure
     .input(z.object({ mapId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      // Verify map ownership
-      const [map] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      // Viewer+ access required to list layers
+      await requireMapAccess(ctx.user.id, input.mapId, 'viewer');
 
       // Include feature count per layer (used for Martin tile-source threshold)
       const result = await db.execute(sql`
@@ -55,15 +49,8 @@ export const layersRouter = router({
   create: protectedProcedure
     .input(CreateLayerSchema)
     .mutation(async ({ ctx, input }) => {
-      // Verify map ownership
-      const [map] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      // Editor+ access required to create layers
+      await requireMapAccess(ctx.user.id, input.mapId, 'editor');
 
       // Get next z_index
       const existingLayers = await db
@@ -106,14 +93,8 @@ export const layersRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Layer not found.' });
       }
 
-      const [map] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, layer.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied.' });
-      }
+      // Editor+ access required to update layers
+      await requireMapAccess(ctx.user.id, layer.mapId, 'editor');
 
       const [updated] = await db
         .update(layers)
@@ -126,7 +107,10 @@ export const layersRouter = router({
         .where(eq(layers.id, id))
         .returning();
 
-      return { ...updated, style: (updated?.style ?? {}) as Record<string, unknown> };
+      if (!updated) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update layer.' });
+      }
+      return { ...updated, style: updated.style as Record<string, unknown> };
     }),
 
   delete: protectedProcedure
@@ -141,14 +125,8 @@ export const layersRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Layer not found.' });
       }
 
-      const [map] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, layer.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied.' });
-      }
+      // Editor+ access required to delete layers
+      await requireMapAccess(ctx.user.id, layer.mapId, 'editor');
 
       await db.delete(layers).where(eq(layers.id, input.id));
       return { deleted: true };
@@ -162,14 +140,8 @@ export const layersRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const [map] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      // Editor+ access required to reorder layers
+      await requireMapAccess(ctx.user.id, input.mapId, 'editor');
 
       // Update z_index for each layer in the order array
       await Promise.all(

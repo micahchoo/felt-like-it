@@ -13,9 +13,10 @@ vi.mock('$lib/server/db/index.js', () => ({
     delete:  vi.fn(),
     execute: vi.fn(),
   },
-  maps:   { id: {}, userId: {}, isArchived: {} },
-  layers: { id: {}, mapId: {}, zIndex: {}, style: {}, name: {}, type: {}, visible: {}, sourceFileName: {}, createdAt: {}, updatedAt: {} },
-  users:  {},
+  maps:             { id: {}, userId: {}, isArchived: {} },
+  layers:           { id: {}, mapId: {}, zIndex: {}, style: {}, name: {}, type: {}, visible: {}, sourceFileName: {}, createdAt: {}, updatedAt: {} },
+  mapCollaborators: { mapId: {}, userId: {}, role: {} },
+  users:            {},
 }));
 
 import { layersRouter } from '../lib/server/trpc/routers/layers.js';
@@ -157,17 +158,15 @@ describe('layers.update', () => {
     });
   });
 
-  it('throws FORBIDDEN when layer belongs to a map owned by another user', async () => {
-    const otherMap = { ...MOCK_MAP, userId: 'other-user' };
+  it('throws FORBIDDEN when caller is a viewer on a map that requires editor access', async () => {
+    const otherMap = { id: MAP_ID, userId: 'other-user' };
     vi.mocked(db.select)
-      .mockReturnValueOnce(drizzleChain([{ id: LAYER_ID, mapId: MAP_ID }]))
-      .mockReturnValueOnce(drizzleChain([])); // ownership check returns nothing → FORBIDDEN
-
+      .mockReturnValueOnce(drizzleChain([{ id: LAYER_ID, mapId: MAP_ID }]))  // layer found
+      .mockReturnValueOnce(drizzleChain([otherMap]))                           // map (not owner)
+      .mockReturnValueOnce(drizzleChain([{ role: 'viewer' }]));               // collab: viewer < editor
     await expect(makeCaller().update({ id: LAYER_ID, name: 'X' })).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
-    // Suppress unused variable warning
-    void otherMap;
   });
 });
 
@@ -191,11 +190,12 @@ describe('layers.delete', () => {
     await expect(makeCaller().delete({ id: LAYER_ID })).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
-  it('throws FORBIDDEN when map is owned by another user', async () => {
+  it('throws FORBIDDEN when caller is a viewer on a map that requires editor access', async () => {
+    const otherMap = { id: MAP_ID, userId: 'other-user' };
     vi.mocked(db.select)
-      .mockReturnValueOnce(drizzleChain([{ id: LAYER_ID, mapId: MAP_ID }]))
-      .mockReturnValueOnce(drizzleChain([])); // ownership check empty → FORBIDDEN
-
+      .mockReturnValueOnce(drizzleChain([{ id: LAYER_ID, mapId: MAP_ID }]))  // layer found
+      .mockReturnValueOnce(drizzleChain([otherMap]))                           // map (not owner)
+      .mockReturnValueOnce(drizzleChain([{ role: 'viewer' }]));               // collab: viewer < editor
     await expect(makeCaller().delete({ id: LAYER_ID })).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });

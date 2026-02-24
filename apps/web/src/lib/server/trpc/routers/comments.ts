@@ -3,23 +3,17 @@ import { TRPCError } from '@trpc/server';
 import { eq, and, asc } from 'drizzle-orm';
 import { router, protectedProcedure, publicProcedure } from '../init.js';
 import { db, maps, comments, shares } from '../../db/index.js';
+import { requireMapAccess } from '../../geo/access.js';
 
 export const commentsRouter = router({
   /**
    * Return all comments for a map in chronological order (oldest first).
-   * Caller must own the map.
+   * Viewer+ access required.
    */
   list: protectedProcedure
     .input(z.object({ mapId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const [map] = await db
-        .select({ id: maps.id })
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      await requireMapAccess(ctx.user.id, input.mapId, 'viewer');
 
       return db
         .select()
@@ -31,7 +25,7 @@ export const commentsRouter = router({
   /**
    * Post a new comment on a map.
    * authorName is denormalized from the session user at insert time.
-   * Caller must own the map.
+   * Commenter+ access required.
    */
   create: protectedProcedure
     .input(
@@ -41,14 +35,7 @@ export const commentsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const [map] = await db
-        .select({ id: maps.id })
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      await requireMapAccess(ctx.user.id, input.mapId, 'commenter');
 
       const [comment] = await db
         .insert(comments)

@@ -13,8 +13,9 @@ vi.mock('$lib/server/db/index.js', () => ({
     delete:  vi.fn(),
     execute: vi.fn(),
   },
-  maps:     { id: {}, userId: {} },
-  comments: { id: {}, mapId: {}, userId: {}, body: {}, authorName: {}, resolved: {}, createdAt: {}, updatedAt: {} },
+  maps:             { id: {}, userId: {} },
+  comments:         { id: {}, mapId: {}, userId: {}, body: {}, authorName: {}, resolved: {}, createdAt: {}, updatedAt: {} },
+  mapCollaborators: { mapId: {}, userId: {}, role: {} },
 }));
 
 import { commentsRouter } from '../lib/server/trpc/routers/comments.js';
@@ -27,7 +28,7 @@ function drizzleChain<T>(value: T) {
     then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
       Promise.resolve(value).then(res, rej),
   };
-  for (const m of ['from', 'where', 'orderBy', 'set']) {
+  for (const m of ['from', 'where', 'orderBy', 'set', 'innerJoin']) {
     c[m] = vi.fn(() => c);
   }
   c['values']    = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
@@ -85,6 +86,18 @@ describe('comments.list', () => {
       code: 'NOT_FOUND',
     });
   });
+
+  it('resolves for a collaborator with viewer role', async () => {
+    const otherMap = { id: MAP_ID, userId: 'other-user' };
+    vi.mocked(db.select)
+      .mockReturnValueOnce(drizzleChain([otherMap]))              // maps → not owner
+      .mockReturnValueOnce(drizzleChain([{ role: 'viewer' }]))    // mapCollaborators
+      .mockReturnValueOnce(drizzleChain([MOCK_COMMENT]));          // comments
+
+    const result = await makeCaller().list({ mapId: MAP_ID });
+    expect(result).toHaveLength(1);
+    expect(result[0]?.body).toBe('Hello world');
+  });
 });
 
 describe('comments.create', () => {
@@ -114,6 +127,20 @@ describe('comments.create', () => {
     await expect(
       makeCaller().create({ mapId: MAP_ID, body: '   ' })
     ).rejects.toThrow(); // Zod min(1) after trim
+  });
+
+  it('resolves for a collaborator with commenter role', async () => {
+    const otherMap = { id: MAP_ID, userId: 'other-user' };
+    vi.mocked(db.select)
+      .mockReturnValueOnce(drizzleChain([otherMap]))                 // maps → not owner
+      .mockReturnValueOnce(drizzleChain([{ role: 'commenter' }]));   // mapCollaborators
+    vi.mocked(db.insert).mockReturnValue(
+      drizzleChain([MOCK_COMMENT]) as unknown as ReturnType<typeof db.insert>
+    );
+
+    const result = await makeCaller().create({ mapId: MAP_ID, body: 'Hello world' });
+    expect(result.body).toBe('Hello world');
+    expect(db.insert).toHaveBeenCalledOnce();
   });
 });
 

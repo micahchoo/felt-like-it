@@ -71,16 +71,16 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 
 ## Phase 3 — Collaboration ✅ COMPLETE
 
-**Goal:** Comment threads, granular permissions, and guest access. (Real-time concurrent editing — Yjs, presence, team library — deferred to Phase 5.)
+**Goal:** Comment threads, granular permissions, and guest access. (Real-time concurrent editing — Yjs, presence, team library — deferred to Phase 6.)
 
 | Feature | Status |
 |---|---|
 | **Activity feed** (`map_events` table; `events.list` + `events.log` tRPC; `ActivityFeed.svelte`; client-side logging from MapEditor after imports + viewport saves) | ✅ |
-| **Yjs CRDT** over WebSocket: conflict-free concurrent editing | ⬜ |
-| Presence indicators: multiplayer cursors, "X is viewing/editing" sidebar | ⬜ |
+| **Yjs CRDT** over WebSocket: conflict-free concurrent editing | ⬜ → Phase 6 |
+| Presence indicators: multiplayer cursors, "X is viewing/editing" sidebar | ⬜ → Phase 6 |
 | **Comment threads** (`comments` table; `comments.list`/`create`/`delete`/`resolve` tRPC; `CommentPanel.svelte`; denormalized `authorName`; map-owner-only resolve; `userId` threaded from page server → MapEditor → CommentPanel) | ✅ |
 | **Guest commenting** (`publicProcedure` `listForShare` + `createForShare` on commentsRouter; `GuestCommentPanel.svelte` with authorName input; floating toggle button on share viewer page) | ✅ |
-| Team library: shared dataset repository (upload once, reuse across maps) | ⬜ |
+| Team library: shared dataset repository (upload once, reuse across maps) | ⬜ → Phase 6 |
 | **Granular permissions** (`map_collaborators` table; `collaborators.list`/`invite`/`remove`/`updateRole` tRPC; `CollaboratorsPanel.svelte`; roles: viewer/commenter/editor; self-invite guard; duplicate CONFLICT; error messages surfaced in UI) | ✅ |
 
 ---
@@ -101,7 +101,7 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 
 ---
 
-## Phase 5 — Enterprise Polish 🚧 IN PROGRESS
+## Phase 5 — Enterprise Polish ✅ COMPLETE
 
 **Goal:** Production-grade self-hosting for organizations.
 
@@ -109,9 +109,80 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 |---|---|
 | **Embeddable maps** (`/embed/[token]` bare-canvas route; `MapEditor embed` prop strips all chrome; `Content-Security-Policy: frame-ancestors *`; "Embed" copy-to-clipboard button on share viewer) | ✅ |
 | **API keys** (`flk_<64-hex>` Bearer tokens; SHA-256 hash-only storage; `hooks.server.ts` Bearer auth before session; `last_used_at` fire-and-forget; settings page create/revoke/list UI) | ✅ |
-| **SSO / SAML**: OIDC + SAML2 via Arctic (Lucia ecosystem) | ⬜ |
-| Audit logs: tamper-evident append-only log of all data mutations | ⬜ |
-| API keys: programmatic access to tRPC-equivalent REST API | ⬜ |
+| **Audit logs** (BIGSERIAL hash-chain; `appendAuditLog` utility with `pg_advisory_xact_lock`; 11 mutation hooks across maps/shares/collaborators/apiKeys routers; `auditLog.list` + `auditLog.verify` tRPC) | ✅ |
+| **Collaborator role enforcement** (`requireMapAccess` helper; viewer/commenter/editor enforced on maps.get, layers, features, geoprocessing, annotations, comments; `maps.listCollaborating`; dashboard "Shared with me"; editor page collab access) | ✅ |
+
+---
+
+## Phase 5b — Delta & Hardening ⬜ NEXT
+
+**Goal:** Close the gap between `OriginalVision.md` and what's built. Scheduled bug-squash passes keep quality high before the Collab v2 and Enterprise phases.
+
+### Bug Squash
+
+| Item | Status |
+|---|---|
+| Recurring bug-squash pass after each feature batch | ⬜ |
+
+### Toolchain & Quality Gates
+
+| Item | Status |
+|---|---|
+| CI pipeline (GitHub Actions: lint, svelte-check, test, build) | ⬜ |
+| Playwright E2E tests (auth, import, share critical paths) | ⬜ |
+| Vitest coverage thresholds (`lines: 85, functions: 85, branches: 80`) | ⬜ |
+| ADRs 004–006 (Martin tile server, BullMQ over pg-boss, Fetch adapter over WebSocket) | ⬜ |
+
+### Logging & Reliability
+
+| Item | Status |
+|---|---|
+| pino structured JSON logging (replace `console.warn/error` with `[INF/WRN/ERR]`) | ⬜ |
+| Rate limiting in `hooks.server.ts` | ⬜ |
+
+### Export Formats
+
+| Item | Status |
+|---|---|
+| GeoPackage export per layer | ⬜ |
+| Shapefile export per layer | ⬜ |
+| PDF map export | ⬜ |
+
+### Admin
+
+| Item | Status |
+|---|---|
+| Admin panel (user list, storage stats, import job monitor) | ⬜ |
+| `admin-cli.ts` (create user, reset password, promote admin) | ⬜ |
+
+### Infrastructure
+
+| Item | Status |
+|---|---|
+| S3 / MinIO file storage (pluggable `UPLOAD_DIR` backend) | ⬜ |
+| Tippecanoe tile pipeline (huge datasets → pre-tiled MBTiles via BullMQ) | ⬜ |
+
+---
+
+## Phase 6 — Collaboration v2 ⬜
+
+**Goal:** Real-time concurrent editing and shared datasets. (Deferred from Phase 3.)
+
+| Feature | Status |
+|---|---|
+| Yjs CRDT over WebSocket: conflict-free concurrent editing | ⬜ |
+| Presence indicators: multiplayer cursors, "X is viewing/editing" sidebar | ⬜ |
+| Team library: shared dataset repository (upload once, reuse across maps) | ⬜ |
+
+---
+
+## Phase 7 — Enterprise ⬜
+
+**Goal:** Large-organisation deployment: SSO, Kubernetes, extensibility, data residency.
+
+| Feature | Status |
+|---|---|
+| SSO / SAML: OIDC + SAML2 via Arctic (Lucia ecosystem) | ⬜ |
 | Raster support: GeoTIFF import + COG tile serving | ⬜ |
 | Helm chart: Kubernetes deployment with horizontal scaling | ⬜ |
 | Plugin system: custom import formats, custom analysis tools, custom basemaps | ⬜ |
@@ -121,10 +192,13 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 
 ## Architecture Decisions
 
-See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for the living architecture doc (updated through Phase 2).
+See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for the living architecture doc (current through Phase 5 + 5b planning).
 
-See [`docs/adr/`](adr/) for the key decisions made during Phase 1:
+See [`docs/adr/`](adr/) for recorded decisions:
 
 - [ADR-001](adr/001-sveltekit-over-nextjs.md) — SvelteKit over Next.js
 - [ADR-002](adr/002-postgis-as-analysis-engine.md) — PostGIS as the analysis engine
 - [ADR-003](adr/003-uuid-primary-keys.md) — UUID primary keys throughout
+- ADR-004 — Martin over pg_tileserv *(Phase 5b)*
+- ADR-005 — BullMQ over pg-boss *(Phase 5b)*
+- ADR-006 — tRPC Fetch adapter over trpc-sveltekit WebSocket *(Phase 5b)*

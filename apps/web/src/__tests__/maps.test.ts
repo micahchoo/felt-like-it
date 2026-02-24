@@ -7,14 +7,16 @@ import type { User } from 'lucia';
 
 vi.mock('$lib/server/db/index.js', () => ({
   db: {
-    select: vi.fn(),
-    insert: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    execute: vi.fn(),
+    select:      vi.fn(),
+    insert:      vi.fn(),
+    update:      vi.fn(),
+    delete:      vi.fn(),
+    execute:     vi.fn(),
+    transaction: vi.fn(),
   },
-  maps: { id: {}, userId: {}, isArchived: {}, isTemplate: {}, updatedAt: {}, title: {}, description: {}, viewport: {}, basemap: {}, createdAt: {} },
-  layers: { mapId: {}, zIndex: {}, id: {}, style: {} },
+  maps:             { id: {}, userId: {}, isArchived: {}, isTemplate: {}, updatedAt: {}, title: {}, description: {}, viewport: {}, basemap: {}, createdAt: {} },
+  layers:           { mapId: {}, zIndex: {}, id: {}, style: {} },
+  mapCollaborators: { mapId: {}, userId: {}, role: {} },
   users: {},
 }));
 
@@ -32,7 +34,7 @@ function drizzleChain<T>(value: T) {
     then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
       Promise.resolve(value).then(res, rej),
   };
-  for (const m of ['from', 'where', 'orderBy', 'groupBy', 'set']) {
+  for (const m of ['from', 'where', 'orderBy', 'groupBy', 'set', 'innerJoin']) {
     c[m] = vi.fn(() => c);
   }
   c['values'] = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
@@ -344,5 +346,62 @@ describe('maps.clone', () => {
     await expect(makeCaller().clone({ id: MAP_ID })).rejects.toMatchObject({
       code: 'INTERNAL_SERVER_ERROR',
     });
+  });
+});
+
+describe('maps.get — collaborator access', () => {
+  const OTHER_USER_ID = 'dddddddd-0000-0000-0000-dddddddddddd';
+  const COLLAB_MAP    = { ...MOCK_MAP, userId: OTHER_USER_ID };
+
+  beforeEach(() => vi.resetAllMocks());
+
+  it('returns the map for a collaborator (viewer role)', async () => {
+    const mockLayer = { id: 'l1', mapId: MAP_ID, name: 'Layer A', type: 'polygon', style: {}, visible: true, zIndex: 0, sourceFileName: null, createdAt: new Date(), updatedAt: new Date() };
+    vi.mocked(db.select)
+      .mockReturnValueOnce(drizzleChain([COLLAB_MAP]))               // map (not owner)
+      .mockReturnValueOnce(drizzleChain([{ role: 'viewer' }]))       // collaborator check
+      .mockReturnValueOnce(drizzleChain([mockLayer]));               // layers
+
+    const result = await makeCaller().get({ id: MAP_ID });
+    expect(result.id).toBe(MAP_ID);
+    expect(result.layers).toHaveLength(1);
+  });
+
+  it('throws NOT_FOUND when user is not a collaborator on another user\'s map', async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(drizzleChain([COLLAB_MAP]))   // map (not owner)
+      .mockReturnValueOnce(drizzleChain([]));             // no collaborator record
+
+    await expect(makeCaller().get({ id: MAP_ID })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+});
+
+describe('maps.listCollaborating', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('returns maps where the user is an invited collaborator', async () => {
+    const sharedMap = {
+      id: MAP_ID,
+      title: 'Shared Map',
+      description: null,
+      basemap: 'osm',
+      isArchived: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      role: 'viewer',
+    };
+    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([sharedMap]));
+
+    const result = await makeCaller().listCollaborating();
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe(MAP_ID);
+    expect(result[0]?.role).toBe('viewer');
+  });
+
+  it('returns empty array when the user has no shared maps', async () => {
+    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([]));
+
+    const result = await makeCaller().listCollaborating();
+    expect(result).toHaveLength(0);
   });
 });

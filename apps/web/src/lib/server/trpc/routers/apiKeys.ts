@@ -4,6 +4,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
 import { router, protectedProcedure } from '../init.js';
 import { db, apiKeys } from '../../db/index.js';
+import { appendAuditLog } from '../../audit/index.js';
 
 /**
  * Generate a new API key.
@@ -69,6 +70,14 @@ export const apiKeysRouter = router({
         });
       }
 
+      void appendAuditLog({
+        userId: ctx.user.id,
+        action: 'apiKey.create',
+        entityType: 'apiKey',
+        entityId: record.id,
+        metadata: { name: input.name },
+      });
+
       return { key: rawKey, record };
     }),
 
@@ -87,6 +96,13 @@ export const apiKeysRouter = router({
       if (!existing) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'API key not found.' });
       }
+
+      void appendAuditLog({
+        userId: ctx.user.id,
+        action: 'apiKey.revoke',
+        entityType: 'apiKey',
+        entityId: input.id,
+      });
 
       await db.delete(apiKeys).where(eq(apiKeys.id, input.id));
 

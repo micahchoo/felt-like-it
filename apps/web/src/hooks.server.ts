@@ -28,6 +28,7 @@ export const handle: Handle = async ({ event, resolve }) => {
         .where(eq(users.id, keyRow.userId));
 
       if (userRow) {
+        // TYPE_DEBT: userRow only has {id, email, name}; Lucia User has more fields
         event.locals.user = userRow as unknown as User;
         event.locals.session = null;
         // Fire-and-forget: update last_used_at without blocking the request

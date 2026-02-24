@@ -9,6 +9,7 @@ import { collaboratorsRouter } from './routers/collaborators.js';
 import { geoprocessingRouter } from './routers/geoprocessing.js';
 import { annotationsRouter } from './routers/annotations.js';
 import { apiKeysRouter } from './routers/apiKeys.js';
+import { auditLogRouter } from './routers/auditLog.js';
 
 export const appRouter = router({
   maps: mapsRouter,
@@ -21,6 +22,7 @@ export const appRouter = router({
   geoprocessing: geoprocessingRouter,
   annotations: annotationsRouter,
   apiKeys: apiKeysRouter,
+  auditLog: auditLogRouter,
 });
 
 export type AppRouter = typeof appRouter;

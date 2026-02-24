@@ -3,6 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { eq, and, asc } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
 import { db, maps, users, mapCollaborators } from '../../db/index.js';
+import { appendAuditLog } from '../../audit/index.js';
 
 const ROLE_SCHEMA = z.enum(['viewer', 'commenter', 'editor']);
 
@@ -106,6 +107,15 @@ export const collaboratorsRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to add collaborator.' });
       }
 
+      void appendAuditLog({
+        userId: ctx.user.id,
+        action: 'collaborator.invite',
+        entityType: 'collaborator',
+        entityId: collab.id,
+        mapId: input.mapId,
+        metadata: { role: input.role, invitedUserId: invitee.id, invitedEmail: input.email },
+      });
+
       return collab;
     }),
 
@@ -124,6 +134,14 @@ export const collaboratorsRouter = router({
       if (!map) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
       }
+
+      void appendAuditLog({
+        userId: ctx.user.id,
+        action: 'collaborator.remove',
+        entityType: 'collaborator',
+        mapId: input.mapId,
+        metadata: { targetUserId: input.userId },
+      });
 
       await db
         .delete(mapCollaborators)
@@ -173,6 +191,15 @@ export const collaboratorsRouter = router({
       if (!updated) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Collaborator not found.' });
       }
+
+      void appendAuditLog({
+        userId: ctx.user.id,
+        action: 'collaborator.updateRole',
+        entityType: 'collaborator',
+        entityId: updated.id,
+        mapId: input.mapId,
+        metadata: { role: input.role, targetUserId: input.userId },
+      });
 
       return updated;
     }),

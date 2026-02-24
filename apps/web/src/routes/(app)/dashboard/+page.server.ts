@@ -1,7 +1,7 @@
 import type { PageServerLoad, Actions } from './$types';
 import { db, maps } from '$lib/server/db/index.js';
 import { eq, and, desc, asc } from 'drizzle-orm';
-import { layers } from '$lib/server/db/schema.js';
+import { layers, mapCollaborators } from '$lib/server/db/schema.js';
 import { sql } from 'drizzle-orm';
 import { fail, redirect } from '@sveltejs/kit';
 
@@ -63,12 +63,29 @@ export const load: PageServerLoad = async ({ locals }) => {
     basemap: t.basemap,
   }));
 
+  // Maps the user has been invited to collaborate on (not their own maps)
+  const sharedMaps = await db
+    .select({
+      id: maps.id,
+      title: maps.title,
+      description: maps.description,
+      basemap: maps.basemap,
+      createdAt: maps.createdAt,
+      updatedAt: maps.updatedAt,
+      role: mapCollaborators.role,
+    })
+    .from(mapCollaborators)
+    .innerJoin(maps, and(eq(maps.id, mapCollaborators.mapId), eq(maps.isArchived, false)))
+    .where(eq(mapCollaborators.userId, userId))
+    .orderBy(desc(maps.updatedAt));
+
   return {
     maps: userMaps.map((m) => ({
       ...m,
       layerCount: Number(countMap.get(m.id) ?? 0),
     })),
     templates,
+    sharedMaps,
   };
 };
 

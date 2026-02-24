@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { db, maps, layers } from '$lib/server/db/index.js';
+import { db, maps, layers, mapCollaborators } from '$lib/server/db/index.js';
 import { eq, and } from 'drizzle-orm';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
@@ -8,13 +8,17 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const userId = locals.user.id;
   const mapId = params.id;
 
-  const [map] = await db
-    .select()
-    .from(maps)
-    .where(and(eq(maps.id, mapId), eq(maps.userId, userId)));
+  // 1 — Fetch map (no ownership filter)
+  const [map] = await db.select().from(maps).where(eq(maps.id, mapId));
+  if (!map) error(404, 'Map not found');
 
-  if (!map) {
-    error(404, 'Map not found');
+  // 2 — Owner fast-path; collaborator fallback
+  if (map.userId !== userId) {
+    const [collab] = await db
+      .select({ id: mapCollaborators.id })
+      .from(mapCollaborators)
+      .where(and(eq(mapCollaborators.mapId, mapId), eq(mapCollaborators.userId, userId)));
+    if (!collab) error(404, 'Map not found');
   }
 
   const mapLayers = await db
