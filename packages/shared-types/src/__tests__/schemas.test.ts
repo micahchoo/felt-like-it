@@ -15,6 +15,7 @@ import {
   ImportJobSchema,
   JobStatusSchema,
   GeoprocessingOpSchema,
+  GeoAggregateOpSchema,
   AnnotationContentSchema,
   AnnotationAnchorSchema,
   AnnotationSchema,
@@ -372,6 +373,111 @@ describe('LayerStyleSchema', () => {
     const result = LayerStyleSchema.parse({ paint: {} });
     expect(result.isSandwiched).toBeUndefined();
   });
+
+  it('parses config.classificationMethod equal_interval', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      type: 'numeric',
+      config: { numericAttribute: 'pop', classificationMethod: 'equal_interval' },
+    });
+    expect(result.config?.classificationMethod).toBe('equal_interval');
+  });
+
+  it('parses config.classificationMethod quantile', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      type: 'numeric',
+      config: { numericAttribute: 'income', classificationMethod: 'quantile', nClasses: 7 },
+    });
+    expect(result.config?.classificationMethod).toBe('quantile');
+    expect(result.config?.nClasses).toBe(7);
+  });
+
+  it('rejects config.classificationMethod with unknown value', () => {
+    expect(() =>
+      LayerStyleSchema.parse({
+        paint: {},
+        config: { classificationMethod: 'jenks' },
+      })
+    ).toThrow();
+  });
+
+  it('rejects config.nClasses below 2', () => {
+    expect(() =>
+      LayerStyleSchema.parse({
+        paint: {},
+        config: { nClasses: 1 },
+      })
+    ).toThrow();
+  });
+
+  it('rejects config.nClasses above 9', () => {
+    expect(() =>
+      LayerStyleSchema.parse({
+        paint: {},
+        config: { nClasses: 10 },
+      })
+    ).toThrow();
+  });
+
+  it('classificationMethod and nClasses default to undefined', () => {
+    const result = LayerStyleSchema.parse({ paint: {} });
+    expect(result.config?.classificationMethod).toBeUndefined();
+    expect(result.config?.nClasses).toBeUndefined();
+  });
+
+  it('parses type heatmap', () => {
+    const result = LayerStyleSchema.parse({ paint: {}, type: 'heatmap' });
+    expect(result.type).toBe('heatmap');
+  });
+
+  it('rejects unknown type value', () => {
+    expect(() =>
+      LayerStyleSchema.parse({ paint: {}, type: 'pointcloud' })
+    ).toThrow();
+  });
+
+  it('parses heatmap config fields', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      type: 'heatmap',
+      config: { heatmapRadius: 40, heatmapIntensity: 2.5, heatmapWeightAttribute: 'count' },
+    });
+    expect(result.config?.heatmapRadius).toBe(40);
+    expect(result.config?.heatmapIntensity).toBe(2.5);
+    expect(result.config?.heatmapWeightAttribute).toBe('count');
+  });
+
+  it('rejects heatmapRadius below 1', () => {
+    expect(() =>
+      LayerStyleSchema.parse({ paint: {}, config: { heatmapRadius: 0 } })
+    ).toThrow();
+  });
+
+  it('rejects heatmapRadius above 200', () => {
+    expect(() =>
+      LayerStyleSchema.parse({ paint: {}, config: { heatmapRadius: 201 } })
+    ).toThrow();
+  });
+
+  it('rejects heatmapIntensity below 0.1', () => {
+    expect(() =>
+      LayerStyleSchema.parse({ paint: {}, config: { heatmapIntensity: 0.05 } })
+    ).toThrow();
+  });
+
+  it('rejects heatmapIntensity above 5', () => {
+    expect(() =>
+      LayerStyleSchema.parse({ paint: {}, config: { heatmapIntensity: 5.1 } })
+    ).toThrow();
+  });
+
+  it('heatmap config fields default to undefined', () => {
+    const result = LayerStyleSchema.parse({ paint: {} });
+    expect(result.config?.heatmapRadius).toBeUndefined();
+    expect(result.config?.heatmapIntensity).toBeUndefined();
+    expect(result.config?.heatmapWeightAttribute).toBeUndefined();
+  });
 });
 
 describe('JobStatusSchema', () => {
@@ -433,6 +539,114 @@ describe('GeoprocessingOpSchema — discriminated union', () => {
 
   it('rejects non-UUID layerId', () => {
     expect(() => GeoprocessingOpSchema.parse({ type: 'union', layerId: 'not-a-uuid' })).toThrow();
+  });
+
+  it('parses point_in_polygon op with two UUIDs', () => {
+    const op = GeoprocessingOpSchema.parse({
+      type: 'point_in_polygon',
+      layerIdPoints: validLayerId,
+      layerIdPolygons: validLayerIdB,
+    });
+    expect(op.type).toBe('point_in_polygon');
+    if (op.type === 'point_in_polygon') {
+      expect(op.layerIdPoints).toBe(validLayerId);
+      expect(op.layerIdPolygons).toBe(validLayerIdB);
+    }
+  });
+
+  it('rejects point_in_polygon with non-UUID layerIdPoints', () => {
+    expect(() =>
+      GeoprocessingOpSchema.parse({
+        type: 'point_in_polygon',
+        layerIdPoints: 'bad-id',
+        layerIdPolygons: validLayerIdB,
+      })
+    ).toThrow();
+  });
+
+  it('parses nearest_neighbor op with two UUIDs', () => {
+    const op = GeoprocessingOpSchema.parse({
+      type: 'nearest_neighbor',
+      layerIdA: validLayerId,
+      layerIdB: validLayerIdB,
+    });
+    expect(op.type).toBe('nearest_neighbor');
+  });
+
+  it('parses aggregate count op (no field required)', () => {
+    const op = GeoprocessingOpSchema.parse({
+      type: 'aggregate',
+      layerIdPolygons: validLayerId,
+      layerIdPoints: validLayerIdB,
+      aggregation: 'count',
+    });
+    expect(op.type).toBe('aggregate');
+    if (op.type === 'aggregate') expect(op.aggregation).toBe('count');
+  });
+
+  it('parses aggregate sum op with field', () => {
+    const op = GeoprocessingOpSchema.parse({
+      type: 'aggregate',
+      layerIdPolygons: validLayerId,
+      layerIdPoints: validLayerIdB,
+      aggregation: 'sum',
+      field: 'population',
+      outputField: 'total_pop',
+    });
+    if (op.type === 'aggregate') {
+      expect(op.aggregation).toBe('sum');
+      expect(op.field).toBe('population');
+      expect(op.outputField).toBe('total_pop');
+    }
+  });
+
+  // field-required invariant is enforced on GeoAggregateOpSchema (refined),
+  // not on GeoprocessingOpSchema (which uses the base schema for discriminated union compat)
+  it('rejects aggregate sum op without field (GeoAggregateOpSchema)', () => {
+    expect(() =>
+      GeoAggregateOpSchema.parse({
+        type: 'aggregate',
+        layerIdPolygons: validLayerId,
+        layerIdPoints: validLayerIdB,
+        aggregation: 'sum',
+      })
+    ).toThrow();
+  });
+
+  it('rejects aggregate avg op without field (GeoAggregateOpSchema)', () => {
+    expect(() =>
+      GeoAggregateOpSchema.parse({
+        type: 'aggregate',
+        layerIdPolygons: validLayerId,
+        layerIdPoints: validLayerIdB,
+        aggregation: 'avg',
+      })
+    ).toThrow();
+  });
+
+  it('parses aggregate avg op with field and no outputField', () => {
+    const op = GeoprocessingOpSchema.parse({
+      type: 'aggregate',
+      layerIdPolygons: validLayerId,
+      layerIdPoints: validLayerIdB,
+      aggregation: 'avg',
+      field: 'income',
+    });
+    if (op.type === 'aggregate') {
+      expect(op.outputField).toBeUndefined();
+    }
+  });
+
+  it('rejects unknown aggregation type', () => {
+    expect(() =>
+      GeoprocessingOpSchema.parse({
+        type: 'aggregate',
+        layerIdPolygons: validLayerId,
+        layerIdPoints: validLayerIdB,
+        aggregation: 'median',
+        field: 'value',
+      })
+    ).toThrow();
   });
 });
 

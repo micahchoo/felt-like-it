@@ -30,6 +30,41 @@ export const StyleConfigSchema = z.object({
    * Defaults to true (show all features; unmatched use fallback color).
    */
   showOther: z.boolean().optional(),
+  /**
+   * Classification method used for numeric/choropleth styles.
+   *   equal_interval — breakpoints divide [min, max] into equal-width bins
+   *   quantile       — breakpoints ensure each bin has ~equal feature count
+   * Stored alongside the pre-computed `steps` so the StylePanel can display
+   * and re-apply the same method when reconfiguring.
+   */
+  classificationMethod: z.enum(['equal_interval', 'quantile']).optional(),
+  /**
+   * Number of color classes for numeric/choropleth styles (2–9).
+   * Stored so the StylePanel can restore the selector state on re-open.
+   */
+  nClasses: z.number().int().min(2).max(9).optional(),
+  /**
+   * Named ColorBrewer color ramp used for choropleth styles (e.g. 'Blues', 'RdBu').
+   * Stored as a string (not an enum) so shared-types remains independent of geo-engine's
+   * COLOR_RAMP_NAMES constant. The StylePanel validates at read time via COLOR_RAMP_NAMES.includes().
+   */
+  colorRampName: z.string().optional(),
+  /**
+   * deck.gl HeatmapLayer: kernel radius in screen pixels (1–200).
+   * Only relevant when style.type === 'heatmap'.
+   */
+  heatmapRadius: z.number().int().min(1).max(200).optional(),
+  /**
+   * deck.gl HeatmapLayer: overall intensity multiplier (0.1–5).
+   * Higher values produce brighter, more saturated hotspots.
+   */
+  heatmapIntensity: z.number().min(0.1).max(5).optional(),
+  /**
+   * Feature property used as a per-point weight for the heatmap kernel.
+   * When omitted, every point has equal weight (1).
+   * Non-numeric values fall back to 1 at render time.
+   */
+  heatmapWeightAttribute: z.string().optional(),
 });
 
 /** Label rendering settings (FSL-compatible label block). */
@@ -47,12 +82,13 @@ export const LayerStyleSchema = z.object({
   version: z.string().optional(),
   /**
    * Visualization type — mirrors the Felt Style Language:
-   *   simple     → all features share one style
+   *   simple      → all features share one style
    *   categorical → color-by a string attribute
-   *   numeric    → graduated color/size by a numeric attribute (formerly "graduated")
-   *   graduated  → alias for numeric (deprecated — use "numeric")
+   *   numeric     → graduated color/size by a numeric attribute (formerly "graduated")
+   *   graduated   → alias for numeric (deprecated — use "numeric")
+   *   heatmap     → deck.gl HeatmapLayer kernel density overlay (point layers only)
    */
-  type: z.enum(['simple', 'categorical', 'numeric', 'graduated']).default('simple'),
+  type: z.enum(['simple', 'categorical', 'numeric', 'graduated', 'heatmap']).default('simple'),
   /** Which data attributes drive the visualization (FSL config block). */
   config: StyleConfigSchema.optional(),
   /** Label display settings (FSL label block). */

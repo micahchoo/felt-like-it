@@ -17,9 +17,12 @@
   // Op type is constrained to the discriminated union keys — no stringly-typed widening
   type OpType = GeoprocessingOp['type'];
   const OP_TYPES = Object.keys(GEO_OP_LABELS) as OpType[];
-  const TWO_LAYER_OPS: ReadonlySet<OpType> = new Set<OpType>(['intersect', 'clip']);
-  const DIST_OPS:     ReadonlySet<OpType> = new Set<OpType>(['buffer']);
-  const FIELD_OPS:    ReadonlySet<OpType> = new Set<OpType>(['dissolve']);
+  const TWO_LAYER_OPS: ReadonlySet<OpType> = new Set<OpType>([
+    'intersect', 'clip', 'point_in_polygon', 'nearest_neighbor', 'aggregate',
+  ]);
+  const DIST_OPS:  ReadonlySet<OpType> = new Set<OpType>(['buffer']);
+  const FIELD_OPS: ReadonlySet<OpType> = new Set<OpType>(['dissolve']);
+  const AGG_OPS:   ReadonlySet<OpType> = new Set<OpType>(['aggregate']);
 
   let opType      = $state<OpType>('buffer');
   // Initialised empty; $effect.pre sets the default from the first available layer.
@@ -33,6 +36,9 @@
     if (!layerIdB && layers.length > 0) layerIdB = layers[1]?.id ?? layers[0]?.id ?? '';
   });
   let dissolveField = $state('');
+  let aggregation   = $state<'count' | 'sum' | 'avg'>('count');
+  let aggField      = $state('');
+  let aggOutputField = $state('');
   let outputName  = $state('');
   let running     = $state(false);
   let error       = $state<string | null>(null);
@@ -46,15 +52,30 @@
   function computeDefaultName(op: OpType, layerName?: string): string {
     const base = layerName ?? 'Layer';
     const labels: Record<OpType, string> = {
-      buffer:      `${base} (buffered)`,
-      convex_hull: `${base} (convex hull)`,
-      centroid:    `${base} (centroids)`,
-      dissolve:    `${base} (dissolved)`,
-      intersect:   'Intersection',
-      union:       `${base} (union)`,
-      clip:        `${base} (clipped)`,
+      buffer:           `${base} (buffered)`,
+      convex_hull:      `${base} (convex hull)`,
+      centroid:         `${base} (centroids)`,
+      dissolve:         `${base} (dissolved)`,
+      intersect:        'Intersection',
+      union:            `${base} (union)`,
+      clip:             `${base} (clipped)`,
+      point_in_polygon: `${base} (point join)`,
+      nearest_neighbor: `${base} (nearest join)`,
+      aggregate:        `${base} (aggregated)`,
     };
     return labels[op];
+  }
+
+  function getLayerALabel(op: OpType): string {
+    if (op === 'point_in_polygon' || op === 'aggregate') return 'Points layer';
+    if (TWO_LAYER_OPS.has(op)) return 'Layer A (source)';
+    return 'Layer';
+  }
+
+  function getLayerBLabel(op: OpType): string {
+    if (op === 'point_in_polygon' || op === 'aggregate') return 'Polygons layer';
+    if (op === 'clip') return 'Layer B (clip mask)';
+    return 'Layer B';
   }
 
   /** Build the strongly-typed discriminated union from panel state. */
@@ -74,6 +95,19 @@
         return { type: 'union', layerId: layerIdA };
       case 'clip':
         return { type: 'clip', layerIdA, layerIdB };
+      case 'point_in_polygon':
+        return { type: 'point_in_polygon', layerIdPoints: layerIdA, layerIdPolygons: layerIdB };
+      case 'nearest_neighbor':
+        return { type: 'nearest_neighbor', layerIdA, layerIdB };
+      case 'aggregate':
+        return {
+          type: 'aggregate',
+          layerIdPoints: layerIdA,
+          layerIdPolygons: layerIdB,
+          aggregation,
+          ...(aggField.trim() ? { field: aggField.trim() } : {}),
+          ...(aggOutputField.trim() ? { outputField: aggOutputField.trim() } : {}),
+        };
     }
   }
 
@@ -126,7 +160,7 @@
     <!-- Layer A -->
     <div class="flex flex-col gap-1">
       <label class="text-xs text-slate-400" for="geo-layer-a">
-        {TWO_LAYER_OPS.has(opType) ? 'Layer A (source)' : 'Layer'}
+        {getLayerALabel(opType)}
       </label>
       <select
         id="geo-layer-a"
@@ -143,7 +177,7 @@
     {#if TWO_LAYER_OPS.has(opType)}
       <div class="flex flex-col gap-1">
         <label class="text-xs text-slate-400" for="geo-layer-b">
-          {opType === 'clip' ? 'Layer B (clip mask)' : 'Layer B (mask)'}
+          {getLayerBLabel(opType)}
         </label>
         <select
           id="geo-layer-b"
@@ -189,6 +223,48 @@
       </div>
     {/if}
 
+    <!-- Aggregation controls -->
+    {#if AGG_OPS.has(opType)}
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400" for="geo-agg">Aggregation</label>
+        <select
+          id="geo-agg"
+          bind:value={aggregation}
+          class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="count">Count</option>
+          <option value="sum">Sum</option>
+          <option value="avg">Average</option>
+        </select>
+      </div>
+      {#if aggregation === 'sum' || aggregation === 'avg'}
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-slate-400" for="geo-agg-field">
+            Point property <span class="text-slate-500">(numeric)</span>
+          </label>
+          <input
+            id="geo-agg-field"
+            type="text"
+            placeholder="property name"
+            bind:value={aggField}
+            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+      {/if}
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400" for="geo-agg-out">
+          Output field name <span class="text-slate-500">(optional)</span>
+        </label>
+        <input
+          id="geo-agg-out"
+          type="text"
+          placeholder={aggregation}
+          bind:value={aggOutputField}
+          class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+      </div>
+    {/if}
+
     <!-- Output layer name -->
     <div class="flex flex-col gap-1">
       <label class="text-xs text-slate-400" for="geo-name">Output layer name</label>
@@ -213,7 +289,9 @@
       type="submit"
       size="sm"
       loading={running}
-      disabled={!layerIdA || (TWO_LAYER_OPS.has(opType) && !layerIdB)}
+      disabled={!layerIdA
+        || (TWO_LAYER_OPS.has(opType) && !layerIdB)
+        || (AGG_OPS.has(opType) && aggregation !== 'count' && !aggField.trim())}
     >
       Run
     </Button>

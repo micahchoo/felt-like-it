@@ -4,6 +4,8 @@ import {
   isNumericColumn,
   getUniqueValues,
 } from './detect.js';
+import { getColorRamp, type ColorRampName } from './color-ramps.js';
+import { equalIntervalBreaks, quantileBreaks, type ClassificationMethod } from './classify.js';
 
 // Default color palettes
 const CATEGORICAL_COLORS = [
@@ -21,8 +23,8 @@ const CATEGORICAL_COLORS = [
   '#80b1d3',
 ];
 
-// Sequential blue ramp (5 classes)
-const GRADUATED_COLORS = ['#eff3ff', '#bdd7e7', '#6baed6', '#3182bd', '#08519c'];
+// Default sequential ramp for auto-graduated styling (5 classes, Blues)
+const GRADUATED_COLORS = getColorRamp('Blues', 5);
 
 const DEFAULT_POINT_COLOR = '#3b82f6';
 const DEFAULT_LINE_COLOR = '#6366f1';
@@ -195,32 +197,68 @@ function generateGraduatedStyle(
   field: string,
   values: number[]
 ): LayerStyle {
+  // Delegate to generateChoroplethStyle with defaults (Blues, 5 classes, equal_interval)
+  return generateChoroplethStyle(layerType, field, values, 'Blues', 5, 'equal_interval');
+}
+
+// ─── Formatting helper ────────────────────────────────────────────────────────
+
+function formatBreakLabel(lo: number | undefined, hi: number | undefined): string {
+  const fmt = (n: number | undefined): string =>
+    n === undefined ? '…' : Number.isInteger(n) ? String(n) : n.toFixed(2);
+  return `${fmt(lo)} – ${fmt(hi)}`;
+}
+
+// ─── Public choropleth API ────────────────────────────────────────────────────
+
+/**
+ * Generate a choropleth (numeric graduated) style for a polygon/point/line layer.
+ *
+ * @param layerType  - geometry type of the layer
+ * @param field      - feature property to color by (must be numeric)
+ * @param values     - array of raw numeric values from the layer's features
+ * @param rampName   - ColorBrewer ramp name (default: 'Blues')
+ * @param nClasses   - number of color classes, 2–9 (default: 5)
+ * @param method     - classification method (default: 'quantile')
+ */
+export function generateChoroplethStyle(
+  layerType: LayerType,
+  field: string,
+  values: number[],
+  rampName: ColorRampName = 'Blues',
+  nClasses: number = 5,
+  method: ClassificationMethod = 'quantile'
+): LayerStyle {
   const nums = values.map(Number).filter((v) => !isNaN(v));
   if (nums.length === 0) return generateSimpleStyle(layerType);
 
+  const colors = getColorRamp(rampName, nClasses);
   const min = Math.min(...nums);
   const max = Math.max(...nums);
-  const step = (max - min) / GRADUATED_COLORS.length;
 
-  // Build MapLibre step expression
-  const stepExpression: unknown[] = [
-    'step',
-    ['get', field],
-    GRADUATED_COLORS[0] ?? '#eff3ff',
-  ];
-  for (let i = 1; i < GRADUATED_COLORS.length; i++) {
-    stepExpression.push(min + step * i, GRADUATED_COLORS[i] ?? '#08519c');
+  // Compute internal breakpoints using chosen classification method
+  const internalBreaks =
+    method === 'quantile'
+      ? quantileBreaks(nums, nClasses)
+      : equalIntervalBreaks(nums, nClasses);
+
+  // MapLibre step expression: base color (< first break) then [break, color] pairs
+  const stepExpression: unknown[] = ['step', ['get', field], colors[0] ?? '#eff3ff'];
+  for (let i = 0; i < internalBreaks.length; i++) {
+    stepExpression.push(internalBreaks[i], colors[i + 1] ?? colors[colors.length - 1] ?? '#08519c');
   }
 
-  const legend: LegendEntry[] = GRADUATED_COLORS.map((color, i) => ({
-    label: `${(min + step * i).toFixed(1)}–${(min + step * (i + 1)).toFixed(1)}`,
+  // Legend: one entry per color class; label shows the data range
+  const breakpoints = [min, ...internalBreaks, max];
+  const legend: LegendEntry[] = colors.map((color, i) => ({
+    label: formatBreakLabel(breakpoints[i], breakpoints[i + 1]),
     color,
   }));
 
-  // steps: array of [threshold, color] breakpoints (mirrors the step expression)
-  const steps: [number, string][] = GRADUATED_COLORS.map((color, i) => [min + step * i, color]);
+  // steps[]: [threshold, color] pairs that mirror the step expression (for re-hydration)
+  const steps: [number, string][] = [min, ...internalBreaks].map((b, i) => [b, colors[i] ?? '#eff3ff']);
 
-  const config = { numericAttribute: field, steps };
+  const config = { numericAttribute: field, steps, classificationMethod: method, nClasses, colorRampName: rampName };
 
   switch (layerType) {
     case 'point':
@@ -229,7 +267,7 @@ function generateGraduatedStyle(
         type: 'numeric',
         config,
         colorField: field,
-        colorRamp: GRADUATED_COLORS,
+        colorRamp: colors,
         paint: {
           'circle-radius': 6,
           'circle-color': stepExpression,
@@ -244,7 +282,7 @@ function generateGraduatedStyle(
         type: 'numeric',
         config,
         colorField: field,
-        colorRamp: GRADUATED_COLORS,
+        colorRamp: colors,
         paint: {
           'line-color': stepExpression,
           'line-width': 2,
@@ -257,7 +295,7 @@ function generateGraduatedStyle(
         type: 'numeric',
         config,
         colorField: field,
-        colorRamp: GRADUATED_COLORS,
+        colorRamp: colors,
         paint: {
           'fill-color': stepExpression,
           'fill-opacity': 0.55,

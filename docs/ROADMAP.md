@@ -85,7 +85,7 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 
 ---
 
-## Phase 4 — Spatial Analysis 🚧 IN PROGRESS
+## Phase 4 — Spatial Analysis ✅ COMPLETE
 
 **Goal:** PostGIS geoprocessing without writing SQL.
 
@@ -93,11 +93,11 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 |---|---|
 | **PostGIS geoprocessing UI** (Buffer, Clip, Intersect, Union, Dissolve, Convex Hull, Centroid — `GeoprocessingOpSchema` discriminated union; `runGeoprocessing` exhaustive switch; `GeoprocessingPanel.svelte`) | ✅ |
 | **Rich annotation suite** (text / emoji / GIF / image / link / IIIF NavPlace; WGS84 Point anchor; `AnnotationContentSchema` discriminated union; `annotations` PostGIS table; full CRUD + `fetchIiifNavPlace` tRPC; amber pin layer in MapCanvas; `AnnotationContent.svelte` + `AnnotationPanel.svelte`) | ✅ |
-| Spatial joins: point-in-polygon, nearest neighbor, attribute join by location | ⬜ |
-| Aggregation: point-to-polygon count / sum / avg | ⬜ |
-| Measurement tools: distance, area, perimeter with unit conversion | ⬜ |
-| Boundary analysis: census/admin boundary datasets; choropleth by aggregated metrics | ⬜ |
-| deck.gl integration: large-scale point clouds, 3D buildings, heatmaps (optional overlay) | ⬜ |
+| **Spatial joins** (point-in-polygon, nearest neighbor; `SpatialJoinSchema`; PostGIS `ST_Within` / `ST_DWithin`; attributes propagated to joined layer; `GeoprocessingPanel.svelte`) | ✅ |
+| **Aggregation** (point-to-polygon count / sum / avg; `GeoAggregateSchema`; PostGIS `ST_Within` aggregate; result written as new layer) | ✅ |
+| **Measurement tools** (distance, area, perimeter; km/mi/m/ft and km²/mi²/ha/ac/m²; Turf.js geodesic; floating `MeasurementPanel` overlay; measurement mode in DrawingToolbar — no DB write) | ✅ |
+| **Boundary analysis + choropleth** (9 ColorBrewer ramps; quantile + equal-interval classification; `generateChoroplethStyle`; StylePanel choropleth UI with ramp picker, class slider, method dropdown) | ✅ |
+| **deck.gl integration** (heatmap kernel density overlay for point layers via `MapboxOverlay` + `HeatmapLayer`; `DeckGLOverlay.svelte`; `style.type === 'heatmap'`; radius / intensity / weight-attribute controls in StylePanel; resets to simple) | ✅ |
 
 ---
 

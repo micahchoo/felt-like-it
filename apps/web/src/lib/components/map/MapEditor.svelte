@@ -14,6 +14,7 @@
   import ExportDialog from '$lib/components/data/ExportDialog.svelte';
   import StylePanel from '$lib/components/style/StylePanel.svelte';
   import Legend from '$lib/components/style/Legend.svelte';
+  import { styleStore } from '$lib/stores/style.svelte.js';
   import Button from '$lib/components/ui/Button.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import ActivityFeed from './ActivityFeed.svelte';
@@ -21,8 +22,10 @@
   import CollaboratorsPanel from './CollaboratorsPanel.svelte';
   import GeoprocessingPanel from '$lib/components/geoprocessing/GeoprocessingPanel.svelte';
   import AnnotationPanel from '$lib/components/annotations/AnnotationPanel.svelte';
+  import MeasurementPanel from '$lib/components/map/MeasurementPanel.svelte';
   import type { AnnotationPinCollection } from '$lib/components/map/MapCanvas.svelte';
   import type { Annotation } from '@felt-like-it/shared-types';
+  import type { MeasurementResult } from '@felt-like-it/geo-engine';
 
   interface Props {
     mapId: string;
@@ -50,6 +53,8 @@
   let showCollaborators = $state(false);
   let showGeoprocessing = $state(false);
   let showAnnotations = $state(false);
+  let showMeasure = $state(false);
+  let measureResult = $state<MeasurementResult | null>(null);
   let savingViewport = $state(false);
 
   // ── Annotation pin GeoJSON ──────────────────────────────────────────────────
@@ -242,6 +247,19 @@
           </Button>
         </Tooltip>
 
+        <Tooltip content="Measure distance or area">
+          <Button
+            variant="ghost"
+            size="sm"
+            onclick={() => { showMeasure = !showMeasure; if (!showMeasure) measureResult = null; }}
+          >
+            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M.5 14.5a.5.5 0 0 1-.354-.854l13-13a.5.5 0 0 1 .708.708l-13 13A.5.5 0 0 1 .5 14.5zM11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM8 3.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM5 .5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1A.5.5 0 0 1 5 .5zM.5 11.5a.5.5 0 0 1-.354-.854l1-1a.5.5 0 0 1 .708.708l-1 1a.5.5 0 0 1-.354.146zM3.5 8.5a.5.5 0 0 1-.354-.854l1-1a.5.5 0 0 1 .708.708l-1 1a.5.5 0 0 1-.354.146z"/>
+            </svg>
+            Measure
+          </Button>
+        </Tooltip>
+
         <Tooltip content="Spatial geoprocessing (buffer, clip, intersect…)">
           <Button
             variant="ghost"
@@ -290,7 +308,16 @@
         {layerData}
         onfeaturedrawn={handleFeatureDrawn}
         {...(!readonly ? { annotationPins } : {})}
+        {...(showMeasure ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
       />
+
+      <!-- Measurement panel overlay -->
+      {#if showMeasure && !readonly}
+        <MeasurementPanel
+          result={measureResult}
+          onclear={() => { showMeasure = false; measureResult = null; }}
+        />
+      {/if}
 
       <!-- Map overlay controls -->
       <div class="absolute bottom-6 left-3 flex gap-2">
@@ -320,8 +347,12 @@
   </div>
 
   <!-- Right: Style Panel (when editing) -->
-  <!-- Rendered via styleStore.editingLayerId -->
-  <StylePanel />
+  <!-- Rendered via styleStore.editingLayerId; layerFeatures powers the choropleth attribute picker -->
+  <StylePanel
+    layerFeatures={styleStore.editingLayerId
+      ? (layerData[styleStore.editingLayerId]?.features ?? [])
+      : []}
+  />
 
   <!-- Comment panel (collapsible, right side) -->
   {#if showComments && !readonly}

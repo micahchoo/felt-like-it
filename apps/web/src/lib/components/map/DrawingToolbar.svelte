@@ -7,13 +7,21 @@
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import type { DrawTool } from '$lib/stores/selection.svelte.js';
+  import { measureLine, measurePolygon } from '@felt-like-it/geo-engine';
+  import type { MeasurementResult } from '@felt-like-it/geo-engine';
 
   interface Props {
     map: MapLibreMap;
     onfeaturedrawn?: ((_layerId: string, _feature: Record<string, unknown>) => void) | undefined;
+    /**
+     * When provided, the drawing toolbar enters measurement mode: drawn features
+     * are NOT saved to any layer — instead, the computed measurement is passed
+     * to this callback.  The caller is responsible for displaying the result.
+     */
+    onmeasured?: ((_result: MeasurementResult) => void) | undefined;
   }
 
-  let { map, onfeaturedrawn }: Props = $props();
+  let { map, onfeaturedrawn, onmeasured }: Props = $props();
 
   // Lazy-load Terra Draw to avoid SSR issues
   let draw: import('terra-draw').TerraDraw | null = null;
@@ -43,8 +51,14 @@
 
       const f = draw.getSnapshotFeature(id);
       console.warn('[TerraDraw] getSnapshotFeature =>', f);
+
       if (f) {
-        await saveFeature(f as unknown as { geometry: Record<string, unknown>; properties: Record<string, unknown> });
+        if (onmeasured) {
+          // Measurement mode — compute result and notify parent; do NOT persist to DB
+          measureFeature(f as unknown as { geometry: Record<string, unknown> });
+        } else {
+          await saveFeature(f as unknown as { geometry: Record<string, unknown>; properties: Record<string, unknown> });
+        }
       }
 
       // Re-check: component may have unmounted during the async save
@@ -92,6 +106,22 @@
       draw = null;
     };
   });
+
+  /**
+   * Compute a measurement from a drawn GeoJSON feature and pass it to `onmeasured`.
+   * Only LineString and Polygon geometries produce a meaningful result.
+   */
+  function measureFeature(f: { geometry: Record<string, unknown> }) {
+    const geom = f.geometry;
+    if (geom['type'] === 'LineString') {
+      const coords = geom['coordinates'] as [number, number][];
+      onmeasured?.(measureLine(coords));
+    } else if (geom['type'] === 'Polygon') {
+      const coords = geom['coordinates'] as [number, number][][];
+      onmeasured?.(measurePolygon(coords));
+    }
+    // Point geometry has no length/area — silently ignore
+  }
 
   async function saveFeature(f: { geometry: Record<string, unknown>; properties: Record<string, unknown> }) {
     console.warn('[TerraDraw] saveFeature geometry=', JSON.stringify(f.geometry));

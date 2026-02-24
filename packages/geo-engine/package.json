@@ -17,6 +17,7 @@
     "vitest": "^2.1.8"
   },
   "dependencies": {
-    "@felt-like-it/shared-types": "workspace:*"
+    "@felt-like-it/shared-types": "workspace:*",
+    "@turf/turf": "^7.1.0"
   }
 }

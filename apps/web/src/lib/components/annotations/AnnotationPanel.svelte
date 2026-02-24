@@ -1,4 +1,5 @@
 <script lang="ts">
+  import exifr from 'exifr';
   import { trpc } from '$lib/utils/trpc.js';
   import Button from '$lib/components/ui/Button.svelte';
   import AnnotationContent from './AnnotationContent.svelte';
@@ -76,10 +77,29 @@
   let formEmoji = $state('');
   let formEmojiLabel = $state('');
 
-  // GIF / Image (shared URL + alt/caption fields)
-  let formUrl = $state('');
+  // GIF (URL + optional alt text)
+  let formGifUrl = $state('');
   let formAltText = $state('');
+
+  // Image — supports both direct URL and file upload
+  let formImageUrl = $state('');
   let formCaption = $state('');
+
+  /**
+   * Image-upload-specific state.
+   * A file can be selected in addition to (or instead of) a manual URL.
+   * When both are provided the uploaded file takes precedence.
+   */
+  let selectedImageFile = $state<File | null>(null);
+  /** Object URL for the local preview — revoked on reset or new selection. */
+  let imagePreviewUrl = $state<string | null>(null);
+  /**
+   * True when EXIF GPS data was found in the selected file.
+   * Shown as a small badge next to the coordinate inputs.
+   */
+  let gpsExtracted = $state(false);
+  /** True while the selected image is being uploaded to /api/annotation-upload. */
+  let uploading = $state(false);
 
   // Link
   let formLinkUrl = $state('');
@@ -103,6 +123,69 @@
     }
   });
 
+  // ── Image file handling ────────────────────────────────────────────────────
+
+  /**
+   * Handle image file selection:
+   *   1. Create an object URL for an instant local preview (no upload yet).
+   *   2. Parse EXIF GPS with `exifr` — if coordinates are found, auto-fill the
+   *      anchor inputs and show a "GPS from EXIF" badge.
+   *
+   * The actual upload happens in `handleCreate` (just before the tRPC mutation)
+   * so the server round-trip only happens when the user clicks Save.
+   */
+  async function handleImageFileSelect(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+
+    // Revoke the previous object URL to prevent memory leaks
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      imagePreviewUrl = null;
+    }
+
+    gpsExtracted = false;
+    selectedImageFile = file;
+
+    if (!file) return;
+
+    // Instant local preview — no server round-trip
+    imagePreviewUrl = URL.createObjectURL(file);
+
+    // EXIF GPS extraction — exifr.gps() handles both DMS and decimal-degree formats
+    // and normalises to { latitude: number, longitude: number } in WGS84.
+    try {
+      const gps = await exifr.gps(file);
+      if (gps && typeof gps.latitude === 'number' && typeof gps.longitude === 'number') {
+        formLat = Math.round(gps.latitude  * 1_000_000) / 1_000_000;
+        formLng = Math.round(gps.longitude * 1_000_000) / 1_000_000;
+        gpsExtracted = true;
+      }
+    } catch {
+      // EXIF parsing failure is non-fatal — user can set coordinates manually
+    }
+  }
+
+  /**
+   * Upload the selected image file to /api/annotation-upload.
+   * Returns the absolute URL of the stored image.
+   */
+  async function uploadImageFile(file: File): Promise<string> {
+    const fd = new FormData();
+    fd.append('file', file);
+
+    const res = await fetch('/api/annotation-upload', { method: 'POST', body: fd });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(body || `Upload failed (HTTP ${res.status})`);
+    }
+
+    const data = await res.json() as { url?: string };
+    if (typeof data.url !== 'string') throw new Error('Upload returned no URL');
+    return data.url;
+  }
+
   /** Build the typed AnnotationContent from current form state. */
   function buildContent(): AC {
     switch (formType) {
@@ -117,13 +200,15 @@
       case 'gif':
         return {
           type: 'gif',
-          url: formUrl,
+          url: formGifUrl,
           ...(formAltText.trim() ? { altText: formAltText.trim() } : {}),
         };
       case 'image':
+        // URL is set to formImageUrl now; if a file was selected, uploadImageFile()
+        // has already replaced formImageUrl with the uploaded URL before we get here.
         return {
           type: 'image',
-          url: formUrl,
+          url: formImageUrl,
           ...(formCaption.trim() ? { caption: formCaption.trim() } : {}),
         };
       case 'link':
@@ -142,12 +227,43 @@
     }
   }
 
+  function resetForm() {
+    formText = '';
+    formEmoji = '';
+    formEmojiLabel = '';
+    formGifUrl = '';
+    formAltText = '';
+    formImageUrl = '';
+    formCaption = '';
+    formLinkUrl = '';
+    formLinkTitle = '';
+    formLinkDesc = '';
+    formManifestUrl = '';
+    formIiifLabel = '';
+    // Image upload state
+    if (imagePreviewUrl) { URL.revokeObjectURL(imagePreviewUrl); imagePreviewUrl = null; }
+    selectedImageFile = null;
+    gpsExtracted = false;
+  }
+
   async function handleCreate(e: Event) {
     e.preventDefault();
     creating = true;
     createError = null;
+
     try {
-      // Client-side validation before sending — catches issues before the round-trip
+      // Image upload (if a file was selected) — happens before Zod parse so
+      // the URL is present and valid when AnnotationContentSchema.parse runs.
+      if (formType === 'image' && selectedImageFile) {
+        uploading = true;
+        try {
+          formImageUrl = await uploadImageFile(selectedImageFile);
+        } finally {
+          uploading = false;
+        }
+      }
+
+      // Client-side validation before the tRPC round-trip
       const content = buildContent();
       AnnotationContentSchema.parse(content);
 
@@ -158,25 +274,14 @@
       });
 
       showForm = false;
-      // Reset text fields so the form is clean on next open
-      formText = '';
-      formEmoji = '';
-      formEmojiLabel = '';
-      formUrl = '';
-      formAltText = '';
-      formCaption = '';
-      formLinkUrl = '';
-      formLinkTitle = '';
-      formLinkDesc = '';
-      formManifestUrl = '';
-      formIiifLabel = '';
-
+      resetForm();
       await loadAnnotations();
       onannotationchange();
     } catch (err: unknown) {
       createError = (err as { message?: string })?.message ?? 'Failed to create annotation.';
     } finally {
       creating = false;
+      uploading = false;
     }
   }
 
@@ -206,7 +311,7 @@
         onannotationchange();
       }
     } catch {
-      // Best-effort — don't surface NavPlace fetch errors as blocking UI errors
+      // Best-effort — don't block UI on NavPlace fetch failures
     }
   }
 </script>
@@ -244,7 +349,7 @@
         </select>
       </div>
 
-      <!-- Text fields per content type -->
+      <!-- Per-type fields -->
       {#if formType === 'text'}
         <div class="flex flex-col gap-1">
           <label class="text-xs text-slate-400" for="ann-text">Note</label>
@@ -271,7 +376,9 @@
             />
           </div>
           <div class="flex flex-col gap-1 flex-1">
-            <label class="text-xs text-slate-400" for="ann-emoji-label">Label <span class="text-slate-500">(optional)</span></label>
+            <label class="text-xs text-slate-400" for="ann-emoji-label">
+              Label <span class="text-slate-500">(optional)</span>
+            </label>
             <input
               id="ann-emoji-label"
               type="text"
@@ -282,38 +389,101 @@
           </div>
         </div>
 
-      {:else if formType === 'gif' || formType === 'image'}
+      {:else if formType === 'gif'}
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-url">URL</label>
+          <label class="text-xs text-slate-400" for="ann-gif-url">GIF URL</label>
           <input
-            id="ann-url"
+            id="ann-gif-url"
             type="url"
-            bind:value={formUrl}
-            placeholder={formType === 'gif' ? 'https://media.tenor.com/…' : 'https://example.com/photo.jpg'}
+            bind:value={formGifUrl}
+            placeholder="https://media.tenor.com/…"
             class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-xs text-slate-400" for="ann-alt">
-            {formType === 'gif' ? 'Alt text' : 'Caption'} <span class="text-slate-500">(optional)</span>
+            Alt text <span class="text-slate-500">(optional)</span>
           </label>
-          {#if formType === 'gif'}
-            <input
-              id="ann-alt"
-              type="text"
-              bind:value={formAltText}
-              placeholder="Accessible description"
-              class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          <input
+            id="ann-alt"
+            type="text"
+            bind:value={formAltText}
+            placeholder="Accessible description"
+            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+
+      {:else if formType === 'image'}
+        <!--
+          Image type: supports two input paths.
+          1. File upload — pick a local image; EXIF GPS auto-fills the anchor.
+          2. URL — paste a publicly accessible image URL directly.
+          The file takes precedence when both are provided.
+        -->
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-slate-400" for="ann-image-file">
+            Upload image
+            <span class="text-slate-500 font-normal">(JPEG · PNG · WebP · GIF · max 10 MB)</span>
+          </label>
+          <input
+            id="ann-image-file"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            onchange={handleImageFileSelect}
+            class="w-full text-xs text-slate-300 file:mr-2 file:rounded file:border-0 file:bg-slate-600 file:px-2 file:py-1 file:text-xs file:text-slate-200 hover:file:bg-slate-500"
+          />
+        </div>
+
+        <!-- Local preview — shown immediately after file selection, before upload -->
+        {#if imagePreviewUrl}
+          <div class="relative">
+            <img
+              src={imagePreviewUrl}
+              alt="Selected file preview"
+              class="rounded w-full object-contain bg-slate-900"
+              style="max-height: 8rem"
             />
-          {:else}
-            <input
-              id="ann-alt"
-              type="text"
-              bind:value={formCaption}
-              placeholder="Caption"
-              class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          {/if}
+            {#if gpsExtracted}
+              <!--
+                GPS badge — informs the user that the anchor was auto-set from EXIF.
+                Uses a green pill with a location-pin emoji so it reads at a glance
+                without needing to compare the coordinate inputs.
+              -->
+              <span
+                class="absolute top-1 right-1 rounded-full bg-green-600/90 px-2 py-0.5 text-[10px] font-semibold text-white"
+                title="Latitude and longitude were extracted from the image's EXIF GPS data"
+              >
+                📍 GPS from EXIF
+              </span>
+            {/if}
+          </div>
+        {/if}
+
+        <!-- Manual URL fallback (or primary when no file is chosen) -->
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-slate-400" for="ann-image-url">
+            {selectedImageFile ? 'Or paste URL instead' : 'Image URL'}
+          </label>
+          <input
+            id="ann-image-url"
+            type="url"
+            bind:value={formImageUrl}
+            placeholder="https://example.com/photo.jpg"
+            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-slate-400" for="ann-caption">
+            Caption <span class="text-slate-500">(optional)</span>
+          </label>
+          <input
+            id="ann-caption"
+            type="text"
+            bind:value={formCaption}
+            placeholder="Caption"
+            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
         </div>
 
       {:else if formType === 'link'}
@@ -328,7 +498,9 @@
           />
         </div>
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-link-title">Title <span class="text-slate-500">(optional)</span></label>
+          <label class="text-xs text-slate-400" for="ann-link-title">
+            Title <span class="text-slate-500">(optional)</span>
+          </label>
           <input
             id="ann-link-title"
             type="text"
@@ -338,7 +510,9 @@
           />
         </div>
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-link-desc">Description <span class="text-slate-500">(optional)</span></label>
+          <label class="text-xs text-slate-400" for="ann-link-desc">
+            Description <span class="text-slate-500">(optional)</span>
+          </label>
           <input
             id="ann-link-desc"
             type="text"
@@ -360,7 +534,9 @@
           />
         </div>
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-iiif-label">Label <span class="text-slate-500">(optional)</span></label>
+          <label class="text-xs text-slate-400" for="ann-iiif-label">
+            Label <span class="text-slate-500">(optional)</span>
+          </label>
           <input
             id="ann-iiif-label"
             type="text"
@@ -369,15 +545,18 @@
             class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
-        <p class="text-xs text-slate-500 italic">
-          NavPlace will be fetched automatically after saving.
-        </p>
+        <p class="text-xs text-slate-500 italic">NavPlace will be fetched automatically after saving.</p>
       {/if}
 
       <!-- Anchor coordinates -->
-      <div class="flex gap-2">
+      <div class="flex gap-2 items-end">
         <div class="flex flex-col gap-1 flex-1">
-          <label class="text-xs text-slate-400" for="ann-lng">Lng</label>
+          <label class="text-xs text-slate-400 flex items-center gap-1" for="ann-lng">
+            Lng
+            {#if gpsExtracted && formType === 'image'}
+              <span class="text-[10px] text-green-400 font-medium">EXIF</span>
+            {/if}
+          </label>
           <input
             id="ann-lng"
             type="number"
@@ -389,7 +568,12 @@
           />
         </div>
         <div class="flex flex-col gap-1 flex-1">
-          <label class="text-xs text-slate-400" for="ann-lat">Lat</label>
+          <label class="text-xs text-slate-400 flex items-center gap-1" for="ann-lat">
+            Lat
+            {#if gpsExtracted && formType === 'image'}
+              <span class="text-[10px] text-green-400 font-medium">EXIF</span>
+            {/if}
+          </label>
           <input
             id="ann-lat"
             type="number"
@@ -406,7 +590,14 @@
         <p class="text-xs text-red-400">{createError}</p>
       {/if}
 
-      <Button type="submit" size="sm" loading={creating}>Save annotation</Button>
+      <Button
+        type="submit"
+        size="sm"
+        loading={creating || uploading}
+        disabled={creating || uploading}
+      >
+        {#if uploading}Uploading…{:else}Save annotation{/if}
+      </Button>
     </form>
   {/if}
 
@@ -427,7 +618,7 @@
             createdAt={annotation.createdAt}
           />
 
-          <!-- Actions: fetch NavPlace for IIIF, delete for own annotations -->
+          <!-- Per-annotation actions -->
           <div class="flex gap-2">
             {#if annotation.content.type === 'iiif' && !annotation.content.navPlace && annotation.userId === userId}
               <button

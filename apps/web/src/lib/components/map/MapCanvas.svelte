@@ -7,11 +7,14 @@
   import { selectionStore } from '$lib/stores/selection.svelte.js';
   import type { Layer, GeoJSONFeature } from '@felt-like-it/shared-types';
   import { fslFiltersToMapLibre, resolvePaintInterpolators } from '@felt-like-it/geo-engine';
+  import type { MeasurementResult } from '@felt-like-it/geo-engine';
   import { filterStore } from '$lib/stores/filters.svelte.js';
   import DrawingToolbar from './DrawingToolbar.svelte';
   import FeaturePopup from './FeaturePopup.svelte';
   import AnnotationContent from '$lib/components/annotations/AnnotationContent.svelte';
+  import DeckGLOverlay from './DeckGLOverlay.svelte';
   import type { AnnotationContent as AnnotationContentType } from '@felt-like-it/shared-types';
+  import type { HeatmapLayerDef } from './DeckGLOverlay.svelte';
 
   /**
    * GeoJSON representation of annotation pins passed in from MapEditor.
@@ -48,9 +51,14 @@
      * Omit (or pass undefined) to hide annotation pins — used in the share viewer.
      */
     annotationPins?: AnnotationPinCollection;
+    /**
+     * When provided, the drawing toolbar enters measurement mode: drawn features
+     * are NOT saved to any layer — instead the computed MeasurementResult is passed here.
+     */
+    onmeasured?: (_result: MeasurementResult) => void;
   }
 
-  let { readonly = false, layerData, onfeaturedrawn, annotationPins }: Props = $props();
+  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured }: Props = $props();
 
   let mapInstance = $state<MapLibreMap | undefined>(undefined);
 
@@ -69,6 +77,34 @@
     if (!mapInstance) { firstLabelLayerId = undefined; return; }
     firstLabelLayerId = mapInstance.getStyle()?.layers.find((l) => l.type === 'symbol')?.id;
   });
+
+  /**
+   * Layers that should be rendered by deck.gl instead of MapLibre.
+   * Currently only style.type === 'heatmap' (point-only kernel density).
+   * Non-Point features in a heatmap layer are silently filtered out —
+   * HeatmapLayer requires [lng, lat] coordinates.
+   */
+  const heatmapLayerDefs = $derived(
+    layersStore.all
+      .filter((l) => l.visible && (l.style as Record<string, unknown>)?.['type'] === 'heatmap')
+      .map<HeatmapLayerDef>((l) => {
+        const config = ((l.style as Record<string, unknown>)?.['config'] as Record<string, unknown>) ?? {};
+        const allFeatures = layerData[l.id]?.features ?? [];
+        const pointFeatures = allFeatures.filter(
+          (f): f is { type: 'Feature'; geometry: { type: 'Point'; coordinates: [number, number] }; properties: Record<string, unknown> | null } =>
+            f.geometry?.type === 'Point' && Array.isArray(f.geometry.coordinates)
+        );
+        const weightAttr = config['heatmapWeightAttribute'] as string | undefined;
+        return {
+          id: l.id,
+          features: pointFeatures,
+          radiusPixels: (config['heatmapRadius'] as number | undefined) ?? 30,
+          intensity: (config['heatmapIntensity'] as number | undefined) ?? 1,
+          // exactOptionalPropertyTypes: only include weightAttribute key when defined
+          ...(weightAttr !== undefined ? { weightAttribute: weightAttr } : {}),
+        };
+      })
+  );
 
   /**
    * Feature count threshold above which a layer switches from GeoJSON source to
@@ -295,13 +331,15 @@
     {#each layersStore.all as layer (layer.id)}
       {#if layer.visible}
         {@const data = layerData[layer.id] ?? { type: 'FeatureCollection', features: [] }}
+        {@const isHeatmap = (layer.style as Record<string, unknown>)?.['type'] === 'heatmap'}
 
         {@const labelAttr = getLabelAttribute(layer)}
         {@const clickable = isLayerClickable(layer)}
         {@const layerFilter = getLayerFilter(layer)}
         {@const sandwiched = isLayerSandwiched(layer)}
 
-        {#if usesVectorTiles(layer)}
+        <!-- Heatmap layers are rendered by DeckGLOverlay (mounted below). Skip MapLibre. -->
+        {#if !isHeatmap && usesVectorTiles(layer)}
           <!-- Martin vector tiles — used for layers above VECTOR_TILE_THRESHOLD features -->
           <VectorTileSource id={`source-${layer.id}`} tiles={[martinTileUrl()]}>
             <FillLayer
@@ -347,7 +385,7 @@
               />
             {/if}
           </VectorTileSource>
-        {:else}
+        {:else if !isHeatmap}
           <!-- GeoJSON source — used for layers below VECTOR_TILE_THRESHOLD features -->
           <GeoJSONSource id={`source-${layer.id}`} data={data}>
             <FillLayer
@@ -462,7 +500,14 @@
     {/if}
   </MapLibre>
 
+  <!-- deck.gl overlay — renders HeatmapLayer for layers with style.type === 'heatmap' -->
+  <DeckGLOverlay map={mapInstance} layers={heatmapLayerDefs} />
+
   {#if !readonly && mapInstance}
-    <DrawingToolbar map={mapInstance} {...(onfeaturedrawn !== undefined ? { onfeaturedrawn } : {})} />
+    <DrawingToolbar
+      map={mapInstance}
+      {...(onfeaturedrawn !== undefined ? { onfeaturedrawn } : {})}
+      {...(onmeasured !== undefined ? { onmeasured } : {})}
+    />
   {/if}
 </div>

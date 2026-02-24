@@ -47,7 +47,20 @@ export const geoprocessingRouter = router({
         }
       }
 
-      // 3 — Determine z_index for output layer (next after current max)
+      // 3 — Cross-field validation that Zod discriminated union can't enforce inline:
+      //     aggregate sum/avg require a non-empty `field`.
+      if (
+        input.op.type === 'aggregate' &&
+        input.op.aggregation !== 'count' &&
+        !input.op.field
+      ) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'field is required for sum and avg aggregations.',
+        });
+      }
+
+      // 4 — Determine z_index for output layer (next after current max)
       const existingLayers = await db
         .select({ zIndex: layers.zIndex })
         .from(layers)
@@ -55,7 +68,7 @@ export const geoprocessingRouter = router({
 
       const maxZ = existingLayers.reduce((max, l) => Math.max(max, l.zIndex), -1);
 
-      // 4 — Create the output layer
+      // 5 — Create the output layer
       const [newLayer] = await db
         .insert(layers)
         .values({
@@ -74,7 +87,7 @@ export const geoprocessingRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create output layer.' });
       }
 
-      // 5 — Run the PostGIS operation, writing into the new layer
+      // 6 — Run the PostGIS operation, writing into the new layer
       try {
         await runGeoprocessing(input.op, newLayer.id);
       } catch (err) {

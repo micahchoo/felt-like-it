@@ -11,7 +11,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import type { GeoprocessingOp } from '@felt-like-it/shared-types';
+import type { GeoprocessingOp, GeoAggregateOp } from '@felt-like-it/shared-types';
 
 // ─── Exhaustiveness helper ────────────────────────────────────────────────────
 
@@ -48,6 +48,15 @@ export async function runGeoprocessing(op: GeoprocessingOp, newLayerId: string):
     case 'clip':
       await runClip(op.layerIdA, op.layerIdB, newLayerId);
       break;
+    case 'point_in_polygon':
+      await runPointInPolygon(op.layerIdPoints, op.layerIdPolygons, newLayerId);
+      break;
+    case 'nearest_neighbor':
+      await runNearestNeighbor(op.layerIdA, op.layerIdB, newLayerId);
+      break;
+    case 'aggregate':
+      await runAggregate(op, newLayerId);
+      break;
     default:
       assertNever(op);
   }
@@ -68,7 +77,12 @@ export function getOpLayerIds(op: GeoprocessingOp): string[] {
       return [op.layerId];
     case 'intersect':
     case 'clip':
+    case 'nearest_neighbor':
       return [op.layerIdA, op.layerIdB];
+    case 'point_in_polygon':
+      return [op.layerIdPoints, op.layerIdPolygons];
+    case 'aggregate':
+      return [op.layerIdPolygons, op.layerIdPoints];
     default:
       return assertNever(op);
   }
@@ -185,4 +199,121 @@ async function runClip(
       AND ST_Intersects(a.geometry, mask.geom)
       AND NOT ST_IsEmpty(ST_Intersection(a.geometry, mask.geom))
   `);
+}
+
+/**
+ * Spatial join: copy polygon attributes onto each point.
+ * Uses a LEFT JOIN so points with no containing polygon are still emitted
+ * with their original attributes only. DISTINCT ON (p.id) takes the first
+ * matching polygon if a point overlaps multiple polygons.
+ */
+async function runPointInPolygon(
+  layerIdPoints: string,
+  layerIdPolygons: string,
+  newLayerId: string
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO features (layer_id, geometry, properties)
+    SELECT DISTINCT ON (p.id)
+      ${newLayerId}::uuid,
+      p.geometry,
+      CASE
+        WHEN poly.id IS NOT NULL THEN p.properties || poly.properties
+        ELSE p.properties
+      END
+    FROM features p
+    LEFT JOIN features poly
+      ON poly.layer_id = ${layerIdPolygons}::uuid
+      AND ST_Within(p.geometry, poly.geometry)
+    WHERE p.layer_id = ${layerIdPoints}::uuid
+    ORDER BY p.id
+  `);
+}
+
+/**
+ * Spatial join: for each feature in A find its single nearest neighbor in B
+ * and merge B's attributes in. Uses the PostGIS KNN `<->` distance operator
+ * with CROSS JOIN LATERAL + LIMIT 1 for index-accelerated lookup.
+ */
+async function runNearestNeighbor(
+  layerIdA: string,
+  layerIdB: string,
+  newLayerId: string
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO features (layer_id, geometry, properties)
+    SELECT
+      ${newLayerId}::uuid,
+      a.geometry,
+      a.properties || nb.properties
+    FROM features a
+    CROSS JOIN LATERAL (
+      SELECT b.properties
+      FROM features b
+      WHERE b.layer_id = ${layerIdB}::uuid
+      ORDER BY a.geometry <-> b.geometry
+      LIMIT 1
+    ) nb
+    WHERE a.layer_id = ${layerIdA}::uuid
+  `);
+}
+
+/**
+ * Aggregate point statistics per polygon (count / sum / avg).
+ * Points are joined to polygons via ST_Within. LEFT JOIN ensures polygons
+ * with no points still appear in the output (with 0 count or NULL sum/avg).
+ * The result attribute name is `outputField` (or the aggregation type if omitted).
+ */
+async function runAggregate(op: GeoAggregateOp, newLayerId: string): Promise<void> {
+  const outField = op.outputField ?? op.aggregation;
+
+  if (op.aggregation === 'count') {
+    await db.execute(sql`
+      INSERT INTO features (layer_id, geometry, properties)
+      SELECT
+        ${newLayerId}::uuid,
+        poly.geometry,
+        poly.properties || jsonb_build_object(${outField}, COUNT(pt.id))
+      FROM features poly
+      LEFT JOIN features pt
+        ON pt.layer_id = ${op.layerIdPoints}::uuid
+        AND ST_Within(pt.geometry, poly.geometry)
+      WHERE poly.layer_id = ${op.layerIdPolygons}::uuid
+      GROUP BY poly.id, poly.geometry, poly.properties
+    `);
+  } else if (op.aggregation === 'sum') {
+    // Router validates field is present before calling runGeoprocessing
+    if (!op.field) throw new Error('field is required for sum aggregation');
+    const field = op.field;
+    await db.execute(sql`
+      INSERT INTO features (layer_id, geometry, properties)
+      SELECT
+        ${newLayerId}::uuid,
+        poly.geometry,
+        poly.properties || jsonb_build_object(${outField}, COALESCE(SUM((pt.properties->>${field})::numeric), 0))
+      FROM features poly
+      LEFT JOIN features pt
+        ON pt.layer_id = ${op.layerIdPoints}::uuid
+        AND ST_Within(pt.geometry, poly.geometry)
+      WHERE poly.layer_id = ${op.layerIdPolygons}::uuid
+      GROUP BY poly.id, poly.geometry, poly.properties
+    `);
+  } else {
+    // avg — router validates field is present before calling runGeoprocessing
+    if (!op.field) throw new Error('field is required for avg aggregation');
+    const field = op.field;
+    await db.execute(sql`
+      INSERT INTO features (layer_id, geometry, properties)
+      SELECT
+        ${newLayerId}::uuid,
+        poly.geometry,
+        poly.properties || jsonb_build_object(${outField}, AVG((pt.properties->>${field})::numeric))
+      FROM features poly
+      LEFT JOIN features pt
+        ON pt.layer_id = ${op.layerIdPoints}::uuid
+        AND ST_Within(pt.geometry, poly.geometry)
+      WHERE poly.layer_id = ${op.layerIdPolygons}::uuid
+      GROUP BY poly.id, poly.geometry, poly.properties
+    `);
+  }
 }
