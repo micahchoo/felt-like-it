@@ -8,11 +8,21 @@
   let { data }: { data: PageData } = $props();
 
   let showComments = $state(false);
+  let embedCopied = $state(false);
 
   $effect(() => {
     mapStore.loadViewport(data.map.viewport);
     mapStore.setBasemap(data.map.basemap as Parameters<typeof mapStore.setBasemap>[0]);
   });
+
+  function copyEmbedCode() {
+    const embedUrl = `${window.location.origin}/embed/${data.share.token}`;
+    const html = `<iframe src="${embedUrl}" width="100%" height="500" frameborder="0" allowfullscreen title="${data.map.title}"></iframe>`;
+    navigator.clipboard.writeText(html).then(() => {
+      embedCopied = true;
+      setTimeout(() => { embedCopied = false; }, 2000);
+    }).catch(() => undefined);
+  }
 </script>
 
 <svelte:head>
@@ -27,9 +37,22 @@
     readonly={true}
   />
 
+  <!-- Embed button — top-[2.875rem] clears the MapEditor toolbar (~46px tall) -->
+  <button
+    class="absolute top-[2.875rem] left-3 z-10 flex items-center gap-1.5 rounded bg-slate-800/90 border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 hover:text-white transition-colors backdrop-blur-sm"
+    onclick={copyEmbedCode}
+    title="Copy iframe embed code to clipboard"
+    aria-label="Copy embed code"
+  >
+    <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M5.854 4.646a.5.5 0 010 .708L3.207 8l2.647 2.646a.5.5 0 01-.708.708l-3-3a.5.5 0 010-.708l3-3a.5.5 0 01.708 0zm4.292 0a.5.5 0 000 .708L12.793 8l-2.647 2.646a.5.5 0 00.708.708l3-3a.5.5 0 000-.708l-3-3a.5.5 0 00-.708 0z"/>
+    </svg>
+    {embedCopied ? 'Copied!' : 'Embed'}
+  </button>
+
   <!-- Floating comments toggle -->
   <button
-    class="absolute top-3 right-3 z-10 flex items-center gap-1.5 rounded bg-slate-800/90 border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 hover:text-white transition-colors backdrop-blur-sm"
+    class="absolute top-[2.875rem] right-3 z-10 flex items-center gap-1.5 rounded bg-slate-800/90 border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 hover:text-white transition-colors backdrop-blur-sm"
     onclick={() => (showComments = !showComments)}
   >
     <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">

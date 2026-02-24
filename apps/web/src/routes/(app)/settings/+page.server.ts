@@ -1,7 +1,8 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
-import { db, users, maps, layers } from '$lib/server/db/index.js';
-import { eq } from 'drizzle-orm';
+import { createHash, randomBytes } from 'node:crypto';
+import { db, users, maps, layers, apiKeys } from '$lib/server/db/index.js';
+import { eq, and, desc } from 'drizzle-orm';
 import { hashPassword, verifyPassword } from '$lib/server/auth/password.js';
 import { lucia } from '$lib/server/auth/index.js';
 import { insertFeatures } from '$lib/server/geo/queries.js';
@@ -43,12 +44,26 @@ const SF_PARKS_FEATURES: Array<{
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) redirect(302, '/auth/login');
+
+  const userKeys = await db
+    .select({
+      id: apiKeys.id,
+      name: apiKeys.name,
+      prefix: apiKeys.prefix,
+      lastUsedAt: apiKeys.lastUsedAt,
+      createdAt: apiKeys.createdAt,
+    })
+    .from(apiKeys)
+    .where(eq(apiKeys.userId, locals.user.id))
+    .orderBy(desc(apiKeys.createdAt));
+
   return {
     user: {
       id: locals.user.id,
       email: (locals.user as { id: string; email: string; name: string }).email,
       name: (locals.user as { id: string; email: string; name: string }).name,
     },
+    apiKeys: userKeys,
   };
 };
 
@@ -96,6 +111,51 @@ export const actions: Actions = {
     await lucia.invalidateUserSessions(userId);
 
     redirect(302, '/auth/login');
+  },
+
+  createKey: async ({ locals, request }) => {
+    if (!locals.user) redirect(302, '/auth/login');
+    const formData = await request.formData();
+    const name = (formData.get('keyName') as string | null)?.trim();
+
+    if (!name || name.length < 1) {
+      return fail(400, { field: 'apiKey', message: 'Key name cannot be empty.' });
+    }
+    if (name.length > 64) {
+      return fail(400, { field: 'apiKey', message: 'Key name must be 64 characters or fewer.' });
+    }
+
+    const randomHex = randomBytes(32).toString('hex');
+    const rawKey = `flk_${randomHex}`;
+    const hash = createHash('sha256').update(rawKey).digest('hex');
+    const prefix = rawKey.slice(0, 12);
+
+    const [record] = await db
+      .insert(apiKeys)
+      .values({ userId: locals.user.id, name, keyHash: hash, prefix })
+      .returning({ id: apiKeys.id });
+
+    if (!record) {
+      return fail(500, { field: 'apiKey', message: 'Failed to create API key.' });
+    }
+
+    return { success: true, newKey: rawKey, keyName: name, message: '' };
+  },
+
+  revokeKey: async ({ locals, request }) => {
+    if (!locals.user) redirect(302, '/auth/login');
+    const formData = await request.formData();
+    const id = formData.get('id') as string | null;
+
+    if (!id) {
+      return fail(400, { field: 'apiKey', message: 'Key ID required.' });
+    }
+
+    await db
+      .delete(apiKeys)
+      .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, locals.user.id)));
+
+    return { success: true, message: 'API key revoked.' };
   },
 
   resetDemo: async ({ locals }) => {

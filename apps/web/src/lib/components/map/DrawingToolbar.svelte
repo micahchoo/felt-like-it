@@ -46,11 +46,9 @@
     // terra-draw ≥1.x: finish fires with a single FeatureId (string | number),
     // not an array. Use getSnapshotFeature(id) for direct lookup.
     draw.on('finish', async (id: string | number) => {
-      console.warn('[TerraDraw] finish event fired, id=', id, 'draw=', !!draw);
       if (!draw) return;
 
       const f = draw.getSnapshotFeature(id);
-      console.warn('[TerraDraw] getSnapshotFeature =>', f);
 
       if (f) {
         if (onmeasured) {
@@ -95,7 +93,6 @@
       startDraw();
     }
     function onStyleLoad() {
-      console.warn('[DrawingToolbar] style.load fired — re-initialising Terra Draw');
       startDraw();
     }
     map.on('style.load', onStyleLoad);
@@ -124,7 +121,6 @@
   }
 
   async function saveFeature(f: { geometry: Record<string, unknown>; properties: Record<string, unknown> }) {
-    console.warn('[TerraDraw] saveFeature geometry=', JSON.stringify(f.geometry));
     const activeLayer = layersStore.active;
     if (!activeLayer) {
       toastStore.error('No active layer. Please create or select a layer first.');
@@ -161,7 +157,6 @@
   }
 
   function setTool(tool: DrawTool) {
-    console.warn('[TerraDraw] setTool', tool, 'draw=', !!draw, 'draw modes=', draw?.enabled ? 'started' : 'not started');
     selectionStore.setActiveTool(tool);
     if (!draw) return;
 

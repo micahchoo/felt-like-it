@@ -1,6 +1,6 @@
 # Felt Like It — Architecture
 
-Living document describing the **built** system as of Phase 4 (Feb 2026).
+Living document describing the **built** system as of Phase 5 (Feb 2026).
 For the original design vision, see [`OriginalVision.md`](OriginalVision.md).
 For architecture decision records, see [`adr/`](adr/).
 
@@ -125,6 +125,8 @@ SELECT $newLayerId, geometry, properties FROM features WHERE layer_id = $oldLaye
 | events | list, log | protected |
 | geoprocessing | run | protected |
 
+**Embed route** (`/embed/[token]`): same token lookup as `/share/[token]` but renders `MapEditor` with `embed={true}` — no toolbar, no layer panel, no basemap picker, no side panels. Sets `Content-Security-Policy: frame-ancestors *` via `setHeaders` so the page can be framed from any origin. The share viewer (`/share/[token]`) provides a "Embed" button that copies the `<iframe src="/embed/[token]" ...>` snippet to the clipboard.
+
 **`maps.clone`** deep-copies map + all layers + all features:
 1. Insert new map row (new UUID, `title: "Copy of …"`)
 2. For each layer: insert new layer row
@@ -143,13 +145,20 @@ LayerStyleSchema {
        | 'categorical'          // color-by string attribute
        | 'numeric'              // graduated color by numeric attribute
        | 'graduated'            // deprecated alias for 'numeric'
+       | 'heatmap'              // deck.gl HeatmapLayer (point layers only, no MapLibre paint)
   config?: {
     labelAttribute?:        string   // drives SymbolLayer text-field
     categoricalAttribute?:  string   // which property drives categorical coloring
     numericAttribute?:      string   // which property drives numeric coloring
     categories?:            string[] // ordered unique category values
     steps?:     [number, string][]   // breakpoints for numeric [value, color]
-    showOther?: boolean              // false = hide uncategorized features
+    showOther?:              boolean              // false = hide uncategorized features
+    classificationMethod?:  'equal_interval' | 'quantile' // choropleth
+    nClasses?:              number               // 2–9 (choropleth)
+    colorRampName?:         string               // ColorBrewer ramp name (choropleth)
+    heatmapRadius?:         number               // 1–200 px (heatmap kernel)
+    heatmapIntensity?:      number               // 0.1–5 (heatmap brightness)
+    heatmapWeightAttribute?: string              // feature property as weight (heatmap)
   }
   label?: {
     visible?:    boolean
@@ -196,6 +205,10 @@ GeoJSONSource (layer.id)
 ```
 
 This is unconditional — no `getMaplibreType()` switch. A polygon-typed layer that has drawn Points will show them via CircleLayer.
+
+**Exception — `style.type === 'heatmap'`**: layers are skipped entirely by MapLibre and rendered instead by `DeckGLOverlay.svelte`. The overlay uses `@deck.gl/mapbox`'s `MapboxOverlay` (an `IControl`, `interleaved: false`) to mount a separate deck.gl canvas above the MapLibre canvas. `HeatmapLayer` (from `deck.gl@9`) receives the GeoJSON Point features and is re-synced via `setProps` whenever layers or their config change.
+
+**Tiles fallback** (>10,000 features): the Martin VectorTileSource path also skips heatmap layers — `isHeatmap` check gates both the GeoJSON and vector-tile branches in the `{#each}` loop.
 
 ---
 

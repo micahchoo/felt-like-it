@@ -4,18 +4,21 @@
   interface Props {
     open: boolean;
     title?: string;
+    /** When false, Escape, backdrop-click, and the X button are disabled. Default: true. */
+    dismissible?: boolean;
     onclose?: () => void;
     children: Snippet;
     footer?: Snippet;
   }
 
-  let { open = $bindable(), title, onclose, children, footer }: Props = $props();
+  let { open = $bindable(), title, dismissible = true, onclose, children, footer }: Props = $props();
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape' && dismissible) close();
   }
 
   function close() {
+    if (!dismissible) return;
     open = false;
     onclose?.();
   }
@@ -46,15 +49,17 @@
       {#if title}
         <div class="flex items-center justify-between px-5 py-4 border-b border-white/10">
           <h2 id="modal-title" class="text-base font-semibold text-white">{title}</h2>
-          <button
-            onclick={close}
-            class="text-slate-400 hover:text-white transition-colors"
-            aria-label="Close dialog"
-          >
-            <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-            </svg>
-          </button>
+          {#if dismissible}
+            <button
+              onclick={close}
+              class="text-slate-400 hover:text-white transition-colors"
+              aria-label="Close dialog"
+            >
+              <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+              </svg>
+            </button>
+          {/if}
         </div>
       {/if}
 

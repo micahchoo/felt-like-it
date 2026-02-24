@@ -10,10 +10,27 @@
   let updatingProfile = $state(false);
   let changingPassword = $state(false);
   let resettingDemo = $state(false);
+  let creatingKey = $state(false);
+  let revokingKeyId = $state<string | null>(null);
+  let newKeyCopied = $state(false);
 
   $effect(() => {
-    if (form?.success) toastStore.success(form.message ?? 'Saved.');
+    if (form?.success && !('newKey' in (form ?? {}))) toastStore.success(form?.message ?? 'Saved.');
   });
+
+  function copyNewKey() {
+    const key = (form as { newKey?: string } | null)?.newKey;
+    if (!key) return;
+    navigator.clipboard.writeText(key).then(() => {
+      newKeyCopied = true;
+      setTimeout(() => { newKeyCopied = false; }, 2000);
+    }).catch(() => undefined);
+  }
+
+  function formatDate(d: Date | null | undefined): string {
+    if (!d) return 'Never';
+    return new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
 </script>
 
 <svelte:head><title>Settings — Felt Like It</title></svelte:head>
@@ -96,6 +113,105 @@
         />
         <Button type="submit" variant="primary" size="sm" loading={changingPassword}>
           Update password
+        </Button>
+      </form>
+    </section>
+
+    <!-- API Keys -->
+    <section class="bg-slate-800 rounded-xl p-6 ring-1 ring-white/10 space-y-4">
+      <div>
+        <h2 class="text-base font-semibold text-white">API Keys</h2>
+        <p class="text-sm text-slate-400 mt-1">
+          Use Bearer tokens for programmatic access:
+          <code class="text-slate-300 bg-slate-700 px-1 rounded text-xs">Authorization: Bearer flk_…</code>
+        </p>
+      </div>
+
+      <!-- One-time key display banner -->
+      {#if (form as { newKey?: string } | null)?.newKey}
+        {@const newKey = (form as { newKey: string }).newKey}
+        <div class="bg-emerald-950/60 border border-emerald-500/30 rounded-lg p-4 space-y-2">
+          <p class="text-sm font-medium text-emerald-400">
+            Key created — copy it now. It won't be shown again.
+          </p>
+          <div class="flex items-center gap-2">
+            <code class="flex-1 block bg-slate-900 text-emerald-300 text-xs font-mono px-3 py-2 rounded overflow-x-auto whitespace-nowrap">
+              {newKey}
+            </code>
+            <button
+              type="button"
+              onclick={copyNewKey}
+              class="shrink-0 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-xs px-3 py-2 transition-colors"
+            >
+              {newKeyCopied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Error from createKey / revokeKey -->
+      {#if form?.field === 'apiKey'}
+        <p class="text-sm text-red-400">{form.message}</p>
+      {/if}
+
+      <!-- Existing keys list -->
+      {#if data.apiKeys.length > 0}
+        <ul class="space-y-2">
+          {#each data.apiKeys as key (key.id)}
+            <li class="flex items-center gap-3 bg-slate-700/50 rounded-lg px-3 py-2">
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-white truncate">{key.name}</p>
+                <p class="text-xs text-slate-400">
+                  <span class="font-mono">{key.prefix}…</span>
+                  · Created {formatDate(key.createdAt)}
+                  · Last used {formatDate(key.lastUsedAt)}
+                </p>
+              </div>
+              <form
+                method="POST"
+                action="?/revokeKey"
+                use:enhance={() => {
+                  revokingKeyId = key.id;
+                  return ({ update }) => { revokingKeyId = null; update(); };
+                }}
+              >
+                <input type="hidden" name="id" value={key.id} />
+                <button
+                  type="submit"
+                  class="text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-40"
+                  disabled={revokingKeyId === key.id}
+                >
+                  {revokingKeyId === key.id ? 'Revoking…' : 'Revoke'}
+                </button>
+              </form>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="text-sm text-slate-500">No API keys yet.</p>
+      {/if}
+
+      <!-- Create new key -->
+      <form
+        method="POST"
+        action="?/createKey"
+        class="flex items-end gap-3"
+        use:enhance={() => {
+          creatingKey = true;
+          return ({ update }) => { creatingKey = false; update(); };
+        }}
+      >
+        <div class="flex-1">
+          <Input
+            label="Key name"
+            name="keyName"
+            type="text"
+            placeholder="e.g. CI pipeline"
+            required
+          />
+        </div>
+        <Button type="submit" variant="primary" size="sm" loading={creatingKey}>
+          Create key
         </Button>
       </form>
     </section>

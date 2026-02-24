@@ -101,18 +101,21 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 
 ---
 
-## Phase 5 — Enterprise Polish
+## Phase 5 — Enterprise Polish 🚧 IN PROGRESS
 
 **Goal:** Production-grade self-hosting for organizations.
 
-- **SSO / SAML**: OIDC + SAML2 via Arctic (Lucia ecosystem)
-- Audit logs: tamper-evident append-only log of all data mutations
-- Embeddable maps: iframe embed with configurable UI controls
-- API keys: programmatic access to tRPC-equivalent REST API
-- Raster support: GeoTIFF import + COG tile serving
-- Helm chart: Kubernetes deployment with horizontal scaling
-- Plugin system: custom import formats, custom analysis tools, custom basemaps
-- Regional hosting docs: EU / US / APAC data residency deployment guides
+| Feature | Status |
+|---|---|
+| **Embeddable maps** (`/embed/[token]` bare-canvas route; `MapEditor embed` prop strips all chrome; `Content-Security-Policy: frame-ancestors *`; "Embed" copy-to-clipboard button on share viewer) | ✅ |
+| **API keys** (`flk_<64-hex>` Bearer tokens; SHA-256 hash-only storage; `hooks.server.ts` Bearer auth before session; `last_used_at` fire-and-forget; settings page create/revoke/list UI) | ✅ |
+| **SSO / SAML**: OIDC + SAML2 via Arctic (Lucia ecosystem) | ⬜ |
+| Audit logs: tamper-evident append-only log of all data mutations | ⬜ |
+| API keys: programmatic access to tRPC-equivalent REST API | ⬜ |
+| Raster support: GeoTIFF import + COG tile serving | ⬜ |
+| Helm chart: Kubernetes deployment with horizontal scaling | ⬜ |
+| Plugin system: custom import formats, custom analysis tools, custom basemaps | ⬜ |
+| Regional hosting docs: EU / US / APAC data residency deployment guides | ⬜ |
 
 ---
 

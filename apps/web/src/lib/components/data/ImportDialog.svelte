@@ -124,7 +124,7 @@
   });
 </script>
 
-<Modal bind:open title="Import Data" onclose={reset}>
+<Modal bind:open title="Import Data" dismissible={!uploading} onclose={reset}>
   {#if uploading}
     <!-- Progress view -->
     <div class="flex flex-col items-center gap-4 py-6">

@@ -13,8 +13,10 @@
   import FeaturePopup from './FeaturePopup.svelte';
   import AnnotationContent from '$lib/components/annotations/AnnotationContent.svelte';
   import DeckGLOverlay from './DeckGLOverlay.svelte';
+  import { AnnotationContentSchema } from '@felt-like-it/shared-types';
   import type { AnnotationContent as AnnotationContentType } from '@felt-like-it/shared-types';
   import type { HeatmapLayerDef } from './DeckGLOverlay.svelte';
+  import type { LayerStyle } from '@felt-like-it/shared-types';
 
   /**
    * GeoJSON representation of annotation pins passed in from MapEditor.
@@ -278,14 +280,18 @@
     } as unknown as NonNullable<SymbolLayerSpecification['layout']>;
   }
 
-  function handleFeatureClick(feature: GeoJSONFeature, e: MapMouseEvent) {
+  function handleFeatureClick(feature: GeoJSONFeature, e: MapMouseEvent, layerStyle?: LayerStyle) {
     // Block feature clicks during active drawing operations only
     const tool = selectionStore.activeTool;
     if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
+    selectedLayerStyle = layerStyle;
     selectionStore.selectFeature(feature, { lng: e.lngLat.lng, lat: e.lngLat.lat });
   }
 
   // ── Annotation pin popup ──────────────────────────────────────────────────
+
+  /** Style of the layer whose feature is currently selected — drives FeaturePopup formatting. */
+  let selectedLayerStyle = $state<LayerStyle | undefined>(undefined);
 
   /** State for the annotation popup — set when an annotation pin is clicked. */
   interface SelectedAnnotationPopup {
@@ -338,6 +344,8 @@
         {@const layerFilter = getLayerFilter(layer)}
         {@const sandwiched = isLayerSandwiched(layer)}
 
+        {@const layerStyle = layer.style as LayerStyle | null | undefined}
+
         <!-- Heatmap layers are rendered by DeckGLOverlay (mounted below). Skip MapLibre. -->
         {#if !isHeatmap && usesVectorTiles(layer)}
           <!-- Martin vector tiles — used for layers above VECTOR_TILE_THRESHOLD features -->
@@ -351,7 +359,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
               }}
             />
             <LineLayer
@@ -362,7 +370,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
               }}
             />
             <CircleLayer
@@ -373,7 +381,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
               }}
             />
             {#if labelAttr}
@@ -396,7 +404,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
               }}
             />
             <LineLayer
@@ -406,7 +414,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
               }}
             />
             <CircleLayer
@@ -416,7 +424,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
               }}
             />
             {#if labelAttr}
@@ -436,9 +444,9 @@
       <Popup
         lnglat={selectionStore.popupCoords}
         closeButton={true}
-        onclose={() => selectionStore.clearSelection()}
+        onclose={() => { selectionStore.clearSelection(); selectedLayerStyle = undefined; }}
       >
-        <FeaturePopup feature={selectionStore.selectedFeature} />
+        <FeaturePopup feature={selectionStore.selectedFeature} {...(selectedLayerStyle !== undefined ? { style: selectedLayerStyle } : {})} />
       </Popup>
     {/if}
 
@@ -468,13 +476,21 @@
             const props = f.properties as AnnotationPinProperties | null;
             if (!props?.contentJson) return;
 
-            // TYPE_DEBT: JSON.parse is unvalidated here — the DB + Zod schema are the
-            // source of truth. Invalid content will render as an empty popup rather than
-            // crashing; a safeParse guard can be added if this becomes a problem.
-            const content = JSON.parse(props.contentJson) as AnnotationContentType;
+            let parsed: AnnotationContentType;
+            try {
+              const raw: unknown = JSON.parse(props.contentJson);
+              const result = AnnotationContentSchema.safeParse(raw);
+              // Malformed annotation content (schema mismatch or invalid JSON) silently
+              // closes the popup — the pin is still visible but unclickable until refreshed.
+              if (!result.success) return;
+              parsed = result.data;
+            } catch {
+              // JSON.parse threw — contentJson is not valid JSON.
+              return;
+            }
 
             selectedAnnotation = {
-              content,
+              content: parsed,
               authorName: props.authorName,
               createdAt: props.createdAt,
               lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },

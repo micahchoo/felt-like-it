@@ -32,6 +32,7 @@
   }
 
   async function deleteLayer(layerId: string, layerName: string) {
+    if (!confirm(`Delete layer "${layerName}" and all its features? This cannot be undone.`)) return;
     try {
       await trpc.layers.delete.mutate({ id: layerId });
       layersStore.remove(layerId);

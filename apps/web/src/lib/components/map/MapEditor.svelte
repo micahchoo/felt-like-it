@@ -34,9 +34,18 @@
     /** ID of the authenticated user — used by CommentPanel to gate delete/resolve buttons. */
     userId?: string;
     readonly?: boolean;
+    /**
+     * When true, renders only the map canvas and legend — no toolbar, no layer
+     * panel, no basemap picker, no side panels. Implies readonly.
+     * Used by the /embed/[token] route for iframe embedding.
+     */
+    embed?: boolean;
   }
 
-  let { mapId, mapTitle, initialLayers, userId, readonly = false }: Props = $props();
+  let { mapId, mapTitle, initialLayers, userId, readonly = false, embed = false }: Props = $props();
+
+  // embed implies readonly — illegal state prevented at the prop level.
+  const effectiveReadonly = $derived(readonly || embed);
 
   // DOM element wrapping the map canvas + legend overlay — used for high-res PNG export
   let mapAreaEl = $state<HTMLDivElement | undefined>(undefined);
@@ -133,6 +142,7 @@
         id: mapId,
         viewport: mapStore.getViewportSnapshot(),
       });
+      toastStore.success('Viewport saved.');
       // Fire-and-forget: log activity event (best-effort, never blocks the UI)
       trpc.events.log.mutate({ mapId, action: 'viewport.saved' }).catch(() => undefined);
     } catch {
@@ -159,7 +169,7 @@
 
 <div class="flex h-screen w-full overflow-hidden bg-slate-900">
   <!-- Left: Layer Panel -->
-  {#if !readonly}
+  {#if !effectiveReadonly}
     <div class="w-56 shrink-0 flex flex-col">
       <LayerPanel {mapId} onlayerchange={handleLayerChange} />
     </div>
@@ -167,11 +177,12 @@
 
   <!-- Center: Map + toolbar -->
   <div class="flex-1 relative flex flex-col min-w-0">
-    <!-- Top toolbar -->
+    <!-- Top toolbar — hidden in embed mode (bare map canvas only) -->
+    {#if !embed}
     <div class="flex items-center gap-2 px-3 py-2 bg-slate-800 border-b border-white/10 shrink-0">
       <span class="text-sm font-medium text-white truncate mr-auto">{mapTitle}</span>
 
-      {#if !readonly}
+      {#if !effectiveReadonly}
         <Tooltip content="Import data">
           <Button variant="ghost" size="sm" onclick={() => (showImportDialog = true)}>
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -192,7 +203,7 @@
           </Button>
         </Tooltip>
 
-        <Button variant="ghost" size="sm" onclick={() => (showDataTable = !showDataTable)}>
+        <Button variant="ghost" size="sm" class={showDataTable ? 'bg-slate-700 text-white' : ''} onclick={() => (showDataTable = !showDataTable)}>
           <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 001-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 001 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/>
           </svg>
@@ -225,6 +236,7 @@
           <Button
             variant="ghost"
             size="sm"
+            class={showComments ? 'bg-slate-700 text-white' : ''}
             onclick={() => (showComments = !showComments)}
           >
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -238,6 +250,7 @@
           <Button
             variant="ghost"
             size="sm"
+            class={showAnnotations ? 'bg-slate-700 text-white' : ''}
             onclick={() => (showAnnotations = !showAnnotations)}
           >
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -251,6 +264,7 @@
           <Button
             variant="ghost"
             size="sm"
+            class={showMeasure ? 'bg-slate-700 text-white' : ''}
             onclick={() => { showMeasure = !showMeasure; if (!showMeasure) measureResult = null; }}
           >
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -264,6 +278,7 @@
           <Button
             variant="ghost"
             size="sm"
+            class={showGeoprocessing ? 'bg-slate-700 text-white' : ''}
             onclick={() => (showGeoprocessing = !showGeoprocessing)}
           >
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -277,6 +292,7 @@
           <Button
             variant="ghost"
             size="sm"
+            class={showCollaborators ? 'bg-slate-700 text-white' : ''}
             onclick={() => (showCollaborators = !showCollaborators)}
           >
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -290,6 +306,7 @@
           <Button
             variant="ghost"
             size="sm"
+            class={showActivity ? 'bg-slate-700 text-white' : ''}
             onclick={() => (showActivity = !showActivity)}
           >
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -300,29 +317,32 @@
         </Tooltip>
       {/if}
     </div>
+    {/if}
 
     <!-- Map area — bind:this synced to mapStore.mapContainerEl for high-res export -->
     <div class="relative flex-1 min-h-0" bind:this={mapAreaEl}>
       <MapCanvas
-        {readonly}
+        readonly={effectiveReadonly}
         {layerData}
         onfeaturedrawn={handleFeatureDrawn}
-        {...(!readonly ? { annotationPins } : {})}
+        {...(!effectiveReadonly ? { annotationPins } : {})}
         {...(showMeasure ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
       />
 
       <!-- Measurement panel overlay -->
-      {#if showMeasure && !readonly}
+      {#if showMeasure && !effectiveReadonly}
         <MeasurementPanel
           result={measureResult}
           onclear={() => { showMeasure = false; measureResult = null; }}
         />
       {/if}
 
-      <!-- Map overlay controls -->
+      <!-- Map overlay controls — hidden in embed mode for a truly bare canvas -->
+      {#if !embed}
       <div class="absolute bottom-6 left-3 flex gap-2">
         <BasemapPicker />
       </div>
+      {/if}
 
       <Legend />
     </div>
@@ -355,21 +375,21 @@
   />
 
   <!-- Comment panel (collapsible, right side) -->
-  {#if showComments && !readonly}
+  {#if showComments && !effectiveReadonly}
     <div class="w-72 shrink-0 overflow-hidden flex flex-col">
       <CommentPanel {mapId} {...(userId !== undefined ? { userId } : {})} />
     </div>
   {/if}
 
   <!-- Collaborators panel (collapsible, right side) -->
-  {#if showCollaborators && !readonly}
+  {#if showCollaborators && !effectiveReadonly}
     <div class="w-72 shrink-0 overflow-hidden flex flex-col">
       <CollaboratorsPanel {mapId} />
     </div>
   {/if}
 
   <!-- Annotation panel (collapsible, right side) -->
-  {#if showAnnotations && !readonly}
+  {#if showAnnotations && !effectiveReadonly}
     <div class="w-72 shrink-0 overflow-hidden flex flex-col">
       <AnnotationPanel
         {mapId}
@@ -380,7 +400,7 @@
   {/if}
 
   <!-- Geoprocessing panel (collapsible, right side) -->
-  {#if showGeoprocessing && !readonly}
+  {#if showGeoprocessing && !effectiveReadonly}
     <div class="w-72 shrink-0 overflow-hidden flex flex-col">
       <GeoprocessingPanel
         {mapId}
@@ -397,7 +417,7 @@
   {/if}
 
   <!-- Activity feed panel (collapsible, right-most) -->
-  {#if showActivity && !readonly}
+  {#if showActivity && !effectiveReadonly}
     <div class="w-56 shrink-0 overflow-hidden flex flex-col">
       <ActivityFeed {mapId} />
     </div>

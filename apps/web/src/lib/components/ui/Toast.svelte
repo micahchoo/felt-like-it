@@ -37,6 +37,10 @@
       return this.show(message, 'info', duration);
     },
 
+    warning(message: string, duration?: number) {
+      return this.show(message, 'warning', duration);
+    },
+
     dismiss(id: string) {
       _toasts = _toasts.filter((t) => t.id !== id);
     },

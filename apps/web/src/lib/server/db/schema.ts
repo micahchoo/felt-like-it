@@ -258,6 +258,31 @@ export const annotations = pgTable(
   ]
 );
 
+// ─── API Keys ─────────────────────────────────────────────────────────────────
+export const apiKeys = pgTable(
+  'api_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /**
+     * SHA-256 hex digest of the raw "flk_<64-hex>" key.
+     * The plaintext is never stored — only returned once at creation time.
+     */
+    keyHash: text('key_hash').notNull(),
+    /** First 12 characters of the raw key (e.g. "flk_a1b2c3d4") — displayed in the UI. */
+    prefix: text('prefix').notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('api_keys_key_hash_idx').on(t.keyHash),
+    index('api_keys_user_id_idx').on(t.userId),
+  ]
+);
+
 // ─── Import Jobs ──────────────────────────────────────────────────────────────
 export const importJobs = pgTable(
   'import_jobs',
@@ -304,3 +329,5 @@ export type MapCollaboratorRow = typeof mapCollaborators.$inferSelect;
 export type NewMapCollaborator = typeof mapCollaborators.$inferInsert;
 export type AnnotationRow = typeof annotations.$inferSelect;
 export type NewAnnotation = typeof annotations.$inferInsert;
+export type ApiKeyRow = typeof apiKeys.$inferSelect;
+export type NewApiKey = typeof apiKeys.$inferInsert;
