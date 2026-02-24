@@ -2,13 +2,53 @@
 
 ## Phase 5 — Enterprise Polish ✅ COMPLETE
 
-**Tests:** 301 passing (web) · shared-types: 96 · geo-engine: 178 — total: 575
+**Tests:** 308 passing (web) · shared-types: 96 · geo-engine: 178 — total: 582
 **svelte-check:** 0 errors · 0 warnings
 **Lint (web):** 0 errors · 0 warnings
 
 ---
 
-## Delta — this round (Hardening: Phase 5b batch)
+## Delta — this round (Phase 5b hardening batch 2: pino, admin, exports, E2E)
+
+### Added
+- `apps/web/src/lib/server/logger.ts` — pino structured JSON logging (web)
+- `services/worker/src/logger.ts` — pino structured JSON logging (worker)
+- `apps/web/src/lib/server/db/migrations/0009_add_admin_flag.sql` — `is_admin` column on `users`
+- `apps/web/src/routes/(app)/admin/` — admin panel: user list, storage stats, import job monitor (6 files)
+- `scripts/admin-cli.ts` — CLI: create-user, reset-password, promote, demote, list-users
+- `apps/web/src/lib/server/export/shared.ts` — shared export access check with viewer+ collab support
+- `apps/web/src/lib/server/export/geopackage.ts` — OGC-conformant GeoPackage export (sql.js + wkx)
+- `apps/web/src/lib/server/export/shapefile.ts` — Shapefile export (@mapbox/shp-write, DBF truncation)
+- `apps/web/src/lib/server/export/pdf.ts` — PDF map export (pdfkit, optional screenshot embed)
+- `apps/web/playwright.config.ts` — Playwright E2E config
+- `apps/web/e2e/` — 6 E2E spec files + auth fixtures + test data (12 tests)
+- `apps/web/src/__tests__/export.test.ts` — 7 export unit tests
+- `.github/workflows/ci.yml` — E2E job with PostGIS + Redis services
+
+### Changed
+- `apps/web/src/hooks.server.ts` — pino logging; API key auth selects `isAdmin`; removed dead `tag` variable
+- `apps/web/src/lib/server/trpc/init.ts` — pino logging
+- `apps/web/src/lib/server/audit/index.ts` — pino logging
+- `services/worker/src/index.ts` — pino logging (7 call sites)
+- `apps/web/src/lib/server/db/schema.ts` — `isAdmin` column on users
+- `apps/web/src/lib/server/auth/index.ts` — Lucia `isAdmin` propagation
+- `apps/web/src/routes/(app)/+layout.server.ts` — returns `isAdmin` in user data
+- `apps/web/src/routes/(app)/dashboard/+page.svelte` — admin link (visible when `isAdmin`)
+- `apps/web/src/routes/api/export/[layerId]/+server.ts` — multi-format GET + PDF POST
+- `scripts/migrate.ts` — added migrations 0006-0009 to MIGRATION_FILES
+- `scripts/seed.ts` — demo user set as admin
+- `docker/docker-compose.yml` — `LOG_LEVEL` env var for web + worker
+
+### Removed
+- `apps/web/src/lib/server/export/geojson.ts` — orphaned after refactor to shared.ts
+
+### Tests
+- Total: 582 (web: 308, geo-engine: 178, shared-types: 96)
+- New: 7 export tests, 12 Playwright E2E tests
+
+---
+
+## Delta — previous round (Hardening: Phase 5b batch 1)
 
 ### Fixed
 - `apps/web/src/lib/server/trpc/routers/maps.ts` — added missing `appendAuditLog` to `maps.update` (12 mutations now audit-logged)
@@ -137,9 +177,9 @@
 | Rate limiting on auth endpoints (10 req/min/IP) | ✅ |
 | `maps.update` audit log (12 mutations now) | ✅ |
 | TYPE_DEBT cast removal (hooks.server.ts, auth/index.ts) | ✅ |
-| Playwright E2E tests | ⬜ |
-| pino structured logging | ⬜ |
-| GeoPackage / Shapefile / PDF export | ⬜ |
-| Admin panel + admin-cli.ts | ⬜ |
+| Playwright E2E tests | ✅ |
+| pino structured logging | ✅ |
+| GeoPackage / Shapefile / PDF export | ✅ |
+| Admin panel + admin-cli.ts | ✅ |
 | S3 / MinIO file storage | ⬜ |
 | Tippecanoe tile pipeline | ⬜ |

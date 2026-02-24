@@ -1,5 +1,7 @@
+import type { FeatureCollection } from 'geojson';
+
 /** Small GeoJSON FeatureCollection for import tests */
-export const SF_LANDMARKS: GeoJSON.FeatureCollection = {
+export const SF_LANDMARKS: FeatureCollection = {
   type: 'FeatureCollection',
   features: [
     {

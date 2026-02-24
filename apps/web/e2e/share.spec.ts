@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Share', () => {
-  test('shared map is viewable anonymously via share link', async ({ page, request }) => {
+  test('shared map is viewable anonymously via share link', async ({ page }) => {
     // Login as demo user
     await page.goto('/auth/login');
     await page.getByLabel('Email').fill('demo@felt-like-it.local');
@@ -27,7 +27,9 @@ test.describe('Share', () => {
       const token = body.result.data.json.token;
 
       // Visit share page in a new context (no cookies = anonymous)
-      const anonContext = await page.context().browser()!.newContext();
+      const browser = page.context().browser();
+      if (!browser) throw new Error('Browser not available');
+      const anonContext = await browser.newContext();
       const anonPage = await anonContext.newPage();
       await anonPage.goto(`/share/${token}`);
 

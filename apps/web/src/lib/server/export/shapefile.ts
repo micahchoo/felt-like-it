@@ -8,6 +8,7 @@
  *  - DBF string values max 254 characters
  */
 
+import type { FeatureCollection } from 'geojson';
 import { zip } from '@mapbox/shp-write';
 import { error } from '@sveltejs/kit';
 import type { ExportData } from './shared.js';
@@ -17,8 +18,8 @@ import { toFeatureCollection } from './shared.js';
  * Truncate property keys to 10 chars and string values to 254 chars (DBF limits).
  */
 function truncateProperties(
-  fc: GeoJSON.FeatureCollection
-): GeoJSON.FeatureCollection {
+  fc: FeatureCollection
+): FeatureCollection {
   return {
     ...fc,
     features: fc.features.map((f) => {

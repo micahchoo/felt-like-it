@@ -131,7 +131,7 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 | Item | Status |
 |---|---|
 | CI pipeline (GitHub Actions: lint, svelte-check, test, build) | ✅ |
-| Playwright E2E tests (auth, import, share critical paths) | ⬜ |
+| Playwright E2E tests (auth, import, share critical paths) | ✅ |
 | Vitest coverage thresholds (75/85/84/75 — ratcheting toward 85/85/80) | ✅ |
 | ADRs 004–006 (Martin tile server, BullMQ over pg-boss, Fetch adapter over WebSocket) | ✅ |
 
@@ -139,23 +139,23 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 
 | Item | Status |
 |---|---|
-| pino structured JSON logging (replace `console.warn/error` with `[INF/WRN/ERR]`) | ⬜ |
+| pino structured JSON logging (replace `console.warn/error` with pino JSON) | ✅ |
 | Rate limiting on auth endpoints (in-memory, 10 req/min/IP) | ✅ |
 
 ### Export Formats
 
 | Item | Status |
 |---|---|
-| GeoPackage export per layer | ⬜ |
-| Shapefile export per layer | ⬜ |
-| PDF map export | ⬜ |
+| GeoPackage export per layer | ✅ |
+| Shapefile export per layer | ✅ |
+| PDF map export | ✅ |
 
 ### Admin
 
 | Item | Status |
 |---|---|
-| Admin panel (user list, storage stats, import job monitor) | ⬜ |
-| `admin-cli.ts` (create user, reset password, promote admin) | ⬜ |
+| Admin panel (user list, storage stats, import job monitor) | ✅ |
+| `admin-cli.ts` (create user, reset password, promote admin) | ✅ |
 
 ### Infrastructure
 

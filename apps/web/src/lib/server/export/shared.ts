@@ -1,3 +1,4 @@
+import type { FeatureCollection, Feature, Geometry } from 'geojson';
 import { error } from '@sveltejs/kit';
 import { eq, and } from 'drizzle-orm';
 import { db, layers, maps, mapCollaborators } from '../db/index.js';
@@ -54,13 +55,13 @@ export async function getExportData(layerId: string, userId: string): Promise<Ex
 /**
  * Build a GeoJSON FeatureCollection from export data.
  */
-export function toFeatureCollection(data: ExportData): GeoJSON.FeatureCollection {
+export function toFeatureCollection(data: ExportData): FeatureCollection {
   return {
     type: 'FeatureCollection',
-    features: data.features.map((row) => ({
+    features: data.features.map((row): Feature => ({
       type: 'Feature' as const,
       id: row.id,
-      geometry: row.geometry as unknown as GeoJSON.Geometry, // TYPE_DEBT: GeoJSONFeatureRow.geometry is Record<string,unknown>
+      geometry: row.geometry as unknown as Geometry, // TYPE_DEBT: GeoJSONFeatureRow.geometry is Record<string,unknown>
       properties: row.properties,
     })),
   };

@@ -1,6 +1,6 @@
 # Felt Like It — Architecture
 
-Living document describing the **built** system as of Phase 5 (Feb 2026).
+Living document describing the **built** system as of Phase 5b (Feb 2026).
 For the original design vision, see [`OriginalVision.md`](OriginalVision.md).
 For architecture decision records, see [`adr/`](adr/).
 
@@ -18,7 +18,7 @@ felt-like-it/
 services/
 └── worker/              # Standalone BullMQ worker process
 docker/                  # docker-compose + Dockerfiles
-scripts/                 # migrate.ts, seed.ts
+scripts/                 # migrate.ts, seed.ts, admin-cli.ts
 ```
 
 **Monorepo tooling:** pnpm workspaces + Turborepo. Build order: `shared-types` → `geo-engine` → `web` (worker depends on shared-types only).
@@ -68,7 +68,7 @@ Browser polls GET /api/job/[jobId]  ←→  worker updates import_jobs.progress
 
 | Table | Key columns |
 |---|---|
-| `users` | `id uuid PK`, `email unique`, `hashed_password`, `name` |
+| `users` | `id uuid PK`, `email unique`, `hashed_password`, `name`, `is_admin bool default false` |
 | `sessions` | `id text PK` (Lucia), `user_id FK`, `expires_at` |
 | `maps` | `id uuid PK`, `user_id FK`, `title`, `description`, `viewport jsonb`, `basemap`, `is_archived` |
 | `layers` | `id uuid PK`, `map_id FK`, `name`, `type` (point\|line\|polygon\|mixed), `style jsonb`, `visible`, `z_index`, `source_file_name` |
@@ -343,7 +343,8 @@ The `geoprocessing.run` mutation:
 |---|---|---|
 | `shared-types` | `schemas.test.ts` | node (Vitest) |
 | `geo-engine` | `detect.test.ts`, `auto-style.test.ts`, `validate.test.ts`, `filters.test.ts`, `interpolators.test.ts` | node (Vitest) |
-| `web` | 23 files: `password`, `import-*` (5), `maps`, `layers`, `features`, `shares`, `comments`, `guest-comments`, `collaborators`, `annotations`, `geoprocessing`, `events`, `audit-log`, `api-keys`, `map-access`, `rate-limit`, `layers-store`, `undo-store`, `filters-store` | node (Vitest) |
+| `web` | 24 files: `password`, `import-*` (5), `maps`, `layers`, `features`, `shares`, `comments`, `guest-comments`, `collaborators`, `annotations`, `geoprocessing`, `events`, `audit-log`, `api-keys`, `map-access`, `rate-limit`, `export`, `layers-store`, `undo-store`, `filters-store` | node (Vitest) |
+| `web` (E2E) | 6 files: `auth`, `dashboard`, `map-editor`, `import-export`, `share`, `embed` | Playwright (Chromium) |
 
 **Drizzle mock pattern:** `vi.mock('$lib/server/db/index.js', ...)` with `drizzleChain<T>(value)` helper.
 **Critical:** `vi.resetAllMocks()` in `beforeEach` (not `clearAllMocks`) — clears pending `mockReturnValueOnce` queues.
@@ -382,9 +383,9 @@ All services on `felt-network`. Health-check: `wget -qO- http://127.0.0.1:3000/`
 
 ---
 
-## Current State (Phase 5 complete, Feb 2026)
+## Current State (Phase 5b in progress, Feb 2026)
 
-**Tests:** 575 (web: 301 · geo-engine: 178 · shared-types: 96) · **Migrations:** 0000–0008 · **Services:** 5 · **svelte-check:** 0 errors · 0 warnings
+**Tests:** 582 (web: 308 · geo-engine: 178 · shared-types: 96) + 12 E2E · **Migrations:** 0000–0009 · **Services:** 5 · **svelte-check:** 0 errors · 0 warnings
 
 | Capability | Status |
 |---|---|
@@ -410,19 +411,19 @@ All services on `felt-network`. Health-check: `wget -qO- http://127.0.0.1:3000/`
 | Collaborator invitations: viewer / commenter / editor roles (enforced on all tRPC routers + editor page) | ✅ |
 | Audit log: tamper-evident BIGSERIAL hash chain; `appendAuditLog` on 12 mutations | ✅ |
 | GeoJSON export per layer (streaming `ST_AsGeoJSON`) | ✅ |
+| Export: GeoPackage (sql.js + wkx) / Shapefile (@mapbox/shp-write) / PDF (pdfkit) | ✅ |
 | High-res PNG screenshot export (`pixelRatio: 2`) | ✅ |
 | Martin vector tiles: layers > 10 K features → `VectorTileSource` | ✅ |
 | Docker Compose: 5 services (web · worker · postgres · redis · martin) | ✅ |
+| pino structured JSON logging (web + worker) | ✅ |
+| Rate limiting on auth endpoints (in-memory, 10 req/min/IP) | ✅ |
+| Admin panel (user list, storage stats, import job monitor) + `admin-cli.ts` | ✅ |
+| CI pipeline (GitHub Actions: lint, svelte-check, test, build) | ✅ |
+| Playwright E2E tests (auth, dashboard, import/export, share, embed) | ✅ |
 | Real-time collaboration (Yjs CRDT, presence, cursors) | ⬜ Phase 6 |
 | Team library (shared dataset repository) | ⬜ Phase 6 |
-| pino structured logging | ⬜ Phase 5b |
-| Rate limiting on auth endpoints (in-memory, 10 req/min/IP) | ✅ |
-| Export: GeoPackage / Shapefile / PDF | ⬜ Phase 5b |
-| Admin panel / `admin-cli.ts` | ⬜ Phase 5b |
 | S3 / MinIO file storage | ⬜ Phase 5b |
 | Tippecanoe tile pipeline | ⬜ Phase 5b |
-| CI pipeline (GitHub Actions: lint, svelte-check, test, build) | ✅ |
-| Playwright E2E tests | ⬜ Phase 5b |
 | SSO / SAML | ⬜ Phase 7 |
 | Raster support (GeoTIFF / COG) | ⬜ Phase 7 |
 | Helm chart | ⬜ Phase 7 |
@@ -442,10 +443,6 @@ Compares `OriginalVision.md` to what was actually built. See `docs/plans/2026-02
 | Presence indicators / multiplayer cursors | Phase 3 | Phase 6 |
 | Team library (shared dataset repository) | Phase 3 | Phase 6 |
 | Tippecanoe tile pipeline | Phase 2 | Phase 5b |
-| pino structured JSON logging | Vision | Phase 5b |
-| Playwright E2E tests | Vision | Phase 5b |
-| GeoPackage / Shapefile / PDF export | Vision | Phase 5b |
-| Admin panel + `admin-cli.ts` | Vision | Phase 5b |
 | S3 / MinIO file storage | Vision | Phase 5b |
 | SSO / SAML (Arctic OIDC + SAML2) | Phase 5 | Phase 7 |
 | Raster support (GeoTIFF + COG) | Phase 5 | Phase 7 |
@@ -462,7 +459,7 @@ Where the final implementation differs from what `OriginalVision.md` specified.
 | tRPC transport | `trpc-sveltekit` with WebSocket support | tRPC 11 native Fetch adapter (no WebSocket) |
 | `db/` package location | Standalone `packages/db/` package | Merged into `apps/web/src/lib/server/db/` |
 | Martin tile server | Custom `services/tile-server/` service | Stock `ghcr.io/maplibre/martin` Docker image |
-| Application logging | pino structured JSON | `console.warn/error` with `[INF/WRN/ERR]` prefix |
+| Application logging | pino structured JSON | pino structured JSON (web + worker; `pino-pretty` in dev) |
 | File storage | Local disk + S3/MinIO | Local disk volume only |
 | Rate limiting | `hooks.server.ts` rate limiter | In-memory sliding-window on auth endpoints (10 req/min/IP) |
 | ESLint TypeScript rules | `no-explicit-any: error`; `no-unsafe-*`; `parserOptions.project` | `parserOptions.project` removed (TypeScript OOM); `no-unsafe-*` omitted |
@@ -485,3 +482,8 @@ Features built that were not in `OriginalVision.md`.
 | Tamper-evident audit log (BIGSERIAL hash chain with `pg_advisory_xact_lock` serialisation) | Phase 5 |
 | API keys (`flk_` prefix; SHA-256 hash-only storage; `hooks.server.ts` Bearer auth) | Phase 5 |
 | Dashboard "Shared with me" section (`maps.listCollaborating`) | Phase 5 |
+| Admin panel (user list, storage stats, import job monitor) + `admin-cli.ts` | Phase 5b |
+| GeoPackage export (OGC-conformant, sql.js + wkx) | Phase 5b |
+| Shapefile export (@mapbox/shp-write, DBF truncation) | Phase 5b |
+| PDF map export (pdfkit, optional screenshot embed) | Phase 5b |
+| Playwright E2E tests (12 tests: auth, dashboard, map-editor, import/export, share, embed) | Phase 5b |

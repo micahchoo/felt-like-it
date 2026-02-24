@@ -31,7 +31,9 @@ test.describe('Embed', () => {
       expect(csp).toContain('frame-ancestors');
 
       // Visit embed page in a new context
-      const anonContext = await page.context().browser()!.newContext();
+      const browser = page.context().browser();
+      if (!browser) throw new Error('Browser not available');
+      const anonContext = await browser.newContext();
       const anonPage = await anonContext.newPage();
       await anonPage.goto(`/embed/${token}`);
 
