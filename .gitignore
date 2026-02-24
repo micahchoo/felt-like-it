@@ -11,3 +11,5 @@ dist
 uploads/
 coverage/
 .nyc_output
+test-results/
+playwright-report/

@@ -44,3 +44,73 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: ci
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_DB: felt
+          POSTGRES_USER: felt
+          POSTGRES_PASSWORD: felt
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U felt -d felt"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @felt-like-it/web exec playwright install chromium
+
+      - name: Run migrations
+        run: pnpm migrate
+        env:
+          DATABASE_URL: postgresql://felt:felt@localhost:5432/felt
+
+      - name: Seed database
+        run: pnpm seed
+        env:
+          DATABASE_URL: postgresql://felt:felt@localhost:5432/felt
+
+      - name: Run E2E tests
+        run: pnpm --filter @felt-like-it/web run test:e2e
+        env:
+          DATABASE_URL: postgresql://felt:felt@localhost:5432/felt
+          REDIS_URL: redis://localhost:6379
+          PUBLIC_MARTIN_URL: ""
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 14
