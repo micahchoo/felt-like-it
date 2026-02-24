@@ -13,7 +13,8 @@
     "format:check": "prettier --check \"**/*.{js,ts,svelte,json,css,md}\" --ignore-path .gitignore",
     "migrate": "tsx scripts/migrate.ts",
     "seed": "tsx scripts/seed.ts",
-    "knip": "knip"
+    "knip": "knip",
+    "admin": "tsx scripts/admin-cli.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.0",

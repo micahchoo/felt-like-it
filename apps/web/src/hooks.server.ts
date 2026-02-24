@@ -33,7 +33,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
     if (keyRow) {
       const [userRow] = await db
-        .select({ id: users.id, email: users.email, name: users.name })
+        .select({ id: users.id, email: users.email, name: users.name, isAdmin: users.isAdmin })
         .from(users)
         .where(eq(users.id, keyRow.userId));
 

@@ -33,6 +33,7 @@ export const users = pgTable(
     email: text('email').notNull(),
     hashedPassword: text('hashed_password').notNull(),
     name: text('name').notNull(),
+    isAdmin: boolean('is_admin').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

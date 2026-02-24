@@ -21,6 +21,9 @@
   <nav class="border-b border-white/10 px-6 py-3 flex items-center gap-4">
     <span class="font-bold text-white text-lg">🗺 Felt Like It</span>
     <span class="flex-1"></span>
+    {#if data.user.isAdmin}
+      <a href="/admin" class="text-sm text-slate-400 hover:text-white transition-colors">Admin</a>
+    {/if}
     <span class="text-sm text-slate-400">{data.user.email}</span>
     <form method="POST" action="/auth/logout" use:enhance>
       <button type="submit" class="text-sm text-slate-400 hover:text-white transition-colors">

@@ -182,8 +182,8 @@ async function seed(): Promise<void> {
     const userId = randomUUID();
 
     await client.query(
-      'INSERT INTO users (id, email, hashed_password, name) VALUES ($1, $2, $3, $4)',
-      [userId, 'demo@felt-like-it.local', hashedPassword, 'Demo User']
+      'INSERT INTO users (id, email, hashed_password, name, is_admin) VALUES ($1, $2, $3, $4, $5)',
+      [userId, 'demo@felt-like-it.local', hashedPassword, 'Demo User', true]
     );
     console.log('✓ Demo user created: demo@felt-like-it.local / demo');
 
