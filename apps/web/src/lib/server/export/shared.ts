@@ -60,7 +60,7 @@ export function toFeatureCollection(data: ExportData): GeoJSON.FeatureCollection
     features: data.features.map((row) => ({
       type: 'Feature' as const,
       id: row.id,
-      geometry: row.geometry as GeoJSON.Geometry,
+      geometry: row.geometry as unknown as GeoJSON.Geometry, // TYPE_DEBT: GeoJSONFeatureRow.geometry is Record<string,unknown>
       properties: row.properties,
     })),
   };

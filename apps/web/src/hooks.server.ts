@@ -92,7 +92,6 @@ export const handle: Handle = async ({ event, resolve }) => {
   if (!skip) {
     const ms = Date.now() - start;
     const status = response.status;
-    const tag = status >= 500 ? 'ERR' : status >= 400 ? 'WRN' : 'INF';
     const reqLog = logger.child({ method, path, status, ms });
     if (status >= 500) {
       reqLog.error('request completed');

@@ -29,7 +29,7 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 
     case 'gpkg': {
       const buf = await exportAsGeoPackage(data);
-      return new Response(buf, {
+      return new Response(new Uint8Array(buf), {
         headers: {
           'Content-Type': 'application/geopackage+sqlite3',
           'Content-Disposition': `attachment; filename="${basename}.gpkg"`,
@@ -39,7 +39,7 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 
     case 'shp': {
       const buf = await exportAsShapefile(data);
-      return new Response(buf, {
+      return new Response(new Uint8Array(buf), {
         headers: {
           'Content-Type': 'application/zip',
           'Content-Disposition': `attachment; filename="${basename}.shp.zip"`,
@@ -56,17 +56,23 @@ export const POST: RequestHandler = async ({ params, locals, request }) => {
   if (!locals.user) error(401, 'Unauthorized');
 
   const data = await getExportData(params.layerId, locals.user.id);
-  const body = await request.json() as { screenshot?: string; title?: string };
+
+  let body: { screenshot?: string; title?: string };
+  try {
+    body = await request.json() as { screenshot?: string; title?: string };
+  } catch {
+    error(400, 'Invalid JSON body');
+  }
 
   const buf = await exportAsPdf({
     data,
-    title: body.title,
-    screenshot: body.screenshot,
+    ...(body.title !== undefined ? { title: body.title } : {}),
+    ...(body.screenshot !== undefined ? { screenshot: body.screenshot } : {}),
   });
 
   const basename = sanitizeFilename(data.layerName);
 
-  return new Response(buf, {
+  return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${basename}.pdf"`,
