@@ -1,38 +1,75 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
-import { exportLayerAsGeoJSON } from '$lib/server/export/geojson.js';
-import { db, layers } from '$lib/server/db/index.js';
-import { eq } from 'drizzle-orm';
+import { getExportData, toFeatureCollection } from '$lib/server/export/shared.js';
+import { exportAsGeoPackage } from '$lib/server/export/geopackage.js';
+import { exportAsShapefile } from '$lib/server/export/shapefile.js';
+import { exportAsPdf } from '$lib/server/export/pdf.js';
 
-export const GET: RequestHandler = async ({ params, locals }) => {
-  if (!locals.user) {
-    error(401, 'Unauthorized');
+function sanitizeFilename(name: string): string {
+  return name.replace(/[^a-z0-9_-]/gi, '_');
+}
+
+export const GET: RequestHandler = async ({ params, locals, url }) => {
+  if (!locals.user) error(401, 'Unauthorized');
+
+  const format = url.searchParams.get('format') ?? 'geojson';
+  const data = await getExportData(params.layerId, locals.user.id);
+  const basename = sanitizeFilename(data.layerName);
+
+  switch (format) {
+    case 'geojson': {
+      const fc = toFeatureCollection(data);
+      return new Response(JSON.stringify(fc, null, 2), {
+        headers: {
+          'Content-Type': 'application/geo+json',
+          'Content-Disposition': `attachment; filename="${basename}.geojson"`,
+        },
+      });
+    }
+
+    case 'gpkg': {
+      const buf = await exportAsGeoPackage(data);
+      return new Response(buf, {
+        headers: {
+          'Content-Type': 'application/geopackage+sqlite3',
+          'Content-Disposition': `attachment; filename="${basename}.gpkg"`,
+        },
+      });
+    }
+
+    case 'shp': {
+      const buf = await exportAsShapefile(data);
+      return new Response(buf, {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="${basename}.shp.zip"`,
+        },
+      });
+    }
+
+    default:
+      error(400, `Unsupported format: ${format}. Supported: geojson, gpkg, shp`);
   }
+};
 
-  try {
-    const geojson = await exportLayerAsGeoJSON({
-      layerId: params.layerId,
-      userId: locals.user.id,
-    });
+export const POST: RequestHandler = async ({ params, locals, request }) => {
+  if (!locals.user) error(401, 'Unauthorized');
 
-    // Determine filename from layer name
-    const [layer] = await db
-      .select({ name: layers.name })
-      .from(layers)
-      .where(eq(layers.id, params.layerId));
+  const data = await getExportData(params.layerId, locals.user.id);
+  const body = await request.json() as { screenshot?: string; title?: string };
 
-    const filename = `${(layer?.name ?? 'layer').replace(/[^a-z0-9_-]/gi, '_')}.geojson`;
+  const buf = await exportAsPdf({
+    data,
+    title: body.title,
+    screenshot: body.screenshot,
+  });
 
-    return new Response(geojson, {
-      headers: {
-        'Content-Type': 'application/geo+json',
-        'Content-Disposition': `attachment; filename="${filename}"`,
-      },
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Export failed';
-    if (message === 'Layer not found') error(404, message);
-    if (message === 'Access denied') error(403, message);
-    error(500, message);
-  }
+  const basename = sanitizeFilename(data.layerName);
+
+  return new Response(buf, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${basename}.pdf"`,
+    },
+  });
 };
