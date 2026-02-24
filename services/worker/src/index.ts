@@ -25,6 +25,7 @@ import {
   type GeocodingOptions,
 } from '@felt-like-it/geo-engine';
 import type { ImportJobPayload } from '@felt-like-it/shared-types';
+import { logger } from './logger.js';
 
 const readFileAsync = promisify(readFile);
 
@@ -49,7 +50,7 @@ const connection = new Redis(process.env['REDIS_URL'] ?? 'redis://localhost:6379
 async function processImportJob(job: Job<ImportJobPayload>): Promise<void> {
   const { jobId, mapId, layerName, filePath, fileName } = job.data;
 
-  console.warn(`[worker] Processing job ${jobId}: ${fileName}`);
+  logger.info({ jobId, fileName }, 'processing job');
 
   await updateJobStatus(jobId, 'processing', 5);
 
@@ -73,10 +74,10 @@ async function processImportJob(job: Job<ImportJobPayload>): Promise<void> {
     }
 
     await updateJobStatus(jobId, 'done', 100);
-    console.warn(`[worker] Job ${jobId} completed successfully.`);
+    logger.info({ jobId }, 'job completed successfully');
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[worker] Job ${jobId} failed: ${message}`);
+    logger.error({ jobId, error: message }, 'job failed');
     await db.execute(sql`
       UPDATE import_jobs
       SET status = 'failed', error_message = ${message}, updated_at = NOW()
@@ -599,22 +600,22 @@ const worker = new Worker<ImportJobPayload>('file-import', processImportJob, {
 });
 
 worker.on('completed', (job) => {
-  console.warn(`[worker] Job ${job.id ?? 'unknown'} completed.`);
+  logger.info({ jobId: job.id ?? 'unknown' }, 'job completed');
 });
 
 worker.on('failed', (job, err) => {
-  console.error(`[worker] Job ${job?.id ?? 'unknown'} failed: ${err.message}`);
+  logger.error({ jobId: job?.id ?? 'unknown', error: err.message }, 'job failed');
 });
 
 worker.on('error', (err) => {
-  console.error('[worker] Worker error:', err);
+  logger.error({ err }, 'worker error');
 });
 
-console.warn('[worker] Felt Like It import worker started. Waiting for jobs…');
+logger.info('import worker started, waiting for jobs');
 
 // Graceful shutdown
 async function shutdown(): Promise<void> {
-  console.warn('[worker] Shutting down…');
+  logger.info('shutting down');
   await worker.close();
   await connection.quit();
   await pool.end();

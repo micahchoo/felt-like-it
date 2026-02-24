@@ -17,6 +17,7 @@ import { createHash } from 'node:crypto';
 import { desc } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { db, auditLog } from '../db/index.js';
+import { logger } from '../logger.js';
 
 /** 64-character zero string used as the prev_hash for the very first entry. */
 export const GENESIS_HASH = '0'.repeat(64);
@@ -107,6 +108,6 @@ export async function appendAuditLog(entry: AuditEntry): Promise<void> {
       });
     });
   } catch (err) {
-    console.error('[AUDIT] Failed to write audit log entry:', err);
+    logger.error({ err, entry }, 'audit log write failed');
   }
 }

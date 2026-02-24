@@ -51,6 +51,7 @@ services:
       UPLOAD_DIR: /uploads
       ORIGIN: http://localhost:3000
       NODE_ENV: production
+      LOG_LEVEL: info
       # Martin tile server URL visible from the browser (external port)
       # Set to empty string to disable vector tile mode (all layers render as GeoJSON)
       PUBLIC_MARTIN_URL: http://localhost:3001
@@ -88,6 +89,7 @@ services:
       REDIS_URL: redis://redis:6379
       UPLOAD_DIR: /uploads
       NODE_ENV: production
+      LOG_LEVEL: info
     volumes:
       - uploads:/uploads
     depends_on:

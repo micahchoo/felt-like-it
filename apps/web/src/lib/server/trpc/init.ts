@@ -1,4 +1,5 @@
 import { initTRPC, TRPCError } from '@trpc/server';
+import { logger } from '$lib/server/logger.js';
 import type { Context } from './context.js';
 
 const t = initTRPC.context<Context>().create();
@@ -10,16 +11,17 @@ export const mergeRouters = t.mergeRouters;
 const debug = process.env['DEBUG'] === 'true';
 const SLOW_MS = 500;
 
+const trpcLogger = logger.child({ component: 'trpc' });
+
 const timingMiddleware = t.middleware(async ({ path, type, next }) => {
   const start = Date.now();
   const result = await next();
   const ms = Date.now() - start;
   if (debug || ms > SLOW_MS) {
-    const tag = result.ok ? 'tRPC' : 'tRPC:ERR';
     if (result.ok) {
-      console.warn(`[${tag}] ${type} ${path} ${ms}ms`);
+      trpcLogger.info({ type, path, ms }, 'tRPC call');
     } else {
-      console.error(`[${tag}] ${type} ${path} ${ms}ms`);
+      trpcLogger.error({ type, path, ms }, 'tRPC call failed');
     }
   }
   return result;

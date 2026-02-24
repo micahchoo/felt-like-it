@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { lucia } from '$lib/server/auth/index.js';
 import { db, apiKeys, users } from '$lib/server/db/index.js';
+import { logger } from '$lib/server/logger.js';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 
@@ -92,10 +93,13 @@ export const handle: Handle = async ({ event, resolve }) => {
     const ms = Date.now() - start;
     const status = response.status;
     const tag = status >= 500 ? 'ERR' : status >= 400 ? 'WRN' : 'INF';
+    const reqLog = logger.child({ method, path, status, ms });
     if (status >= 500) {
-      console.error(`[${tag}] ${method} ${path} ${status} ${ms}ms`);
+      reqLog.error('request completed');
+    } else if (status >= 400) {
+      reqLog.warn('request completed');
     } else {
-      console.warn(`[${tag}] ${method} ${path} ${status} ${ms}ms`);
+      reqLog.info('request completed');
     }
   }
 
@@ -105,11 +109,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 // ── Unhandled server errors ───────────────────────────────────────────────────
 export const handleError: HandleServerError = ({ error, event, status, message }) => {
   const path = event.url.pathname;
-  console.error(`[SERVER ERROR] ${status} ${path} — ${message}`);
-  if (error instanceof Error && error.stack) {
-    console.error(error.stack);
-  } else if (error) {
-    console.error(error);
-  }
+  logger.error({ err: error instanceof Error ? error : undefined, path, status }, `Server error: ${message}`);
   return { message: status === 404 ? 'Not found' : 'An unexpected error occurred' };
 };
