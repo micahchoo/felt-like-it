@@ -179,7 +179,7 @@
   <div class="flex-1 relative flex flex-col min-w-0">
     <!-- Top toolbar — hidden in embed mode (bare map canvas only) -->
     {#if !embed}
-    <div class="flex items-center gap-2 px-3 py-2 bg-slate-800 border-b border-white/10 shrink-0">
+    <div class="flex items-center gap-1 px-3 py-2 bg-slate-800 border-b border-white/10 shrink-0">
       <span class="text-sm font-medium text-white truncate mr-auto">{mapTitle}</span>
 
       {#if !effectiveReadonly}
@@ -203,12 +203,14 @@
           </Button>
         </Tooltip>
 
-        <Button variant="ghost" size="sm" class={showDataTable ? 'bg-slate-700 text-white' : ''} onclick={() => (showDataTable = !showDataTable)}>
-          <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 001-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 001 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/>
-          </svg>
-          Table
-        </Button>
+        <Tooltip content="Show data table">
+          <Button variant="ghost" size="sm" class={showDataTable ? 'bg-slate-700 text-white' : ''} onclick={() => (showDataTable = !showDataTable)}>
+            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 001-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 001 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/>
+            </svg>
+            Table
+          </Button>
+        </Tooltip>
 
         <Tooltip content="Filter features by attribute value">
           <Button
@@ -219,18 +221,21 @@
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M6 10.5a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z"/>
             </svg>
-            Filter
             {#if layersStore.active && filterStore.hasFilters(layersStore.active.id)}
-              <span class="ml-1 rounded-full bg-blue-500 px-1 text-xs font-semibold leading-tight">
+              <span class="rounded-full bg-blue-500 px-1 text-xs font-semibold leading-tight">
                 {filterStore.get(layersStore.active.id).length}
               </span>
             {/if}
           </Button>
         </Tooltip>
 
-        <Button variant="ghost" size="sm" onclick={saveViewport} loading={savingViewport}>
-          Save View
-        </Button>
+        <Tooltip content="Save current viewport as default">
+          <Button variant="ghost" size="sm" onclick={saveViewport} loading={savingViewport}>
+            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H9.5a1 1 0 0 0-1 1v7.293l2.646-2.647a.5.5 0 0 1 .708.708l-3.5 3.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L7.5 9.293V2a2 2 0 0 1 2-2H14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h2.5a.5.5 0 0 1 0 1H2z"/>
+            </svg>
+          </Button>
+        </Tooltip>
 
         <Tooltip content="Comment threads">
           <Button
@@ -242,7 +247,6 @@
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M14 1a1 1 0 011 1v8a1 1 0 01-1 1H4.414A2 2 0 003 11.586l-2 2V2a1 1 0 011-1h12zm-3 3.5a.5.5 0 000-1h-6a.5.5 0 000 1h6zm0 2.5a.5.5 0 000-1h-6a.5.5 0 000 1h6zm0 2.5a.5.5 0 000-1h-3a.5.5 0 000 1h3z"/>
             </svg>
-            Comments
           </Button>
         </Tooltip>
 
@@ -256,7 +260,6 @@
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z"/>
             </svg>
-            Annotate
           </Button>
         </Tooltip>
 
@@ -270,7 +273,6 @@
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M.5 14.5a.5.5 0 0 1-.354-.854l13-13a.5.5 0 0 1 .708.708l-13 13A.5.5 0 0 1 .5 14.5zM11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM8 3.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM5 .5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1A.5.5 0 0 1 5 .5zM.5 11.5a.5.5 0 0 1-.354-.854l1-1a.5.5 0 0 1 .708.708l-1 1a.5.5 0 0 1-.354.146zM3.5 8.5a.5.5 0 0 1-.354-.854l1-1a.5.5 0 0 1 .708.708l-1 1a.5.5 0 0 1-.354.146z"/>
             </svg>
-            Measure
           </Button>
         </Tooltip>
 
@@ -284,7 +286,6 @@
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.5 7.5a.5.5 0 010 1H5.707l2.147 2.146a.5.5 0 01-.708.708l-3-3a.5.5 0 010-.708l3-3a.5.5 0 11.708.708L5.707 7.5H11.5z"/>
             </svg>
-            Geoprocess
           </Button>
         </Tooltip>
 
@@ -298,7 +299,6 @@
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M15 14s1 0 1-1-1-4-5-4-5 3-5 4 1 1 1 1h8zm-7.978-1A.261.261 0 017 12.996c.001-.264.167-1.03.76-1.72C8.312 10.629 9.282 10 11 10c1.717 0 2.687.63 3.24 1.276.593.69.758 1.457.76 1.72l-.008.002-.014.002H7.022zM11 7a2 2 0 100-4 2 2 0 000 4zm3-2a3 3 0 11-6 0 3 3 0 016 0zM6.936 9.28a5.88 5.88 0 00-1.23-.247A7.35 7.35 0 005 9c-4 0-5 3-5 4 0 .667.333 1 1 1h4.216A2.238 2.238 0 015 13c0-1.01.377-2.042 1.09-2.904.243-.294.526-.569.846-.816zM4.92 10A5.493 5.493 0 004 13H1c0-.26.164-1.03.76-1.724.545-.636 1.492-1.256 3.16-1.275zM1.5 5.5a3 3 0 116 0 3 3 0 01-6 0zm3-2a2 2 0 100 4 2 2 0 000-4z"/>
             </svg>
-            Collaborators
           </Button>
         </Tooltip>
 
@@ -312,7 +312,6 @@
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm14.5 5.5h-13v1h13v-1zM2 4.5h12v1H2v-1zm0 4h8v1H2v-1z"/>
             </svg>
-            Activity
           </Button>
         </Tooltip>
       {/if}

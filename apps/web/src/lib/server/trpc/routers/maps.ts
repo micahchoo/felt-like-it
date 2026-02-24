@@ -134,6 +134,14 @@ export const mapsRouter = router({
         .where(eq(maps.id, id))
         .returning();
 
+      void appendAuditLog({
+        userId: ctx.user.id,
+        action: 'map.update',
+        entityType: 'map',
+        entityId: id,
+        mapId: id,
+      });
+
       return updated;
     }),
 

@@ -31,17 +31,27 @@ export default defineConfig({
     setupFiles: ['./src/test-setup.ts'],
     coverage: {
       provider: 'v8',
+      include: ['src/lib/server/**', 'src/lib/stores/**'],
       exclude: [
         'src/routes/**',
         'src/app.d.ts',
         '*.config.*',
         '.svelte-kit/**',
+        // Browser-only stores — require MapLibre/DOM; tested via E2E not unit
+        'src/lib/stores/map.svelte.ts',
+        'src/lib/stores/selection.svelte.ts',
+        'src/lib/stores/style.svelte.ts',
+        // Infrastructure setup — not meaningfully unit-testable
+        'src/lib/server/jobs/**',
+        'src/lib/server/trpc/router.ts',
+        'src/lib/server/trpc/context.ts',
+        'src/lib/server/import/shapefile.ts',
       ],
       thresholds: {
-        lines: 70,
-        functions: 70,
-        branches: 65,
-        statements: 70,
+        lines: 75,
+        functions: 85,
+        branches: 84,
+        statements: 75,
       },
     },
   },

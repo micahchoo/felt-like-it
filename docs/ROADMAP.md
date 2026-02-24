@@ -32,7 +32,7 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 | Drizzle migrations (hand-authored for PostGIS geometry column) | ✅ |
 | Test suite: 295 tests (shared-types 40 + geo-engine 134 + web 121) | ✅ |
 
-**Tech:** SvelteKit 2 + Svelte 5 runes · MapLibre GL 4 · Terra Draw 1 · PostgreSQL 16 + PostGIS 3.4 · Drizzle ORM · Lucia v3 · tRPC 11 · BullMQ 5 · Tailwind CSS 4
+**Tech:** SvelteKit 2 + Svelte 5 runes · MapLibre GL 5 · Terra Draw 1 · PostgreSQL 16 + PostGIS 3.4 · Drizzle ORM · Lucia v3 · tRPC 11 · BullMQ 5 · Tailwind CSS 4
 
 ---
 
@@ -122,23 +122,25 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 
 | Item | Status |
 |---|---|
-| Recurring bug-squash pass after each feature batch | ⬜ |
+| Recurring bug-squash pass after each feature batch | ✅ |
+| `maps.update` missing audit log | ✅ |
+| TYPE_DEBT cast removal (hooks.server.ts, auth/index.ts) | ✅ |
 
 ### Toolchain & Quality Gates
 
 | Item | Status |
 |---|---|
-| CI pipeline (GitHub Actions: lint, svelte-check, test, build) | ⬜ |
+| CI pipeline (GitHub Actions: lint, svelte-check, test, build) | ✅ |
 | Playwright E2E tests (auth, import, share critical paths) | ⬜ |
-| Vitest coverage thresholds (`lines: 85, functions: 85, branches: 80`) | ⬜ |
-| ADRs 004–006 (Martin tile server, BullMQ over pg-boss, Fetch adapter over WebSocket) | ⬜ |
+| Vitest coverage thresholds (75/85/84/75 — ratcheting toward 85/85/80) | ✅ |
+| ADRs 004–006 (Martin tile server, BullMQ over pg-boss, Fetch adapter over WebSocket) | ✅ |
 
 ### Logging & Reliability
 
 | Item | Status |
 |---|---|
 | pino structured JSON logging (replace `console.warn/error` with `[INF/WRN/ERR]`) | ⬜ |
-| Rate limiting in `hooks.server.ts` | ⬜ |
+| Rate limiting on auth endpoints (in-memory, 10 req/min/IP) | ✅ |
 
 ### Export Formats
 
@@ -199,6 +201,6 @@ See [`docs/adr/`](adr/) for recorded decisions:
 - [ADR-001](adr/001-sveltekit-over-nextjs.md) — SvelteKit over Next.js
 - [ADR-002](adr/002-postgis-as-analysis-engine.md) — PostGIS as the analysis engine
 - [ADR-003](adr/003-uuid-primary-keys.md) — UUID primary keys throughout
-- ADR-004 — Martin over pg_tileserv *(Phase 5b)*
-- ADR-005 — BullMQ over pg-boss *(Phase 5b)*
-- ADR-006 — tRPC Fetch adapter over trpc-sveltekit WebSocket *(Phase 5b)*
+- [ADR-004](adr/004-martin-over-pg-tileserv.md) — Martin over pg_tileserv
+- [ADR-005](adr/005-bullmq-over-pg-boss.md) — BullMQ over pg-boss
+- [ADR-006](adr/006-trpc-fetch-over-websocket.md) — tRPC Fetch adapter over trpc-sveltekit WebSocket

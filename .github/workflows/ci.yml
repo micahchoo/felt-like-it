@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint (web)
+        run: pnpm --filter @felt-like-it/web exec eslint src/ --max-warnings 0
+
+      - name: Type check (web)
+        run: pnpm --filter @felt-like-it/web exec svelte-check --threshold warning
+
+      - name: Test (shared-types)
+        run: pnpm --filter @felt-like-it/shared-types run test
+
+      - name: Test (geo-engine)
+        run: pnpm --filter @felt-like-it/geo-engine run test
+
+      - name: Test (web)
+        run: pnpm --filter @felt-like-it/web run test
+
+      - name: Build
+        run: pnpm build

@@ -1,14 +1,52 @@
 # Felt Like It — Build State
 
-## Phase 5 — Enterprise Polish 🚧 IN PROGRESS
+## Phase 5 — Enterprise Polish ✅ COMPLETE
 
-**Tests:** 296 passing (web) · shared-types: 96 · geo-engine: 178 — total: 570
+**Tests:** 301 passing (web) · shared-types: 96 · geo-engine: 178 — total: 575
 **svelte-check:** 0 errors · 0 warnings
 **Lint (web):** 0 errors · 0 warnings
 
 ---
 
-## Delta — this round (Bug-squash: collaborator access + coverage gaps)
+## Delta — this round (Hardening: Phase 5b batch)
+
+### Fixed
+- `apps/web/src/lib/server/trpc/routers/maps.ts` — added missing `appendAuditLog` to `maps.update` (12 mutations now audit-logged)
+- `apps/web/src/hooks.server.ts` — removed TYPE_DEBT cast; added rate limiting on auth endpoints (10 req/min/IP)
+- `apps/web/src/lib/server/auth/index.ts` — removed unnecessary `as { email; name }` cast
+
+### Added
+- `apps/web/src/lib/server/rate-limit.ts` — in-memory sliding-window rate limiter
+- `apps/web/src/__tests__/rate-limit.test.ts` — 4 tests: under limit, over limit, IP isolation, window expiry
+- `.github/workflows/ci.yml` — GitHub Actions: lint, svelte-check, test (all 3 packages), build
+- `docs/adr/004-martin-over-pg-tileserv.md` — ADR-004
+- `docs/adr/005-bullmq-over-pg-boss.md` — ADR-005
+- `docs/adr/006-trpc-fetch-over-websocket.md` — ADR-006
+- `apps/web/vite.config.ts` — raised coverage thresholds to 75/85/84/75; scoped coverage to server + stores
+
+### Docs
+- `docs/ARCHITECTURE.md` — fixed tRPC table (added 6 missing routers, removed nonexistent `styles`); added 3 missing DB tables; fixed `map_events` column names; updated request flow diagram; added API key auth; updated test file list (23 files); synced test count (575); updated audit mutation count (12); updated Delta from Original Vision (rate limiting, CI, ADRs, coverage now done)
+- `docs/ROADMAP.md` — fixed MapLibre GL 4→5; marked Phase 5b hardening items complete; linked ADRs 004-006
+- `STATE.md` — updated test count (575); removed stale gaps; updated Phase 5b checklist
+- `docs/DOCSTATE.md` — created (doc status tracker with coverage + gaps)
+
+### Tests
+- `apps/web/src/__tests__/maps.test.ts` — added test for `maps.update` audit log call
+- Total: 575 (web: 301, geo-engine: 178, shared-types: 96)
+
+---
+
+## Delta — previous round (Bug-fix: toolbar overflow hiding annotation suite)
+
+### Fixed
+- `apps/web/src/lib/components/map/MapEditor.svelte`
+  - **Root cause**: 11 toolbar buttons totalling ~1144px minimum width overflowed the center column (clipped silently by outer `overflow-hidden`). "Annotate" disappeared at ≤~1048px total window width.
+  - **Fix**: Converted 9 of 11 buttons to icon-only (kept text labels only on Import/Export which have no icon-only precedent); added `<Tooltip>` to Table and Save View (previously un-labelled icon-only); removed text from Comments/Annotate/Measure/Geoprocess/Collaborators/Activity (all already Tooltip-wrapped). Tightened `gap-2 → gap-1`.
+  - New toolbar minimum width: ~556px — fits at any screen ≥ 780px.
+
+---
+
+## Delta — previous round (Bug-squash: collaborator access + coverage gaps)
 
 ### Fixed
 - `apps/web/src/routes/(app)/map/[id]/+page.server.ts`
@@ -19,7 +57,7 @@
 - `apps/web/src/lib/server/trpc/routers/layers.ts`
   - `layers.update`: added null guard before spread — throws INTERNAL_SERVER_ERROR if `.returning()` is empty
 - `apps/web/src/hooks.server.ts`
-  - Added `TYPE_DEBT` comment on `userRow as unknown as User` cast
+  - Removed `TYPE_DEBT` cast on `userRow` — Lucia `DatabaseUserAttributes` makes it structurally identical to `User`
 
 ### Added
 - `apps/web/src/__tests__/features.test.ts` — 9 tests: `list` (FeatureCollection, NOT_FOUND ×2), `upsert` (insert, update, NOT_FOUND, FORBIDDEN), `delete` (count, NOT_FOUND)
@@ -70,7 +108,6 @@
 
 - **None blocking merge.**
 - `TODO(loop):` multi-table GeoPackage import (escalated — structural worker change, not blocking)
-- Worker lint not counted — pre-existing `no-undef`.
 - Measurement tool: live/interactive measurement not implemented — only final shape is measured.
 - `GeoAggregateBaseSchema` used in discriminated union (not refined); cross-field invariant at router level only.
 - `/embed/[token]` frame header: self-hosters using nginx with `add_header X-Frame-Options SAMEORIGIN` at proxy level must remove that header for embed to work.
@@ -89,17 +126,19 @@
 | **Audit logs** (hash-chain tamper-evident; `appendAuditLog` hooked into 11 mutations; `list`+`verify` tRPC; 9 tests) | ✅ |
 | **Collaborator role enforcement** (`requireMapAccess` helper; viewer/commenter/editor enforced across maps/layers/features/geoprocessing/annotations/comments; editor page collab access; `maps.listCollaborating` + dashboard "Shared with me"; 11 access tests) | ✅ |
 
-## Phase 5b checklist — NEXT ⬜
+## Phase 5b checklist — IN PROGRESS 🚧
 
 | Item | Status |
 |---|------|
-| Recurring bug-squash pass after each feature batch | ⬜ |
-| CI pipeline (GitHub Actions) | ⬜ |
+| Recurring bug-squash pass after each feature batch | ✅ |
+| CI pipeline (GitHub Actions: lint, svelte-check, test, build) | ✅ |
+| Vitest coverage thresholds (75/85/84/75) | ✅ |
+| ADRs 004–006 (Martin, BullMQ, tRPC Fetch) | ✅ |
+| Rate limiting on auth endpoints (10 req/min/IP) | ✅ |
+| `maps.update` audit log (12 mutations now) | ✅ |
+| TYPE_DEBT cast removal (hooks.server.ts, auth/index.ts) | ✅ |
 | Playwright E2E tests | ⬜ |
-| Vitest coverage thresholds | ⬜ |
-| ADRs 004–006 | ⬜ |
 | pino structured logging | ⬜ |
-| Rate limiting | ⬜ |
 | GeoPackage / Shapefile / PDF export | ⬜ |
 | Admin panel + admin-cli.ts | ⬜ |
 | S3 / MinIO file storage | ⬜ |

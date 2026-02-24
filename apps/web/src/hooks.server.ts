@@ -2,13 +2,22 @@ import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { lucia } from '$lib/server/auth/index.js';
 import { db, apiKeys, users } from '$lib/server/db/index.js';
+import { checkRateLimit } from '$lib/server/rate-limit.js';
 import type { Handle, HandleServerError } from '@sveltejs/kit';
-import type { User } from 'lucia';
 
 export const handle: Handle = async ({ event, resolve }) => {
   const start = Date.now();
   const { method } = event.request;
   const path = event.url.pathname;
+
+  // ── Rate limiting on auth endpoints ──────────────────────────────────────
+  const isAuthEndpoint = method === 'POST' && (path === '/auth/login' || path === '/auth/signup');
+  if (isAuthEndpoint) {
+    const ip = event.getClientAddress();
+    if (!checkRateLimit(ip)) {
+      return new Response('Too many requests', { status: 429 });
+    }
+  }
 
   // ── API key (Bearer) auth — takes priority over session cookie ────────────
   const authHeader = event.request.headers.get('authorization');
@@ -28,8 +37,7 @@ export const handle: Handle = async ({ event, resolve }) => {
         .where(eq(users.id, keyRow.userId));
 
       if (userRow) {
-        // TYPE_DEBT: userRow only has {id, email, name}; Lucia User has more fields
-        event.locals.user = userRow as unknown as User;
+        event.locals.user = userRow;
         event.locals.session = null;
         // Fire-and-forget: update last_used_at without blocking the request
         void db

@@ -33,11 +33,11 @@ Browser
   ▼
 SvelteKit (apps/web)
   ├── +page.server.ts   → Drizzle ORM → PostgreSQL 16 + PostGIS 3.4
-  ├── hooks.server.ts   → Lucia v3 session validation
+  ├── hooks.server.ts   → API key Bearer auth → Lucia v3 session validation
   └── /api/trpc/[...trpc]
           │  tRPC 11 Fetch adapter
           ▼
-      tRPC routers (maps · layers · features · styles · shares)
+      tRPC routers (11: maps · layers · features · shares · events · comments · collaborators · geoprocessing · annotations · apiKeys · auditLog)
           │
           ▼
       Drizzle ORM (pg pool)
@@ -77,7 +77,10 @@ Browser polls GET /api/job/[jobId]  ←→  worker updates import_jobs.progress
 | `import_jobs` | `id uuid PK`, `map_id FK`, `layer_id FK nullable`, `status`, `file_name`, `file_size`, `error_message`, `progress int` |
 | `map_collaborators` | `id uuid PK`, `map_id FK CASCADE`, `user_id FK CASCADE`, `role text` (viewer\|commenter\|editor), `invited_by FK SET NULL`; UNIQUE(map_id, user_id) |
 | `comments` | `id uuid PK`, `map_id FK CASCADE`, `user_id FK SET NULL`, `author_name text`, `body text`, `resolved bool`, `created_at`, `updated_at` |
-| `map_events` | `id uuid PK`, `map_id FK CASCADE`, `user_id FK SET NULL`, `event_type text`, `payload jsonb`, `created_at` |
+| `map_events` | `id uuid PK`, `map_id FK CASCADE`, `user_id FK SET NULL`, `action text`, `metadata jsonb`, `created_at` |
+| `annotations` | `id uuid PK`, `map_id FK CASCADE`, `user_id FK SET NULL`, `author_name text`, `anchor_point geometry(Point,4326)`, `content jsonb` |
+| `audit_log` | `seq bigserial PK`, `user_id FK SET NULL`, `action text`, `entity_type text`, `entity_id text`, `map_id FK SET NULL`, `metadata jsonb`, `prev_hash text`, `chain_hash text` |
+| `api_keys` | `id uuid PK`, `user_id FK CASCADE`, `name text`, `key_hash text unique`, `prefix text`, `last_used_at timestamp nullable` |
 
 `maps` also has `is_template bool default false` — template maps are shared across all users and cloned config-only (features are not copied).
 
@@ -101,6 +104,7 @@ SELECT $newLayerId, geometry, properties FROM features WHERE layer_id = $oldLaye
 - **Library:** Lucia v3 + `@lucia-auth/adapter-drizzle`
 - **Password hashing:** `@node-rs/argon2` (`hash` / `verify`)
 - **Session storage:** `sessions` table (text PK, not UUID — Lucia requirement)
+- **API keys:** `flk_<64-hex>` Bearer tokens; SHA-256 hash-only storage in `api_keys` table; `hooks.server.ts` checks `Authorization: Bearer` header before session validation
 - **Session validation:** `hooks.server.ts` reads `lucia.validateSession()` on every request; injects `event.locals.user` + `event.locals.session`
 - **CSRF:** SvelteKit built-in (same-origin form actions + `Origin` header check on mutations)
 
@@ -114,16 +118,17 @@ SELECT $newLayerId, geometry, properties FROM features WHERE layer_id = $oldLaye
 
 | Router | Procedure | Auth |
 |---|---|---|
-| maps | list, get, create, update, delete, clone, listTemplates, createFromTemplate | protected |
-| layers | list, get, create, update, delete, reorder | protected |
+| maps | list, get, create, update, delete, clone, listTemplates, createFromTemplate, listCollaborating | protected |
+| layers | list, create, update, delete, reorder | protected |
 | features | list, upsert, delete | protected |
-| styles | update | protected |
-| shares | create, update, getByToken | create/update: protected; getByToken: public |
-| collaborators | list, invite, remove, updateRole | protected |
-| comments | list, create, delete, resolve | protected |
-| comments | listForShare, createForShare | public (share token validated against `shares` table) |
+| shares | create, getForMap, delete, resolve | create/getForMap/delete: protected; resolve: public |
 | events | list, log | protected |
+| comments | list, create, delete, resolve, listForShare, createForShare | list/create/delete/resolve: protected; listForShare/createForShare: public |
+| collaborators | list, invite, remove, updateRole | protected |
 | geoprocessing | run | protected |
+| annotations | list, create, update, delete, fetchIiifNavPlace | protected |
+| apiKeys | list, create, revoke | protected |
+| auditLog | list, verify | protected |
 
 **Embed route** (`/embed/[token]`): same token lookup as `/share/[token]` but renders `MapEditor` with `embed={true}` — no toolbar, no layer panel, no basemap picker, no side panels. Sets `Content-Security-Policy: frame-ancestors *` via `setHeaders` so the page can be framed from any origin. The share viewer (`/share/[token]`) provides a "Embed" button that copies the `<iframe src="/embed/[token]" ...>` snippet to the clipboard.
 
@@ -338,7 +343,7 @@ The `geoprocessing.run` mutation:
 |---|---|---|
 | `shared-types` | `schemas.test.ts` | node (Vitest) |
 | `geo-engine` | `detect.test.ts`, `auto-style.test.ts`, `validate.test.ts`, `filters.test.ts`, `interpolators.test.ts` | node (Vitest) |
-| `web` | `password.test.ts`, `import-*.test.ts`, `maps.test.ts`, `layers.test.ts`, `layers-store.test.ts`, `undo-store.test.ts` | node + jsdom (Vitest) |
+| `web` | 23 files: `password`, `import-*` (5), `maps`, `layers`, `features`, `shares`, `comments`, `guest-comments`, `collaborators`, `annotations`, `geoprocessing`, `events`, `audit-log`, `api-keys`, `map-access`, `rate-limit`, `layers-store`, `undo-store`, `filters-store` | node (Vitest) |
 
 **Drizzle mock pattern:** `vi.mock('$lib/server/db/index.js', ...)` with `drizzleChain<T>(value)` helper.
 **Critical:** `vi.resetAllMocks()` in `beforeEach` (not `clearAllMocks`) — clears pending `mockReturnValueOnce` queues.
@@ -379,7 +384,7 @@ All services on `felt-network`. Health-check: `wget -qO- http://127.0.0.1:3000/`
 
 ## Current State (Phase 5 complete, Feb 2026)
 
-**Tests:** 570 (web: 296 · geo-engine: 178 · shared-types: 96) · **Migrations:** 0000–0008 · **Services:** 5 · **svelte-check:** 0 errors · 0 warnings
+**Tests:** 575 (web: 301 · geo-engine: 178 · shared-types: 96) · **Migrations:** 0000–0008 · **Services:** 5 · **svelte-check:** 0 errors · 0 warnings
 
 | Capability | Status |
 |---|---|
@@ -403,7 +408,7 @@ All services on `felt-network`. Health-check: `wget -qO- http://127.0.0.1:3000/`
 | Comment threads: owner + collaborators + guest commenting via share token | ✅ |
 | Activity feed (`map_events` table; client-side logging) | ✅ |
 | Collaborator invitations: viewer / commenter / editor roles (enforced on all tRPC routers + editor page) | ✅ |
-| Audit log: tamper-evident BIGSERIAL hash chain; `appendAuditLog` on 11 mutations | ✅ |
+| Audit log: tamper-evident BIGSERIAL hash chain; `appendAuditLog` on 12 mutations | ✅ |
 | GeoJSON export per layer (streaming `ST_AsGeoJSON`) | ✅ |
 | High-res PNG screenshot export (`pixelRatio: 2`) | ✅ |
 | Martin vector tiles: layers > 10 K features → `VectorTileSource` | ✅ |
@@ -411,12 +416,12 @@ All services on `felt-network`. Health-check: `wget -qO- http://127.0.0.1:3000/`
 | Real-time collaboration (Yjs CRDT, presence, cursors) | ⬜ Phase 6 |
 | Team library (shared dataset repository) | ⬜ Phase 6 |
 | pino structured logging | ⬜ Phase 5b |
-| Rate limiting | ⬜ Phase 5b |
+| Rate limiting on auth endpoints (in-memory, 10 req/min/IP) | ✅ |
 | Export: GeoPackage / Shapefile / PDF | ⬜ Phase 5b |
 | Admin panel / `admin-cli.ts` | ⬜ Phase 5b |
 | S3 / MinIO file storage | ⬜ Phase 5b |
 | Tippecanoe tile pipeline | ⬜ Phase 5b |
-| CI pipeline (GitHub Actions) | ⬜ Phase 5b |
+| CI pipeline (GitHub Actions: lint, svelte-check, test, build) | ✅ |
 | Playwright E2E tests | ⬜ Phase 5b |
 | SSO / SAML | ⬜ Phase 7 |
 | Raster support (GeoTIFF / COG) | ⬜ Phase 7 |
@@ -438,14 +443,10 @@ Compares `OriginalVision.md` to what was actually built. See `docs/plans/2026-02
 | Team library (shared dataset repository) | Phase 3 | Phase 6 |
 | Tippecanoe tile pipeline | Phase 2 | Phase 5b |
 | pino structured JSON logging | Vision | Phase 5b |
-| Rate limiting in `hooks.server.ts` | Vision | Phase 5b |
-| CI pipeline (GitHub Actions) | Vision | Phase 5b |
 | Playwright E2E tests | Vision | Phase 5b |
-| Vitest coverage thresholds | Vision | Phase 5b |
 | GeoPackage / Shapefile / PDF export | Vision | Phase 5b |
 | Admin panel + `admin-cli.ts` | Vision | Phase 5b |
 | S3 / MinIO file storage | Vision | Phase 5b |
-| ADRs 004–006 | Vision | Phase 5b |
 | SSO / SAML (Arctic OIDC + SAML2) | Phase 5 | Phase 7 |
 | Raster support (GeoTIFF + COG) | Phase 5 | Phase 7 |
 | Helm chart (Kubernetes) | Phase 5 | Phase 7 |
@@ -463,11 +464,11 @@ Where the final implementation differs from what `OriginalVision.md` specified.
 | Martin tile server | Custom `services/tile-server/` service | Stock `ghcr.io/maplibre/martin` Docker image |
 | Application logging | pino structured JSON | `console.warn/error` with `[INF/WRN/ERR]` prefix |
 | File storage | Local disk + S3/MinIO | Local disk volume only |
-| Rate limiting | `hooks.server.ts` rate limiter | Not implemented |
+| Rate limiting | `hooks.server.ts` rate limiter | In-memory sliding-window on auth endpoints (10 req/min/IP) |
 | ESLint TypeScript rules | `no-explicit-any: error`; `no-unsafe-*`; `parserOptions.project` | `parserOptions.project` removed (TypeScript OOM); `no-unsafe-*` omitted |
-| Test coverage gates | `vitest.config.ts` thresholds enforced in CI | No thresholds; CI not configured |
+| Test coverage gates | `vitest.config.ts` thresholds enforced in CI | Thresholds set (75/85/84/75); CI configured (GitHub Actions) |
 | Migration authoring | `drizzle-kit generate` + testcontainers integration tests | Hand-authored SQL (PostGIS geometry DDL); no testcontainers |
-| ADRs | 6+ decision records | 3 ADRs written (001–003); 004–006 planned for Phase 5b |
+| ADRs | 6+ decision records | 6 ADRs written (001–006) |
 | Comments access | Collaborator roles from day one | Initially owner-only; fixed in Phase 5 bug-squash |
 
 ### Added Scope

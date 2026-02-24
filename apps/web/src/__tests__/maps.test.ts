@@ -5,6 +5,8 @@ import type { User } from 'lucia';
 
 // --- Module mocks ---
 
+vi.mock('$lib/server/audit/index.js', () => ({ appendAuditLog: vi.fn() }));
+
 vi.mock('$lib/server/db/index.js', () => ({
   db: {
     select:      vi.fn(),
@@ -22,6 +24,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 
 import { mapsRouter } from '../lib/server/trpc/routers/maps.js';
 import { db } from '$lib/server/db/index.js';
+import { appendAuditLog } from '$lib/server/audit/index.js';
 
 // Type helper so TypeScript accepts vi.mocked(db.execute).mockResolvedValue(...)
 type DbExecuteResult = Awaited<ReturnType<typeof db.execute>>;
@@ -162,6 +165,22 @@ describe('maps.update', () => {
 
     const result = await makeCaller().update({ id: MAP_ID, title: 'Renamed Map' });
     expect(result?.title).toBe('Renamed Map');
+  });
+
+  it('calls appendAuditLog with map.update after a successful update', async () => {
+    const updated = { ...MOCK_MAP, title: 'Renamed Map' };
+    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
+    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]) as unknown as ReturnType<typeof db.update>);
+
+    await makeCaller().update({ id: MAP_ID, title: 'Renamed Map' });
+
+    expect(appendAuditLog).toHaveBeenCalledWith({
+      userId: USER_ID,
+      action: 'map.update',
+      entityType: 'map',
+      entityId: MAP_ID,
+      mapId: MAP_ID,
+    });
   });
 
   it('throws NOT_FOUND when the map does not belong to the caller', async () => {
