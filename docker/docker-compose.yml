@@ -1,0 +1,132 @@
+name: felt-like-it
+
+services:
+  # ── PostgreSQL + PostGIS ────────────────────────────────────────────────────
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: felt
+      POSTGRES_USER: felt
+      POSTGRES_PASSWORD: felt
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U felt -d felt"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - felt-network
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - felt-network
+
+  # ── SvelteKit App ──────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://felt:felt@postgres:5432/felt
+      REDIS_URL: redis://redis:6379
+      UPLOAD_DIR: /uploads
+      ORIGIN: http://localhost:3000
+      NODE_ENV: production
+      # Martin tile server URL visible from the browser (external port)
+      # Set to empty string to disable vector tile mode (all layers render as GeoJSON)
+      PUBLIC_MARTIN_URL: http://localhost:3001
+      # Nominatim geocoding (CSV address column → points). Leave commented to use
+      # official OSM Nominatim (1 req/s limit). Set to a self-hosted instance for
+      # production or high-volume imports.
+      # NOMINATIM_URL: http://nominatim:8080
+      # GEOCODING_USER_AGENT: felt-like-it/1.0
+      # Generate with: openssl rand -hex 32
+      SESSION_SECRET: change-me-in-production-use-a-real-secret
+    volumes:
+      - uploads:/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - felt-network
+
+  # ── BullMQ Worker ──────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://felt:felt@postgres:5432/felt
+      REDIS_URL: redis://redis:6379
+      UPLOAD_DIR: /uploads
+      NODE_ENV: production
+    volumes:
+      - uploads:/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - felt-network
+
+  # ── Martin Tile Server ─────────────────────────────────────────────────────
+  # Vector tile serving for layers with large feature counts (>10K features).
+  # Martin auto-discovers tables with geometry columns in PostGIS.
+  # Tile URL pattern: http://martin:3000/{table}/{z}/{x}/{y}
+  # From the web container (internal): http://martin:3000
+  # From the browser (external): http://localhost:3001
+  martin:
+    image: ghcr.io/maplibre/martin:latest
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://felt:felt@postgres:5432/felt
+    volumes:
+      - ./martin.yaml:/config/martin.yaml:ro
+    command:
+      - "--config"
+      - "/config/martin.yaml"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - felt-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads:
+
+networks:
+  felt-network:
+    driver: bridge

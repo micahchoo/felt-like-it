@@ -1,0 +1,164 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { filterStore } from '../lib/stores/filters.svelte.js';
+import type { GeoJSONFeature } from '@felt-like-it/shared-types';
+
+// geo-engine module is ESM — mock it so fslFiltersToMapLibre returns a simple
+// MapLibre expression without needing the full module tree.
+vi.mock('@felt-like-it/geo-engine', () => ({
+  fslFiltersToMapLibre: (filters: unknown[][]) => {
+    if (!filters || filters.length === 0) return null;
+    if (filters.length === 1) {
+      const [field, _op, value] = filters[0] as [string, string, string];
+      return ['==', ['get', field], value] as unknown[];
+    }
+    return ['all', ...filters.map(([f, , v]) => ['==', ['get', f], v])] as unknown[];
+  },
+}));
+
+import { vi } from 'vitest';
+
+const LAYER_A = 'aaaa-aaaa';
+const LAYER_B = 'bbbb-bbbb';
+
+function makeFeature(id: string, props: Record<string, unknown>): GeoJSONFeature {
+  return {
+    id,
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [0, 0] },
+    properties: props,
+  } as GeoJSONFeature;
+}
+
+describe('filterStore — basic CRUD', () => {
+  beforeEach(() => {
+    filterStore.clear(LAYER_A);
+    filterStore.clear(LAYER_B);
+  });
+
+  it('starts empty', () => {
+    expect(filterStore.get(LAYER_A)).toEqual([]);
+    expect(filterStore.hasFilters(LAYER_A)).toBe(false);
+  });
+
+  it('add() appends a filter', () => {
+    filterStore.add(LAYER_A, { field: 'name', operator: 'eq', value: 'Paris' });
+    expect(filterStore.get(LAYER_A)).toHaveLength(1);
+    expect(filterStore.hasFilters(LAYER_A)).toBe(true);
+  });
+
+  it('add() keeps layers independent', () => {
+    filterStore.add(LAYER_A, { field: 'a', operator: 'eq', value: '1' });
+    filterStore.add(LAYER_B, { field: 'b', operator: 'ne', value: '2' });
+    expect(filterStore.get(LAYER_A)).toHaveLength(1);
+    expect(filterStore.get(LAYER_B)).toHaveLength(1);
+  });
+
+  it('remove() removes the filter at the given index', () => {
+    filterStore.add(LAYER_A, { field: 'a', operator: 'eq', value: '1' });
+    filterStore.add(LAYER_A, { field: 'b', operator: 'gt', value: '5' });
+    filterStore.remove(LAYER_A, 0);
+    expect(filterStore.get(LAYER_A)).toHaveLength(1);
+    expect(filterStore.get(LAYER_A)[0]?.field).toBe('b');
+  });
+
+  it('clear() removes all filters for that layer only', () => {
+    filterStore.add(LAYER_A, { field: 'a', operator: 'eq', value: '1' });
+    filterStore.add(LAYER_B, { field: 'b', operator: 'eq', value: '2' });
+    filterStore.clear(LAYER_A);
+    expect(filterStore.get(LAYER_A)).toHaveLength(0);
+    expect(filterStore.get(LAYER_B)).toHaveLength(1);
+  });
+});
+
+describe('filterStore.toMapLibreFilter()', () => {
+  beforeEach(() => filterStore.clear(LAYER_A));
+
+  it('returns undefined when no filters are set', () => {
+    expect(filterStore.toMapLibreFilter(LAYER_A)).toBeUndefined();
+  });
+
+  it('returns a MapLibre filter expression when filters are set', () => {
+    filterStore.add(LAYER_A, { field: 'name', operator: 'eq', value: 'Paris' });
+    const filter = filterStore.toMapLibreFilter(LAYER_A);
+    expect(filter).toBeDefined();
+    expect(Array.isArray(filter)).toBe(true);
+  });
+});
+
+describe('filterStore.applyToFeatures() — operator coverage', () => {
+  beforeEach(() => filterStore.clear(LAYER_A));
+
+  const features = [
+    makeFeature('1', { city: 'Paris',  pop: 2_100_000, tag: 'capital,eu' }),
+    makeFeature('2', { city: 'Lyon',   pop:   500_000, tag: 'eu' }),
+    makeFeature('3', { city: 'Tokyo',  pop: 14_000_000, tag: 'capital,asia' }),
+    makeFeature('4', { city: 'Osaka',  pop:  2_700_000, tag: 'asia' }),
+  ];
+
+  it('eq: returns matching features', () => {
+    filterStore.add(LAYER_A, { field: 'city', operator: 'eq', value: 'Paris' });
+    const result = filterStore.applyToFeatures(LAYER_A, features);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.properties?.['city']).toBe('Paris');
+  });
+
+  it('ne: excludes matching features', () => {
+    filterStore.add(LAYER_A, { field: 'city', operator: 'ne', value: 'Paris' });
+    const result = filterStore.applyToFeatures(LAYER_A, features);
+    expect(result).toHaveLength(3);
+    expect(result.every((f) => f.properties?.['city'] !== 'Paris')).toBe(true);
+  });
+
+  it('lt: returns features below numeric threshold', () => {
+    filterStore.add(LAYER_A, { field: 'pop', operator: 'lt', value: '1000000' });
+    const result = filterStore.applyToFeatures(LAYER_A, features);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.properties?.['city']).toBe('Lyon');
+  });
+
+  it('gt: returns features above numeric threshold', () => {
+    filterStore.add(LAYER_A, { field: 'pop', operator: 'gt', value: '3000000' });
+    const result = filterStore.applyToFeatures(LAYER_A, features);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.properties?.['city']).toBe('Tokyo');
+  });
+
+  it('cn: case-insensitive substring match', () => {
+    filterStore.add(LAYER_A, { field: 'city', operator: 'cn', value: 'yon' });
+    const result = filterStore.applyToFeatures(LAYER_A, features);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.properties?.['city']).toBe('Lyon');
+  });
+
+  it('in: returns features whose value is in the comma-separated list', () => {
+    filterStore.add(LAYER_A, { field: 'city', operator: 'in', value: 'Paris, Tokyo' });
+    const result = filterStore.applyToFeatures(LAYER_A, features);
+    expect(result).toHaveLength(2);
+  });
+
+  it('ni: returns features whose value is NOT in the list', () => {
+    filterStore.add(LAYER_A, { field: 'city', operator: 'ni', value: 'Paris, Lyon' });
+    const result = filterStore.applyToFeatures(LAYER_A, features);
+    expect(result).toHaveLength(2);
+    expect(result.map((f) => f.properties?.['city'])).toEqual(['Tokyo', 'Osaka']);
+  });
+
+  it('multiple filters are ANDed together', () => {
+    filterStore.add(LAYER_A, { field: 'tag', operator: 'cn', value: 'capital' });
+    filterStore.add(LAYER_A, { field: 'pop', operator: 'lt', value: '5000000' });
+    const result = filterStore.applyToFeatures(LAYER_A, features);
+    // capitals: Paris (2.1M) + Tokyo (14M) → only Paris passes pop < 5M
+    expect(result).toHaveLength(1);
+    expect(result[0]?.properties?.['city']).toBe('Paris');
+  });
+
+  it('returns all features unmodified when no filters are active', () => {
+    const result = filterStore.applyToFeatures(LAYER_A, features);
+    expect(result).toHaveLength(features.length);
+  });
+
+  it('returns empty array when no features match', () => {
+    filterStore.add(LAYER_A, { field: 'city', operator: 'eq', value: 'Berlin' });
+    expect(filterStore.applyToFeatures(LAYER_A, features)).toHaveLength(0);
+  });
+});

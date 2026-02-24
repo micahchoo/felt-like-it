@@ -1,0 +1,33 @@
+# Martin tile server configuration
+# See: https://maplibre.org/martin/
+
+listen_addresses: "0.0.0.0:3000"
+keep_alive: 75
+
+postgres:
+  connection_string: ${DATABASE_URL}
+
+  # Auto-discover all tables with geometry columns
+  auto_publish:
+    tables:
+      # Expose the features table with all its columns including layer_id
+      # Tile URL: /features/{z}/{x}/{y}
+      # Filter by layer_id on the client: ["==", ["get", "layer_id"], layerId]
+      from_schemas:
+        - public
+
+  # Optional: explicit table config for fine-tuning
+  tables:
+    features:
+      schema: public
+      table: features
+      srid: 4326
+      geometry_column: geometry
+      geometry_type: GEOMETRY
+      # Include layer_id so MapLibre can filter per-layer
+      properties:
+        layer_id: text
+        properties: jsonb
+      minzoom: 0
+      maxzoom: 22
+      bounds: [-180.0, -90.0, 180.0, 90.0]

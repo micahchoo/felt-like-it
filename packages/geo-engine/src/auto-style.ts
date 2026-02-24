@@ -1,0 +1,269 @@
+import type { LayerStyle, LayerType, LegendEntry } from '@felt-like-it/shared-types';
+import {
+  isCategoricalColumn,
+  isNumericColumn,
+  getUniqueValues,
+} from './detect.js';
+
+// Default color palettes
+const CATEGORICAL_COLORS = [
+  '#e41a1c',
+  '#377eb8',
+  '#4daf4a',
+  '#984ea3',
+  '#ff7f00',
+  '#a65628',
+  '#f781bf',
+  '#999999',
+  '#8dd3c7',
+  '#bebada',
+  '#fb8072',
+  '#80b1d3',
+];
+
+// Sequential blue ramp (5 classes)
+const GRADUATED_COLORS = ['#eff3ff', '#bdd7e7', '#6baed6', '#3182bd', '#08519c'];
+
+const DEFAULT_POINT_COLOR = '#3b82f6';
+const DEFAULT_LINE_COLOR = '#6366f1';
+const DEFAULT_POLYGON_FILL = '#22c55e';
+const DEFAULT_POLYGON_STROKE = '#15803d';
+
+/**
+ * Generate an auto-style for a layer based on its geometry type and feature properties.
+ */
+export function generateAutoStyle(
+  layerType: LayerType,
+  features: Array<{ properties: Record<string, unknown> }>,
+  preferredField?: string
+): LayerStyle {
+  // Pick the best field for data-driven styling
+  const field = preferredField ?? pickBestField(features);
+
+  if (field !== null) {
+    const values = features
+      .map((f) => f.properties[field])
+      .filter((v) => v !== null && v !== undefined);
+
+    if (isCategoricalColumn(values)) {
+      return generateCategoricalStyle(layerType, field, values);
+    }
+
+    if (isNumericColumn(values)) {
+      return generateGraduatedStyle(layerType, field, values as number[]);
+    }
+  }
+
+  return generateSimpleStyle(layerType);
+}
+
+/** Pick the best field for auto-styling (categorical or numeric) */
+function pickBestField(
+  features: Array<{ properties: Record<string, unknown> }>
+): string | null {
+  if (features.length === 0) return null;
+
+  const firstFeature = features[0];
+  if (!firstFeature) return null;
+
+  const keys = Object.keys(firstFeature.properties ?? {});
+  if (keys.length === 0) return null;
+
+  // Skip common ID and timestamp fields
+  const skipPatterns = /^(id|uuid|fid|gid|objectid|created_at|updated_at|timestamp|the_geom)$/i;
+
+  for (const key of keys) {
+    if (skipPatterns.test(key)) continue;
+    const values = features
+      .map((f) => f.properties[key])
+      .filter((v) => v !== null && v !== undefined);
+    if (isCategoricalColumn(values) || isNumericColumn(values)) {
+      return key;
+    }
+  }
+
+  return null;
+}
+
+function generateSimpleStyle(layerType: LayerType): LayerStyle {
+  switch (layerType) {
+    case 'point':
+    case 'mixed':
+      return {
+        type: 'simple',
+        paint: {
+          'circle-radius': 6,
+          'circle-color': DEFAULT_POINT_COLOR,
+          'circle-opacity': 0.85,
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+        },
+      };
+    case 'line':
+      return {
+        type: 'simple',
+        paint: {
+          'line-color': DEFAULT_LINE_COLOR,
+          'line-width': 2,
+          'line-opacity': 0.9,
+        },
+      };
+    case 'polygon':
+      return {
+        type: 'simple',
+        paint: {
+          'fill-color': DEFAULT_POLYGON_FILL,
+          'fill-opacity': 0.45,
+          'fill-outline-color': DEFAULT_POLYGON_STROKE,
+        },
+      };
+  }
+}
+
+function generateCategoricalStyle(
+  layerType: LayerType,
+  field: string,
+  values: unknown[]
+): LayerStyle {
+  const uniqueValues = getUniqueValues(values);
+  const colorMap: Array<[unknown, string]> = uniqueValues.map((v, i) => [
+    v,
+    CATEGORICAL_COLORS[i % CATEGORICAL_COLORS.length] ?? DEFAULT_POINT_COLOR,
+  ]);
+
+  const legend: LegendEntry[] = colorMap.map(([value, color]) => ({
+    label: String(value),
+    color,
+    value: String(value),
+  }));
+
+  // Build MapLibre expression: ["match", ["get", field], val1, color1, val2, color2, ..., fallback]
+  const matchExpression: unknown[] = ['match', ['get', field]];
+  for (const [val, color] of colorMap) {
+    matchExpression.push(val, color);
+  }
+  matchExpression.push(DEFAULT_POINT_COLOR); // fallback
+
+  const categories = uniqueValues.map(String);
+  const config = { categoricalAttribute: field, categories };
+
+  switch (layerType) {
+    case 'point':
+    case 'mixed':
+      return {
+        type: 'categorical',
+        config,
+        colorField: field,
+        paint: {
+          'circle-radius': 6,
+          'circle-color': matchExpression,
+          'circle-opacity': 0.85,
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+        },
+        legend,
+      };
+    case 'line':
+      return {
+        type: 'categorical',
+        config,
+        colorField: field,
+        paint: {
+          'line-color': matchExpression,
+          'line-width': 2,
+          'line-opacity': 0.9,
+        },
+        legend,
+      };
+    case 'polygon':
+      return {
+        type: 'categorical',
+        config,
+        colorField: field,
+        paint: {
+          'fill-color': matchExpression,
+          'fill-opacity': 0.45,
+          'fill-outline-color': '#ffffff',
+        },
+        legend,
+      };
+  }
+}
+
+function generateGraduatedStyle(
+  layerType: LayerType,
+  field: string,
+  values: number[]
+): LayerStyle {
+  const nums = values.map(Number).filter((v) => !isNaN(v));
+  if (nums.length === 0) return generateSimpleStyle(layerType);
+
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  const step = (max - min) / GRADUATED_COLORS.length;
+
+  // Build MapLibre step expression
+  const stepExpression: unknown[] = [
+    'step',
+    ['get', field],
+    GRADUATED_COLORS[0] ?? '#eff3ff',
+  ];
+  for (let i = 1; i < GRADUATED_COLORS.length; i++) {
+    stepExpression.push(min + step * i, GRADUATED_COLORS[i] ?? '#08519c');
+  }
+
+  const legend: LegendEntry[] = GRADUATED_COLORS.map((color, i) => ({
+    label: `${(min + step * i).toFixed(1)}–${(min + step * (i + 1)).toFixed(1)}`,
+    color,
+  }));
+
+  // steps: array of [threshold, color] breakpoints (mirrors the step expression)
+  const steps: [number, string][] = GRADUATED_COLORS.map((color, i) => [min + step * i, color]);
+
+  const config = { numericAttribute: field, steps };
+
+  switch (layerType) {
+    case 'point':
+    case 'mixed':
+      return {
+        type: 'numeric',
+        config,
+        colorField: field,
+        colorRamp: GRADUATED_COLORS,
+        paint: {
+          'circle-radius': 6,
+          'circle-color': stepExpression,
+          'circle-opacity': 0.85,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': '#ffffff',
+        },
+        legend,
+      };
+    case 'line':
+      return {
+        type: 'numeric',
+        config,
+        colorField: field,
+        colorRamp: GRADUATED_COLORS,
+        paint: {
+          'line-color': stepExpression,
+          'line-width': 2,
+          'line-opacity': 0.9,
+        },
+        legend,
+      };
+    case 'polygon':
+      return {
+        type: 'numeric',
+        config,
+        colorField: field,
+        colorRamp: GRADUATED_COLORS,
+        paint: {
+          'fill-color': stepExpression,
+          'fill-opacity': 0.55,
+          'fill-outline-color': '#ffffff',
+        },
+        legend,
+      };
+  }
+}

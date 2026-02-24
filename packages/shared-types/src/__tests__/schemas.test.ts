@@ -1,0 +1,446 @@
+import { describe, it, expect } from 'vitest';
+import {
+  UserSchema,
+  CreateUserSchema,
+  LoginSchema,
+  MapSchema,
+  CreateMapSchema,
+  ViewportSchema,
+  LayerSchema,
+  LayerStyleSchema,
+  GeoJSONFeatureSchema,
+  GeoJSONFeatureCollectionSchema,
+  GeometrySchema,
+  ShareSchema,
+  ImportJobSchema,
+  JobStatusSchema,
+  GeoprocessingOpSchema,
+} from '../index.js';
+
+describe('UserSchema', () => {
+  it('parses valid user', () => {
+    const result = UserSchema.parse({
+      id: '00000000-0000-0000-0000-000000000001',
+      email: 'test@example.com',
+      name: 'Test User',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    expect(result.email).toBe('test@example.com');
+  });
+
+  it('rejects invalid email', () => {
+    expect(() =>
+      UserSchema.parse({
+        id: '00000000-0000-0000-0000-000000000001',
+        email: 'not-an-email',
+        name: 'Test',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+    ).toThrow();
+  });
+});
+
+describe('CreateUserSchema', () => {
+  it('rejects password shorter than 8 characters', () => {
+    expect(() =>
+      CreateUserSchema.parse({ email: 'a@b.com', name: 'Test', password: 'short' })
+    ).toThrow();
+  });
+
+  it('parses valid signup input', () => {
+    const result = CreateUserSchema.parse({
+      email: 'a@b.com',
+      name: 'Test User',
+      password: 'securepassword',
+    });
+    expect(result.email).toBe('a@b.com');
+  });
+});
+
+describe('LoginSchema', () => {
+  it('rejects empty password', () => {
+    expect(() => LoginSchema.parse({ email: 'a@b.com', password: '' })).toThrow();
+  });
+});
+
+describe('ViewportSchema', () => {
+  it('applies defaults for bearing and pitch', () => {
+    const result = ViewportSchema.parse({ center: [0, 0], zoom: 10 });
+    expect(result.bearing).toBe(0);
+    expect(result.pitch).toBe(0);
+  });
+
+  it('rejects invalid zoom', () => {
+    expect(() => ViewportSchema.parse({ center: [0, 0], zoom: 30 })).toThrow();
+  });
+});
+
+describe('MapSchema', () => {
+  it('parses valid map', () => {
+    const map = MapSchema.parse({
+      id: '00000000-0000-0000-0000-000000000001',
+      userId: '00000000-0000-0000-0000-000000000002',
+      title: 'My Map',
+      description: null,
+      viewport: { center: [-122.4, 37.8], zoom: 12 },
+      basemap: 'osm',
+      isArchived: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    expect(map.title).toBe('My Map');
+  });
+});
+
+describe('CreateMapSchema', () => {
+  it('parses minimal input', () => {
+    const result = CreateMapSchema.parse({ title: 'New Map' });
+    expect(result.title).toBe('New Map');
+  });
+
+  it('rejects empty title', () => {
+    expect(() => CreateMapSchema.parse({ title: '' })).toThrow();
+  });
+});
+
+describe('GeometrySchema', () => {
+  it('parses Point geometry', () => {
+    const result = GeometrySchema.parse({ type: 'Point', coordinates: [-122.4, 37.8] });
+    expect(result.type).toBe('Point');
+  });
+
+  it('parses LineString geometry', () => {
+    const result = GeometrySchema.parse({
+      type: 'LineString',
+      coordinates: [
+        [-122.4, 37.8],
+        [-122.5, 37.9],
+      ],
+    });
+    expect(result.type).toBe('LineString');
+  });
+
+  it('parses Polygon geometry', () => {
+    const result = GeometrySchema.parse({
+      type: 'Polygon',
+      coordinates: [
+        [
+          [-122.4, 37.8],
+          [-122.5, 37.8],
+          [-122.5, 37.9],
+          [-122.4, 37.9],
+          [-122.4, 37.8],
+        ],
+      ],
+    });
+    expect(result.type).toBe('Polygon');
+  });
+
+  it('rejects unknown geometry type', () => {
+    expect(() =>
+      GeometrySchema.parse({ type: 'InvalidType', coordinates: [] })
+    ).toThrow();
+  });
+});
+
+describe('GeoJSONFeatureSchema', () => {
+  it('parses a valid Feature', () => {
+    const result = GeoJSONFeatureSchema.parse({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [0, 0] },
+      properties: { name: 'test' },
+    });
+    expect(result.type).toBe('Feature');
+  });
+
+  it('allows null properties', () => {
+    const result = GeoJSONFeatureSchema.parse({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [0, 0] },
+      properties: null,
+    });
+    expect(result.properties).toBeNull();
+  });
+});
+
+describe('GeoJSONFeatureCollectionSchema', () => {
+  it('parses an empty FeatureCollection', () => {
+    const result = GeoJSONFeatureCollectionSchema.parse({
+      type: 'FeatureCollection',
+      features: [],
+    });
+    expect(result.features).toHaveLength(0);
+  });
+});
+
+describe('LayerStyleSchema', () => {
+  it('applies simple default type', () => {
+    const result = LayerStyleSchema.parse({ paint: { 'circle-color': '#ff0000' } });
+    expect(result.type).toBe('simple');
+  });
+
+  it('parses numeric type', () => {
+    const result = LayerStyleSchema.parse({ type: 'numeric', paint: {} });
+    expect(result.type).toBe('numeric');
+  });
+
+  it('parses config.labelAttribute', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      config: { labelAttribute: 'name' },
+    });
+    expect(result.config?.labelAttribute).toBe('name');
+  });
+
+  it('parses label block', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      label: { visible: true, minZoom: 8, color: '#000', haloColor: '#fff', fontSize: 14 },
+    });
+    expect(result.label?.minZoom).toBe(8);
+    expect(result.label?.fontSize).toBe(14);
+  });
+
+  it('rejects invalid minZoom > 22', () => {
+    expect(() =>
+      LayerStyleSchema.parse({ paint: {}, label: { minZoom: 25 } })
+    ).toThrow();
+  });
+
+  it('parses config.categories as string array', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      type: 'categorical',
+      config: { categoricalAttribute: 'status', categories: ['open', 'closed'] },
+    });
+    expect(result.config?.categories).toEqual(['open', 'closed']);
+  });
+
+  it('parses config.steps as [number, string][] tuples', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      type: 'numeric',
+      config: {
+        numericAttribute: 'pop',
+        steps: [
+          [0, '#eff3ff'],
+          [1000, '#bdd7e7'],
+          [5000, '#6baed6'],
+        ],
+      },
+    });
+    expect(result.config?.steps).toHaveLength(3);
+    expect(result.config?.steps?.[0]).toEqual([0, '#eff3ff']);
+  });
+
+  it('rejects config.steps with non-number threshold', () => {
+    expect(() =>
+      LayerStyleSchema.parse({
+        paint: {},
+        config: { steps: [['not-a-number', '#ff0000']] },
+      })
+    ).toThrow();
+  });
+
+  it('parses config.showOther as boolean', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      config: { showOther: false },
+    });
+    expect(result.config?.showOther).toBe(false);
+  });
+
+  it('parses isClickable field', () => {
+    const result = LayerStyleSchema.parse({ paint: {}, isClickable: false });
+    expect(result.isClickable).toBe(false);
+  });
+
+  it('isClickable defaults to undefined (not false)', () => {
+    const result = LayerStyleSchema.parse({ paint: {} });
+    expect(result.isClickable).toBeUndefined();
+  });
+
+  it('parses attributes block with displayName and format', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      attributes: {
+        population: {
+          displayName: 'Population',
+          format: { mantissa: 0, thousandSeparated: true },
+        },
+        name: { displayName: 'Park Name' },
+      },
+    });
+    expect(result.attributes?.['population']?.displayName).toBe('Population');
+    expect(result.attributes?.['population']?.format?.mantissa).toBe(0);
+    expect(result.attributes?.['population']?.format?.thousandSeparated).toBe(true);
+    expect(result.attributes?.['name']?.displayName).toBe('Park Name');
+  });
+
+  it('rejects attributes.format.mantissa > 10', () => {
+    expect(() =>
+      LayerStyleSchema.parse({
+        paint: {},
+        attributes: { value: { format: { mantissa: 15 } } },
+      })
+    ).toThrow();
+  });
+
+  it('rejects attributes.format.mantissa < 0', () => {
+    expect(() =>
+      LayerStyleSchema.parse({
+        paint: {},
+        attributes: { value: { format: { mantissa: -1 } } },
+      })
+    ).toThrow();
+  });
+
+  it('parses popup block with titleAttribute and keyAttributes', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      popup: {
+        titleAttribute: 'name',
+        keyAttributes: ['name', 'population', 'area'],
+      },
+    });
+    expect(result.popup?.titleAttribute).toBe('name');
+    expect(result.popup?.keyAttributes).toEqual(['name', 'population', 'area']);
+  });
+
+  it('parses popup block with only titleAttribute', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      popup: { titleAttribute: 'label' },
+    });
+    expect(result.popup?.titleAttribute).toBe('label');
+    expect(result.popup?.keyAttributes).toBeUndefined();
+  });
+
+  it('parses popup block with empty keyAttributes', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      popup: { keyAttributes: [] },
+    });
+    expect(result.popup?.keyAttributes).toEqual([]);
+  });
+
+  it('parses filters as unknown array (FSL filter expressions)', () => {
+    const result = LayerStyleSchema.parse({
+      paint: {},
+      filters: [
+        ['status', 'eq', 'active'],
+        ['population', 'gt', 1000],
+      ],
+    });
+    expect(result.filters).toHaveLength(2);
+    expect(result.filters?.[0]).toEqual(['status', 'eq', 'active']);
+  });
+
+  it('parses empty filters array', () => {
+    const result = LayerStyleSchema.parse({ paint: {}, filters: [] });
+    expect(result.filters).toEqual([]);
+  });
+
+  it('filters default to undefined when not provided', () => {
+    const result = LayerStyleSchema.parse({ paint: {} });
+    expect(result.filters).toBeUndefined();
+  });
+
+  it('parses highlightColor as a CSS color string', () => {
+    const result = LayerStyleSchema.parse({ paint: {}, highlightColor: '#ff6b35' });
+    expect(result.highlightColor).toBe('#ff6b35');
+  });
+
+  it('highlightColor defaults to undefined when not provided', () => {
+    const result = LayerStyleSchema.parse({ paint: {} });
+    expect(result.highlightColor).toBeUndefined();
+  });
+
+  it('parses isSandwiched as boolean', () => {
+    const result = LayerStyleSchema.parse({ paint: {}, isSandwiched: true });
+    expect(result.isSandwiched).toBe(true);
+  });
+
+  it('isSandwiched defaults to undefined when not provided', () => {
+    const result = LayerStyleSchema.parse({ paint: {} });
+    expect(result.isSandwiched).toBeUndefined();
+  });
+});
+
+describe('JobStatusSchema', () => {
+  it('parses all valid statuses', () => {
+    for (const status of ['pending', 'processing', 'done', 'failed'] as const) {
+      expect(JobStatusSchema.parse(status)).toBe(status);
+    }
+  });
+
+  it('rejects invalid status', () => {
+    expect(() => JobStatusSchema.parse('cancelled')).toThrow();
+  });
+});
+
+describe('GeoprocessingOpSchema — discriminated union', () => {
+  const validLayerId = '00000000-0000-0000-0000-000000000001';
+  const validLayerIdB = '00000000-0000-0000-0000-000000000002';
+
+  it('parses buffer op with distanceKm', () => {
+    const op = GeoprocessingOpSchema.parse({ type: 'buffer', layerId: validLayerId, distanceKm: 5 });
+    expect(op.type).toBe('buffer');
+    if (op.type === 'buffer') expect(op.distanceKm).toBe(5);
+  });
+
+  it('rejects buffer op with non-positive distanceKm', () => {
+    expect(() => GeoprocessingOpSchema.parse({ type: 'buffer', layerId: validLayerId, distanceKm: 0 })).toThrow();
+    expect(() => GeoprocessingOpSchema.parse({ type: 'buffer', layerId: validLayerId, distanceKm: -1 })).toThrow();
+  });
+
+  it('rejects buffer op with distanceKm > 1000', () => {
+    expect(() => GeoprocessingOpSchema.parse({ type: 'buffer', layerId: validLayerId, distanceKm: 1001 })).toThrow();
+  });
+
+  it('parses convex_hull op', () => {
+    const op = GeoprocessingOpSchema.parse({ type: 'convex_hull', layerId: validLayerId });
+    expect(op.type).toBe('convex_hull');
+  });
+
+  it('parses dissolve op with optional field', () => {
+    const withField = GeoprocessingOpSchema.parse({ type: 'dissolve', layerId: validLayerId, field: 'category' });
+    const noField   = GeoprocessingOpSchema.parse({ type: 'dissolve', layerId: validLayerId });
+    expect(withField.type).toBe('dissolve');
+    expect(noField.type).toBe('dissolve');
+  });
+
+  it('parses intersect op with two layer IDs', () => {
+    const op = GeoprocessingOpSchema.parse({ type: 'intersect', layerIdA: validLayerId, layerIdB: validLayerIdB });
+    expect(op.type).toBe('intersect');
+  });
+
+  it('parses clip op with two layer IDs', () => {
+    const op = GeoprocessingOpSchema.parse({ type: 'clip', layerIdA: validLayerId, layerIdB: validLayerIdB });
+    expect(op.type).toBe('clip');
+  });
+
+  it('rejects unknown op type', () => {
+    expect(() => GeoprocessingOpSchema.parse({ type: 'shrink', layerId: validLayerId })).toThrow();
+  });
+
+  it('rejects non-UUID layerId', () => {
+    expect(() => GeoprocessingOpSchema.parse({ type: 'union', layerId: 'not-a-uuid' })).toThrow();
+  });
+});
+
+describe('ShareSchema', () => {
+  it('parses valid share', () => {
+    const share = ShareSchema.parse({
+      id: '00000000-0000-0000-0000-000000000001',
+      mapId: '00000000-0000-0000-0000-000000000002',
+      token: 'abcdefghijklmnop',
+      accessLevel: 'unlisted',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    expect(share.accessLevel).toBe('unlisted');
+  });
+});

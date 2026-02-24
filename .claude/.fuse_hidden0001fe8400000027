@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:v3.lucia-auth.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:svelte-maplibre-gl.mierune.dev)",
+      "WebFetch(domain:app.unpkg.com)",
+      "WebFetch(domain:maplibre.org)"
+    ]
+  }
+}

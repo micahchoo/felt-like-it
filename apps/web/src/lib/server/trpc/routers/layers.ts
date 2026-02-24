@@ -1,0 +1,186 @@
+import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
+import { eq, and, sql } from 'drizzle-orm';
+import { router, protectedProcedure } from '../init.js';
+import { db, layers, maps } from '../../db/index.js';
+import { CreateLayerSchema, UpdateLayerSchema } from '@felt-like-it/shared-types';
+
+export const layersRouter = router({
+  list: protectedProcedure
+    .input(z.object({ mapId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Verify map ownership
+      const [map] = await db
+        .select()
+        .from(maps)
+        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
+
+      if (!map) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
+      }
+
+      // Include feature count per layer (used for Martin tile-source threshold)
+      const result = await db.execute(sql`
+        SELECT
+          l.id, l.map_id AS "mapId", l.name, l.type, l.style, l.visible,
+          l.z_index AS "zIndex", l.source_file_name AS "sourceFileName",
+          l.created_at AS "createdAt", l.updated_at AS "updatedAt",
+          COALESCE(
+            (SELECT COUNT(*) FROM features f WHERE f.layer_id = l.id),
+            0
+          )::int AS "featureCount"
+        FROM layers l
+        WHERE l.map_id = ${input.mapId}
+        ORDER BY l.z_index ASC
+      `);
+
+      return result.rows.map((l) => {
+        const row = l as Record<string, unknown>;
+        return {
+          id:             row['id'] as string,
+          mapId:          row['mapId'] as string,
+          name:           row['name'] as string,
+          type:           row['type'] as string,
+          style:          row['style'] as Record<string, unknown>,
+          visible:        row['visible'] as boolean,
+          zIndex:         row['zIndex'] as number,
+          sourceFileName: (row['sourceFileName'] as string | null) ?? null,
+          createdAt:      row['createdAt'] as Date,
+          updatedAt:      row['updatedAt'] as Date,
+          featureCount:   Number(row['featureCount'] ?? 0),
+        };
+      });
+    }),
+
+  create: protectedProcedure
+    .input(CreateLayerSchema)
+    .mutation(async ({ ctx, input }) => {
+      // Verify map ownership
+      const [map] = await db
+        .select()
+        .from(maps)
+        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
+
+      if (!map) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
+      }
+
+      // Get next z_index
+      const existingLayers = await db
+        .select({ zIndex: layers.zIndex })
+        .from(layers)
+        .where(eq(layers.mapId, input.mapId))
+        .orderBy(layers.zIndex);
+
+      const maxZ = existingLayers.reduce((max, l) => Math.max(max, l.zIndex), -1);
+
+      const [layer] = await db
+        .insert(layers)
+        .values({
+          mapId: input.mapId,
+          name: input.name,
+          type: input.type ?? 'mixed',
+          zIndex: maxZ + 1,
+        })
+        .returning();
+
+      if (!layer) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create layer.' });
+      }
+
+      return { ...layer, style: layer.style as Record<string, unknown> };
+    }),
+
+  update: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }).merge(UpdateLayerSchema))
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+
+      // Verify ownership via map join
+      const [layer] = await db
+        .select({ id: layers.id, mapId: layers.mapId })
+        .from(layers)
+        .where(eq(layers.id, id));
+
+      if (!layer) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Layer not found.' });
+      }
+
+      const [map] = await db
+        .select()
+        .from(maps)
+        .where(and(eq(maps.id, layer.mapId), eq(maps.userId, ctx.user.id)));
+
+      if (!map) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied.' });
+      }
+
+      const [updated] = await db
+        .update(layers)
+        .set({
+          ...(data.name !== undefined && { name: data.name }),
+          ...(data.style !== undefined && { style: data.style }),
+          ...(data.visible !== undefined && { visible: data.visible }),
+          ...(data.zIndex !== undefined && { zIndex: data.zIndex }),
+        })
+        .where(eq(layers.id, id))
+        .returning();
+
+      return { ...updated, style: (updated?.style ?? {}) as Record<string, unknown> };
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const [layer] = await db
+        .select({ id: layers.id, mapId: layers.mapId })
+        .from(layers)
+        .where(eq(layers.id, input.id));
+
+      if (!layer) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Layer not found.' });
+      }
+
+      const [map] = await db
+        .select()
+        .from(maps)
+        .where(and(eq(maps.id, layer.mapId), eq(maps.userId, ctx.user.id)));
+
+      if (!map) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied.' });
+      }
+
+      await db.delete(layers).where(eq(layers.id, input.id));
+      return { deleted: true };
+    }),
+
+  reorder: protectedProcedure
+    .input(
+      z.object({
+        mapId: z.string().uuid(),
+        order: z.array(z.string().uuid()),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [map] = await db
+        .select()
+        .from(maps)
+        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
+
+      if (!map) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
+      }
+
+      // Update z_index for each layer in the order array
+      await Promise.all(
+        input.order.map((layerId, index) =>
+          db
+            .update(layers)
+            .set({ zIndex: index })
+            .where(and(eq(layers.id, layerId), eq(layers.mapId, input.mapId)))
+        )
+      );
+
+      return { reordered: true };
+    }),
+});

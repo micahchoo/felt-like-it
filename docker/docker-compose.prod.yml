@@ -1,0 +1,39 @@
+name: felt-like-it-prod
+
+# Production overrides — use with:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+      POSTGRES_USER: "${POSTGRES_USER:-felt}"
+      POSTGRES_DB: "${POSTGRES_DB:-felt}"
+    ports: []  # Don't expose DB port in production
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  web:
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-felt}:${POSTGRES_PASSWORD:?required}@postgres:5432/${POSTGRES_DB:-felt}"
+      REDIS_URL: "redis://redis:6379"
+      ORIGIN: "${ORIGIN:?ORIGIN (e.g. https://maps.example.com) must be set}"
+      SESSION_SECRET: "${SESSION_SECRET:?SESSION_SECRET must be set}"
+      NODE_ENV: production
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.felt.rule=Host(`${DOMAIN:-maps.example.com}`)"
+      - "traefik.http.routers.felt.tls=true"
+      - "traefik.http.routers.felt.tls.certresolver=letsencrypt"
+      - "traefik.http.services.felt.loadbalancer.server.port=3000"
+
+  worker:
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-felt}:${POSTGRES_PASSWORD:?required}@postgres:5432/${POSTGRES_DB:-felt}"
+      REDIS_URL: "redis://redis:6379"
+    deploy:
+      replicas: 2  # Run 2 worker processes
+
+  redis:
+    ports: []  # Don't expose Redis in production
+    command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD:-}"
