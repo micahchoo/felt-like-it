@@ -216,7 +216,7 @@ export const mapsRouter = router({
           userId: ctx.user.id,
           title: template.title,
           description: template.description ?? null,
-          viewport: template.viewport as Record<string, unknown>,
+          viewport: template.viewport,
           basemap: template.basemap,
           isTemplate: false,
         })
@@ -247,7 +247,7 @@ export const mapsRouter = router({
           mapId: newMap.id,
           name: layer.name,
           type: layer.type,
-          style: layer.style as Record<string, unknown>,
+          style: layer.style,
           visible: layer.visible,
           zIndex: layer.zIndex,
           sourceFileName: null,
@@ -276,7 +276,7 @@ export const mapsRouter = router({
           userId: ctx.user.id,
           title: `Copy of ${existing.title}`,
           description: existing.description ?? null,
-          viewport: existing.viewport as Record<string, unknown>,
+          viewport: existing.viewport,
           basemap: existing.basemap,
         })
         .returning();
@@ -307,7 +307,7 @@ export const mapsRouter = router({
             mapId: newMap.id,
             name: layer.name,
             type: layer.type,
-            style: layer.style as Record<string, unknown>,
+            style: layer.style,
             visible: layer.visible,
             zIndex: layer.zIndex,
             sourceFileName: layer.sourceFileName,

@@ -123,8 +123,11 @@ describe('features.upsert', () => {
       layerId: LAYER_ID,
       features: [{ id: FEATURE_ID, geometry: POINT_GEOM, properties: {} }],
     });
+    // The router pushes feature.id directly for updates (no RETURNING clause)
     expect(result.upsertedIds).toHaveLength(1);
     expect(result.upsertedIds[0]).toBe(FEATURE_ID);
+    // Verify the UPDATE SQL was actually executed (not silently skipped)
+    expect(db.execute).toHaveBeenCalledOnce();
   });
 
   it('throws NOT_FOUND when layer does not exist', async () => {

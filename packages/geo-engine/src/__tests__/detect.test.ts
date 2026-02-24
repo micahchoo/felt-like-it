@@ -109,12 +109,30 @@ describe('detectLayerType', () => {
     expect(detectLayerType(features)).toBe('point');
   });
 
-  it('returns polygon when 90%+ are polygons', () => {
+  it('returns polygon when 80%+ are polygons', () => {
     const features = [
       ...Array(9).fill({ geometry: { type: 'Polygon' } }),
       { geometry: { type: 'Point' } },
     ] as Array<{geometry: {type: string}}>;
     expect(detectLayerType(features)).toBe('polygon');
+  });
+
+  it('returns dominant type at exactly the 80% threshold', () => {
+    // 80/100 = 0.80, exactly at the >= 0.8 threshold
+    const features = [
+      ...Array(80).fill({ geometry: { type: 'Polygon' } }),
+      ...Array(20).fill({ geometry: { type: 'Point' } }),
+    ] as Array<{geometry: {type: string}}>;
+    expect(detectLayerType(features)).toBe('polygon');
+  });
+
+  it('returns mixed just below the 80% threshold', () => {
+    // 79/100 = 0.79, just below the >= 0.8 threshold
+    const features = [
+      ...Array(79).fill({ geometry: { type: 'Polygon' } }),
+      ...Array(21).fill({ geometry: { type: 'Point' } }),
+    ] as Array<{geometry: {type: string}}>;
+    expect(detectLayerType(features)).toBe('mixed');
   });
 
   it('returns mixed for mixed types', () => {
@@ -176,10 +194,22 @@ describe('getUniqueValues', () => {
     expect(result).toHaveLength(2);
   });
 
-  it('respects limit', () => {
-    const values = Array.from({ length: 100 }, (_, i) => `val${i}`);
-    const result = getUniqueValues(values, 10);
-    expect(result).toHaveLength(10);
+  it('respects limit by returning exactly limit unique values', () => {
+    const limit = 10;
+    const totalUnique = 100;
+    const values = Array.from({ length: totalUnique }, (_, i) => `val${i}`);
+    const result = getUniqueValues(values, limit);
+    // Must return exactly the limit, not fewer, not more
+    expect(result).toHaveLength(limit);
+    // All returned values must actually be unique
+    expect(new Set(result).size).toBe(result.length);
+  });
+
+  it('returns all unique values when count is below limit', () => {
+    const values = ['a', 'b', 'c', 'a', 'b'];
+    const result = getUniqueValues(values, 50);
+    expect(result).toHaveLength(3);
+    expect(result.length).toBeLessThan(50);
   });
 });
 

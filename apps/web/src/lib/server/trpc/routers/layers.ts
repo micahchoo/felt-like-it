@@ -4,6 +4,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
 import { db, layers } from '../../db/index.js';
 import { CreateLayerSchema, UpdateLayerSchema } from '@felt-like-it/shared-types';
+import type { LayerStyle } from '@felt-like-it/shared-types';
 import { requireMapAccess } from '../../geo/access.js';
 
 export const layersRouter = router({
@@ -35,7 +36,7 @@ export const layersRouter = router({
           mapId:          row['mapId'] as string,
           name:           row['name'] as string,
           type:           row['type'] as string,
-          style:          row['style'] as Record<string, unknown>,
+          style:          row['style'] as LayerStyle,
           visible:        row['visible'] as boolean,
           zIndex:         row['zIndex'] as number,
           sourceFileName: (row['sourceFileName'] as string | null) ?? null,
@@ -75,7 +76,7 @@ export const layersRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create layer.' });
       }
 
-      return { ...layer, style: layer.style as Record<string, unknown> };
+      return layer;
     }),
 
   update: protectedProcedure
@@ -110,7 +111,7 @@ export const layersRouter = router({
       if (!updated) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update layer.' });
       }
-      return { ...updated, style: updated.style as Record<string, unknown> };
+      return updated;
     }),
 
   delete: protectedProcedure

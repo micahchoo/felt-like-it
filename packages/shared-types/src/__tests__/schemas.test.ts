@@ -6,22 +6,33 @@ import {
   MapSchema,
   CreateMapSchema,
   ViewportSchema,
-  LayerSchema,
   LayerStyleSchema,
   GeoJSONFeatureSchema,
   GeoJSONFeatureCollectionSchema,
   GeometrySchema,
   ShareSchema,
-  ImportJobSchema,
   JobStatusSchema,
   GeoprocessingOpSchema,
   GeoAggregateOpSchema,
   AnnotationContentSchema,
   AnnotationAnchorSchema,
-  AnnotationSchema,
   CreateAnnotationSchema,
   UpdateAnnotationSchema,
 } from '../index.js';
+
+describe('rejects invalid top-level inputs', () => {
+  it('UserSchema rejects null', () => {
+    expect(() => UserSchema.parse(null)).toThrow();
+  });
+
+  it('UserSchema rejects undefined', () => {
+    expect(() => UserSchema.parse(undefined)).toThrow();
+  });
+
+  it('CreateMapSchema rejects null', () => {
+    expect(() => CreateMapSchema.parse(null)).toThrow();
+  });
+});
 
 describe('UserSchema', () => {
   it('parses valid user', () => {
@@ -33,6 +44,8 @@ describe('UserSchema', () => {
       updatedAt: new Date(),
     });
     expect(result.email).toBe('test@example.com');
+    expect(result.id).toBe('00000000-0000-0000-0000-000000000001');
+    expect(result.name).toBe('Test User');
   });
 
   it('rejects invalid email', () => {
@@ -62,6 +75,8 @@ describe('CreateUserSchema', () => {
       password: 'securepassword',
     });
     expect(result.email).toBe('a@b.com');
+    expect(result.password).toBe('securepassword');
+    expect(result.name).toBe('Test User');
   });
 });
 
@@ -74,6 +89,7 @@ describe('LoginSchema', () => {
 describe('ViewportSchema', () => {
   it('applies defaults for bearing and pitch', () => {
     const result = ViewportSchema.parse({ center: [0, 0], zoom: 10 });
+    // defaults: north-up, top-down
     expect(result.bearing).toBe(0);
     expect(result.pitch).toBe(0);
   });
@@ -97,13 +113,17 @@ describe('MapSchema', () => {
       updatedAt: new Date(),
     });
     expect(map.title).toBe('My Map');
+    expect(map.id).toBe('00000000-0000-0000-0000-000000000001');
+    expect(map.userId).toBe('00000000-0000-0000-0000-000000000002');
+    expect(map.isArchived).toBe(false);
   });
 });
 
 describe('CreateMapSchema', () => {
   it('parses minimal input', () => {
-    const result = CreateMapSchema.parse({ title: 'New Map' });
-    expect(result.title).toBe('New Map');
+    const parsed = CreateMapSchema.safeParse({ title: 'New Map' });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.title).toBe('New Map');
   });
 
   it('rejects empty title', () => {
@@ -159,6 +179,8 @@ describe('GeoJSONFeatureSchema', () => {
       properties: { name: 'test' },
     });
     expect(result.type).toBe('Feature');
+    expect(result.geometry).toBeDefined();
+    expect(result.properties).toEqual({ name: 'test' });
   });
 
   it('allows null properties', () => {
@@ -482,7 +504,7 @@ describe('LayerStyleSchema', () => {
 
 describe('JobStatusSchema', () => {
   it('parses all valid statuses', () => {
-    for (const status of ['pending', 'processing', 'done', 'failed'] as const) {
+    for (const status of JobStatusSchema.options) {
       expect(JobStatusSchema.parse(status)).toBe(status);
     }
   });
@@ -661,6 +683,8 @@ describe('ShareSchema', () => {
       updatedAt: new Date(),
     });
     expect(share.accessLevel).toBe('unlisted');
+    expect(share.mapId).toBe('00000000-0000-0000-0000-000000000002');
+    expect(share.token).toBe('abcdefghijklmnop');
   });
 });
 
@@ -670,6 +694,9 @@ describe('AnnotationContentSchema — text', () => {
   it('parses a valid text annotation', () => {
     const result = AnnotationContentSchema.parse({ type: 'text', text: 'Hello world' });
     expect(result.type).toBe('text');
+    if (result.type === 'text') {
+      expect(result.text).toBe('Hello world');
+    }
   });
 
   it('rejects empty text (min 1)', () => {
@@ -690,6 +717,7 @@ describe('AnnotationContentSchema — emoji', () => {
     if (result.type === 'emoji') {
       expect(result.emoji).toBe('🌊');
       expect(result.label).toBe('Ocean');
+      expect(typeof result.emoji).toBe('string');
     }
   });
 
@@ -777,8 +805,12 @@ describe('AnnotationContentSchema — iiif', () => {
 
 describe('AnnotationAnchorSchema', () => {
   it('parses a valid WGS84 Point', () => {
-    const result = AnnotationAnchorSchema.parse({ type: 'Point', coordinates: [-122.4, 37.8] });
-    expect(result.coordinates).toEqual([-122.4, 37.8]);
+    const input = { type: 'Point' as const, coordinates: [-122.4, 37.8] as [number, number] };
+    const result = AnnotationAnchorSchema.parse(input);
+    expect(result.coordinates).toEqual(input.coordinates);
+    expect(result.type).toBe('Point');
+    expect(result.coordinates[0]).toBe(-122.4);
+    expect(result.coordinates[1]).toBe(37.8);
   });
 
   it('rejects longitude > 180', () => {

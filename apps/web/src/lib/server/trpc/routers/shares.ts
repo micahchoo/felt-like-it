@@ -142,14 +142,8 @@ export const sharesRouter = router({
 
       return {
         share,
-        map: {
-          ...map,
-          viewport: map.viewport as { center: [number, number]; zoom: number; bearing: number; pitch: number },
-        },
-        layers: mapLayers.map((l) => ({
-          ...l,
-          style: l.style as Record<string, unknown>,
-        })),
+        map,
+        layers: mapLayers,
       };
     }),
 });

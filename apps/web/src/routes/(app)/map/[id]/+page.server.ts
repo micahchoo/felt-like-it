@@ -28,11 +28,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     .orderBy(layers.zIndex);
 
   return {
-    map: {
-      ...map,
-      viewport: map.viewport as { center: [number, number]; zoom: number; bearing: number; pitch: number },
-    },
-    layers: mapLayers.map((l) => ({ ...l, style: l.style as Record<string, unknown> })),
+    map,
+    layers: mapLayers,
     userId: locals.user.id,
   };
 };

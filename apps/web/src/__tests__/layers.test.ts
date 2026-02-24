@@ -205,12 +205,27 @@ describe('layers.reorder', () => {
 
   it('reorders layers and returns { reordered: true }', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.update).mockReturnValue(drizzleChain([]) as unknown as ReturnType<typeof db.update>);
+
+    // Track z-index values passed to each set() call
+    const setArgs: unknown[] = [];
+    vi.mocked(db.update).mockImplementation(() => {
+      const c: Record<string, unknown> = {
+        then: (res: (v: unknown[]) => unknown, rej: (e: unknown) => unknown) =>
+          Promise.resolve([]).then(res, rej),
+      };
+      for (const m of ['from', 'where', 'orderBy']) {
+        c[m] = vi.fn(() => c);
+      }
+      c['set'] = vi.fn((arg: unknown) => { setArgs.push(arg); return c; });
+      return c as unknown as ReturnType<typeof db.update>;
+    });
 
     const result = await makeCaller().reorder({ mapId: MAP_ID, order: [LAYER_ID, LAYER_ID2] });
     expect(result).toEqual({ reordered: true });
     // Should call db.update once per layer in the order array
     expect(db.update).toHaveBeenCalledTimes(2);
+    // Verify sequential z-indices assigned in order: first layer gets 0, second gets 1
+    expect(setArgs).toEqual([{ zIndex: 0 }, { zIndex: 1 }]);
   });
 
   it('throws NOT_FOUND when map is not owned by caller', async () => {

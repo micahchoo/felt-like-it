@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Share', () => {
-  test('shared map is viewable anonymously via share link', async ({ page }) => {
+  test('shared map is viewable anonymously and hides edit controls', async ({ page }) => {
     // Login as demo user
     await page.goto('/auth/login');
     await page.getByLabel('Email').fill('demo@felt-like-it.local');
@@ -35,7 +35,23 @@ test.describe('Share', () => {
 
       // Should show the map (canvas visible)
       await expect(anonPage.locator('canvas')).toBeVisible({ timeout: 15_000 });
+
+      // The share page passes readonly=true -- edit tools must not be visible
+      await expect(anonPage.getByRole('button', { name: 'Import' })).not.toBeVisible();
+      await expect(anonPage.getByRole('button', { name: 'Export' })).not.toBeVisible();
+      await expect(anonPage.getByRole('button', { name: 'Table' })).not.toBeVisible();
+
+      // The layer panel (w-56 sidebar) should not be present in readonly mode
+      await expect(anonPage.locator('.w-56')).not.toBeAttached();
+
       await anonContext.close();
     }
+  });
+
+  test('shows error for invalid share token', async ({ page }) => {
+    const response = await page.goto('/share/invalid-token-that-does-not-exist');
+
+    // The server returns 404 for unknown share tokens
+    expect(response?.status()).toBe(404);
   });
 });

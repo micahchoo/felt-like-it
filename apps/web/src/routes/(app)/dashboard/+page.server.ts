@@ -59,7 +59,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     id: t.id,
     title: t.title,
     description: t.description,
-    viewport: t.viewport as TemplateEntry['viewport'],
+    viewport: t.viewport,
     basemap: t.basemap,
   }));
 
@@ -138,7 +138,7 @@ export const actions: Actions = {
         userId,
         title: `Copy of ${existing.title}`,
         description: existing.description ?? null,
-        viewport: existing.viewport as Record<string, unknown>,
+        viewport: existing.viewport,
         basemap: existing.basemap,
       })
       .returning({ id: maps.id });
@@ -158,7 +158,7 @@ export const actions: Actions = {
           mapId: newMap.id,
           name: layer.name,
           type: layer.type,
-          style: layer.style as Record<string, unknown>,
+          style: layer.style,
           visible: layer.visible,
           zIndex: layer.zIndex,
           sourceFileName: layer.sourceFileName,
@@ -203,7 +203,7 @@ export const actions: Actions = {
         userId,
         title: template.title,
         description: template.description ?? null,
-        viewport: template.viewport as Record<string, unknown>,
+        viewport: template.viewport,
         basemap: template.basemap,
         isTemplate: false,
       })
@@ -223,7 +223,7 @@ export const actions: Actions = {
         mapId: newMap.id,
         name: layer.name,
         type: layer.type,
-        style: layer.style as Record<string, unknown>,
+        style: layer.style,
         visible: layer.visible,
         zIndex: layer.zIndex,
         sourceFileName: null,

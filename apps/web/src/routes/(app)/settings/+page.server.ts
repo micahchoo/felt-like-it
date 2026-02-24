@@ -10,7 +10,7 @@ import { insertFeatures } from '$lib/server/geo/queries.js';
 const DEMO_EMAIL = 'demo@felt-like-it.local';
 
 const PARKS_STYLE = {
-  type: 'simple',
+  type: 'simple' as const,
   paint: { 'fill-color': '#22c55e', 'fill-opacity': 0.5, 'fill-outline-color': '#15803d' },
   layout: {},
   legend: [{ label: 'Park', color: '#22c55e' }],
@@ -178,7 +178,7 @@ export const actions: Actions = {
           userId,
           title: 'San Francisco Parks',
           description: 'A map of parks in San Francisco, CA.',
-          viewport: { center: [-122.449, 37.7749], zoom: 12, bearing: 0, pitch: 0 } as unknown,
+          viewport: { center: [-122.449, 37.7749] as [number, number], zoom: 12, bearing: 0, pitch: 0 },
           basemap: 'osm',
         })
         .returning();
@@ -194,7 +194,7 @@ export const actions: Actions = {
           mapId: newMap.id,
           name: 'Parks',
           type: 'polygon',
-          style: PARKS_STYLE as unknown,
+          style: PARKS_STYLE,
           zIndex: 0,
         })
         .returning();

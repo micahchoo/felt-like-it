@@ -28,10 +28,10 @@ export const load: PageServerLoad = async ({ params }) => {
     map: {
       id: map.id,
       title: map.title,
-      viewport: map.viewport as { center: [number, number]; zoom: number; bearing: number; pitch: number },
+      viewport: map.viewport,
       basemap: map.basemap,
     },
-    layers: mapLayers.map((l) => ({ ...l, style: l.style as Record<string, unknown> })),
+    layers: mapLayers,
     share: { token: share.token, accessLevel: share.accessLevel },
   };
 };

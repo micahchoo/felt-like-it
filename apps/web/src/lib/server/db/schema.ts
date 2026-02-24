@@ -12,6 +12,8 @@ import {
 } from 'drizzle-orm/pg-core';
 import { customType } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { Viewport, LayerStyle } from '@felt-like-it/shared-types';
+import type { AnnotationContent } from '@felt-like-it/shared-types';
 
 // Custom PostGIS geometry type — mixed geometry (Point / LineString / Polygon / etc.)
 // Always read via ST_AsGeoJSON; always written via ST_GeomFromGeoJSON in raw SQL.
@@ -59,8 +61,7 @@ export const maps = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     description: text('description'),
-    // Stored as { center: [lng, lat], zoom: number, bearing: number, pitch: number }
-    viewport: jsonb('viewport')
+    viewport: jsonb('viewport').$type<Viewport>()
       .notNull()
       .default(sql`'{"center":[-98.35,39.5],"zoom":4,"bearing":0,"pitch":0}'::jsonb`),
     basemap: text('basemap').notNull().default('osm'),
@@ -88,8 +89,7 @@ export const layers = pgTable(
     name: text('name').notNull(),
     // 'point' | 'line' | 'polygon' | 'mixed'
     type: text('type').notNull().default('mixed'),
-    // MapLibre GL paint/layout + legend metadata
-    style: jsonb('style').notNull().default(sql`'{}'::jsonb`),
+    style: jsonb('style').$type<LayerStyle>().notNull().default(sql`'{}'::jsonb`),
     visible: boolean('visible').notNull().default(true),
     zIndex: integer('z_index').notNull().default(0),
     sourceFileName: text('source_file_name'),
@@ -111,8 +111,7 @@ export const features = pgTable(
     // Reading: always wrap with ST_AsGeoJSON(geometry)
     // Writing: always use ST_GeomFromGeoJSON(?)
     geometry: geometryType('geometry').notNull(),
-    // Arbitrary feature properties (GeoJSON properties object)
-    properties: jsonb('properties').notNull().default(sql`'{}'::jsonb`),
+    properties: jsonb('properties').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -208,8 +207,7 @@ export const mapEvents = pgTable(
      * 'viewport.saved', 'feature.drawn').
      */
     action: text('action').notNull(),
-    /** Structured payload: layer name, file name, feature count, etc. */
-    metadata: jsonb('metadata'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -248,7 +246,7 @@ export const annotations = pgTable(
      * The `type` field ('text'|'emoji'|'gif'|'image'|'link'|'iiif') is always present.
      * Validated by the application layer (Zod) before any DB write.
      */
-    content: jsonb('content').notNull(),
+    content: jsonb('content').$type<AnnotationContent>().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -279,8 +277,7 @@ export const auditLog = pgTable(
     entityId: text('entity_id'),
     /** Map this mutation belongs to. Null for account-level events (e.g. apiKey). */
     mapId: uuid('map_id').references(() => maps.id, { onDelete: 'set null' }),
-    /** Structured context: title, role, accessLevel, etc. */
-    metadata: jsonb('metadata'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
     /** chain_hash of the previous row; 64 zeros ('0'×64) for the first entry. */
     prevHash: text('prev_hash').notNull(),
     /** SHA-256(JSON.stringify(content) + prevHash) — tamper-detection hash. */

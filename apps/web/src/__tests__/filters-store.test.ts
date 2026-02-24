@@ -71,17 +71,30 @@ describe('filterStore — basic CRUD', () => {
 });
 
 describe('filterStore.toMapLibreFilter()', () => {
+  // NOTE: The real fslFiltersToMapLibre expression shape is thoroughly tested in
+  // packages/geo-engine/src/__tests__/filters.test.ts (all operators + compound + error cases).
+  // These tests verify the store correctly delegates to that function and returns the expected shape.
   beforeEach(() => filterStore.clear(LAYER_A));
 
   it('returns undefined when no filters are set', () => {
     expect(filterStore.toMapLibreFilter(LAYER_A)).toBeUndefined();
   });
 
-  it('returns a MapLibre filter expression when filters are set', () => {
+  it('returns a single MapLibre comparison expression for one filter', () => {
     filterStore.add(LAYER_A, { field: 'name', operator: 'eq', value: 'Paris' });
     const filter = filterStore.toMapLibreFilter(LAYER_A);
-    expect(filter).toBeDefined();
+    // Mock produces ['==', ['get', 'name'], 'Paris'] for a single filter
+    expect(filter).toEqual(['==', ['get', 'name'], 'Paris']);
+  });
+
+  it('wraps multiple filters in an "all" expression', () => {
+    filterStore.add(LAYER_A, { field: 'name', operator: 'eq', value: 'Paris' });
+    filterStore.add(LAYER_A, { field: 'pop', operator: 'eq', value: '1000' });
+    const filter = filterStore.toMapLibreFilter(LAYER_A);
+    // Mock produces ['all', ...] when multiple filters are present
     expect(Array.isArray(filter)).toBe(true);
+    expect((filter as unknown[])[0]).toBe('all');
+    expect((filter as unknown[]).length).toBe(3);
   });
 });
 

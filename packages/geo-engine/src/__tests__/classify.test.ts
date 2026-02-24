@@ -45,10 +45,41 @@ describe('equalIntervalBreaks', () => {
 describe('quantileBreaks', () => {
   it('returns n−1 breakpoints for uniformly distributed data', () => {
     const vals = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const nClasses = 5;
+    const breaks = quantileBreaks(vals, nClasses);
+    expect(breaks).toHaveLength(nClasses - 1);
+  });
+
+  it('produces breaks at expected quantile positions for known data', () => {
+    // For [1..10] with 5 classes, breakpoint indices are floor(10*i/5) for i=1..4
+    // idx=2→val=3, idx=4→val=5, idx=6→val=7, idx=8→val=9
+    const vals = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     const breaks = quantileBreaks(vals, 5);
-    // May return fewer if duplicates arise, but for uniform data should be 4
-    expect(breaks.length).toBeGreaterThanOrEqual(1);
-    expect(breaks.length).toBeLessThanOrEqual(4);
+    expect(breaks).toEqual([3, 5, 7, 9]);
+  });
+
+  it('breaks partition data into approximately equal-sized buckets', () => {
+    // 100 evenly spaced values, 4 classes -> 3 breakpoints
+    // Each bucket should contain ~25 values
+    const vals = Array.from({ length: 100 }, (_, i) => i + 1);
+    const nClasses = 4;
+    const breaks = quantileBreaks(vals, nClasses);
+    expect(breaks).toHaveLength(nClasses - 1);
+
+    const allBreaks = [0, ...breaks, 101]; // sentinels for bucket counting
+    const bucketSizes = [];
+    for (let i = 0; i < allBreaks.length - 1; i++) {
+      const lo = allBreaks[i] ?? 0;
+      const hi = allBreaks[i + 1] ?? 101;
+      const count = vals.filter((v) => v > lo && v <= hi).length;
+      bucketSizes.push(count);
+    }
+    const expectedPerBucket = vals.length / nClasses;
+    for (const size of bucketSizes) {
+      // Each bucket should be within 20% of the ideal size
+      expect(size).toBeGreaterThanOrEqual(expectedPerBucket * 0.8);
+      expect(size).toBeLessThanOrEqual(expectedPerBucket * 1.2);
+    }
   });
 
   it('returns [] for empty values', () => {
@@ -69,7 +100,8 @@ describe('quantileBreaks', () => {
     const vals = [5, 2, 8, 1, 9, 3, 7, 4, 6, 10];
     const breaks = quantileBreaks(vals, 4);
     for (let i = 1; i < breaks.length; i++) {
-      expect(breaks[i]).toBeGreaterThanOrEqual(breaks[i - 1]!);
+      const prev = breaks[i - 1] ?? -Infinity;
+      expect(breaks[i]).toBeGreaterThanOrEqual(prev);
     }
   });
 
@@ -82,9 +114,12 @@ describe('quantileBreaks', () => {
     }
   });
 
-  it('ignores NaN values', () => {
+  it('ignores NaN values and computes breaks from valid entries only', () => {
     const breaks = quantileBreaks([NaN, 1, 2, NaN, 3, 4], 2);
-    expect(breaks.length).toBeGreaterThanOrEqual(0); // just no crash
+    // 4 valid values [1,2,3,4], 2 classes -> 1 breakpoint
+    expect(breaks).toHaveLength(1);
+    // Breakpoint should be at index floor(4*1/2)=2 in sorted [1,2,3,4] -> value 3
+    expect(breaks[0]).toBe(3);
   });
 });
 
@@ -105,8 +140,11 @@ describe('getColorRamp', () => {
     expect(getColorRamp('Blues', 10)).toHaveLength(9);
   });
 
-  it('returns full ramp when n = 9', () => {
-    expect(getColorRamp('Blues', 9)).toEqual([...COLOR_RAMPS['Blues']]);
+  it('returns a copy of the full ramp when n = 9 (not a reference to the original)', () => {
+    const result = getColorRamp('Blues', 9);
+    expect(result).toEqual([...COLOR_RAMPS['Blues']]);
+    // Must be a copy so callers can mutate without corrupting the source ramp
+    expect(result).not.toBe(COLOR_RAMPS['Blues']);
   });
 
   it('first and last colors match ramp endpoints for all n', () => {

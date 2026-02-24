@@ -23,9 +23,6 @@ const CATEGORICAL_COLORS = [
   '#80b1d3',
 ];
 
-// Default sequential ramp for auto-graduated styling (5 classes, Blues)
-const GRADUATED_COLORS = getColorRamp('Blues', 5);
-
 const DEFAULT_POINT_COLOR = '#3b82f6';
 const DEFAULT_LINE_COLOR = '#6366f1';
 const DEFAULT_POLYGON_FILL = '#22c55e';
