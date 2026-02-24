@@ -15,6 +15,11 @@ import {
   ImportJobSchema,
   JobStatusSchema,
   GeoprocessingOpSchema,
+  AnnotationContentSchema,
+  AnnotationAnchorSchema,
+  AnnotationSchema,
+  CreateAnnotationSchema,
+  UpdateAnnotationSchema,
 } from '../index.js';
 
 describe('UserSchema', () => {
@@ -442,5 +447,174 @@ describe('ShareSchema', () => {
       updatedAt: new Date(),
     });
     expect(share.accessLevel).toBe('unlisted');
+  });
+});
+
+// ─── AnnotationContentSchema ─────────────────────────────────────────────────
+
+describe('AnnotationContentSchema — text', () => {
+  it('parses a valid text annotation', () => {
+    const result = AnnotationContentSchema.parse({ type: 'text', text: 'Hello world' });
+    expect(result.type).toBe('text');
+  });
+
+  it('rejects empty text (min 1)', () => {
+    expect(() => AnnotationContentSchema.parse({ type: 'text', text: '' })).toThrow();
+  });
+
+  it('rejects text longer than 5 000 characters', () => {
+    expect(() =>
+      AnnotationContentSchema.parse({ type: 'text', text: 'x'.repeat(5001) })
+    ).toThrow();
+  });
+});
+
+describe('AnnotationContentSchema — emoji', () => {
+  it('parses emoji with optional label', () => {
+    const result = AnnotationContentSchema.parse({ type: 'emoji', emoji: '🌊', label: 'Ocean' });
+    expect(result.type).toBe('emoji');
+    if (result.type === 'emoji') {
+      expect(result.emoji).toBe('🌊');
+      expect(result.label).toBe('Ocean');
+    }
+  });
+
+  it('parses emoji without label', () => {
+    const result = AnnotationContentSchema.parse({ type: 'emoji', emoji: '🏔️' });
+    expect(result.type).toBe('emoji');
+  });
+
+  it('rejects empty emoji string', () => {
+    expect(() => AnnotationContentSchema.parse({ type: 'emoji', emoji: '' })).toThrow();
+  });
+});
+
+describe('AnnotationContentSchema — gif', () => {
+  it('parses a valid GIF with altText', () => {
+    const result = AnnotationContentSchema.parse({
+      type: 'gif',
+      url: 'https://media.tenor.com/example.gif',
+      altText: 'A dancing cat',
+    });
+    expect(result.type).toBe('gif');
+  });
+
+  it('rejects a non-URL gif url', () => {
+    expect(() =>
+      AnnotationContentSchema.parse({ type: 'gif', url: 'not-a-url' })
+    ).toThrow();
+  });
+});
+
+describe('AnnotationContentSchema — link', () => {
+  it('parses a full link card', () => {
+    const result = AnnotationContentSchema.parse({
+      type: 'link',
+      url: 'https://example.com',
+      title: 'Example',
+      description: 'A test site',
+    });
+    expect(result.type).toBe('link');
+  });
+
+  it('parses a link card with URL only', () => {
+    const result = AnnotationContentSchema.parse({ type: 'link', url: 'https://example.com' });
+    expect(result.type).toBe('link');
+  });
+});
+
+describe('AnnotationContentSchema — iiif', () => {
+  it('parses a IIIF content object without navPlace', () => {
+    const result = AnnotationContentSchema.parse({
+      type: 'iiif',
+      manifestUrl: 'https://example.org/iiif/manifest.json',
+      label: 'Test Manuscript',
+    });
+    expect(result.type).toBe('iiif');
+    if (result.type === 'iiif') {
+      expect(result.navPlace).toBeUndefined();
+    }
+  });
+
+  it('parses a IIIF content object with a navPlace FeatureCollection', () => {
+    const result = AnnotationContentSchema.parse({
+      type: 'iiif',
+      manifestUrl: 'https://example.org/iiif/manifest.json',
+      navPlace: {
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', geometry: { type: 'Point', coordinates: [-122.4, 37.8] }, properties: {} },
+        ],
+      },
+    });
+    if (result.type === 'iiif') {
+      expect(result.navPlace?.features).toHaveLength(1);
+    }
+  });
+
+  it('rejects invalid manifestUrl', () => {
+    expect(() =>
+      AnnotationContentSchema.parse({ type: 'iiif', manifestUrl: 'not-a-url' })
+    ).toThrow();
+  });
+});
+
+// ─── AnnotationAnchorSchema ───────────────────────────────────────────────────
+
+describe('AnnotationAnchorSchema', () => {
+  it('parses a valid WGS84 Point', () => {
+    const result = AnnotationAnchorSchema.parse({ type: 'Point', coordinates: [-122.4, 37.8] });
+    expect(result.coordinates).toEqual([-122.4, 37.8]);
+  });
+
+  it('rejects longitude > 180', () => {
+    expect(() =>
+      AnnotationAnchorSchema.parse({ type: 'Point', coordinates: [181, 0] })
+    ).toThrow();
+  });
+
+  it('rejects latitude > 90', () => {
+    expect(() =>
+      AnnotationAnchorSchema.parse({ type: 'Point', coordinates: [0, 91] })
+    ).toThrow();
+  });
+
+  it('rejects longitude < -180', () => {
+    expect(() =>
+      AnnotationAnchorSchema.parse({ type: 'Point', coordinates: [-181, 0] })
+    ).toThrow();
+  });
+});
+
+// ─── CreateAnnotationSchema / UpdateAnnotationSchema ─────────────────────────
+
+describe('CreateAnnotationSchema', () => {
+  it('parses a valid create input', () => {
+    const result = CreateAnnotationSchema.parse({
+      mapId: '00000000-0000-0000-0000-000000000001',
+      anchor: { type: 'Point', coordinates: [0, 0] },
+      content: { type: 'text', text: 'Hello' },
+    });
+    expect(result.content.type).toBe('text');
+  });
+
+  it('rejects invalid anchor coordinates', () => {
+    expect(() =>
+      CreateAnnotationSchema.parse({
+        mapId: '00000000-0000-0000-0000-000000000001',
+        anchor: { type: 'Point', coordinates: [200, 0] },
+        content: { type: 'text', text: 'Hello' },
+      })
+    ).toThrow();
+  });
+});
+
+describe('UpdateAnnotationSchema', () => {
+  it('accepts any valid content variant', () => {
+    const result = UpdateAnnotationSchema.parse({
+      id: '00000000-0000-0000-0000-000000000001',
+      content: { type: 'emoji', emoji: '🔥' },
+    });
+    expect(result.content.type).toBe('emoji');
   });
 });

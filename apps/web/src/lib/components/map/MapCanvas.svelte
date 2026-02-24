@@ -10,15 +10,47 @@
   import { filterStore } from '$lib/stores/filters.svelte.js';
   import DrawingToolbar from './DrawingToolbar.svelte';
   import FeaturePopup from './FeaturePopup.svelte';
+  import AnnotationContent from '$lib/components/annotations/AnnotationContent.svelte';
+  import type { AnnotationContent as AnnotationContentType } from '@felt-like-it/shared-types';
+
+  /**
+   * GeoJSON representation of annotation pins passed in from MapEditor.
+   * Each feature's `properties` embeds the content as a JSON string so the
+   * popup can render it without a separate data fetch.
+   */
+  interface AnnotationPinProperties {
+    authorName: string;
+    createdAt: string;
+    /** JSON.stringify(AnnotationContent) — parsed on click. */
+    contentJson: string;
+  }
+
+  interface AnnotationPin {
+    type: 'Feature';
+    /** Annotation UUID — used as the MapLibre feature id for click identification. */
+    id: string;
+    geometry: { type: 'Point'; coordinates: [number, number] };
+    properties: AnnotationPinProperties;
+  }
+
+  export interface AnnotationPinCollection {
+    type: 'FeatureCollection';
+    features: AnnotationPin[];
+  }
 
   interface Props {
     readonly?: boolean;
     /** GeoJSON data per layer id */
     layerData: Record<string, { type: 'FeatureCollection'; features: GeoJSONFeature[] }>;
     onfeaturedrawn?: (_layerId: string, _feature: Record<string, unknown>) => void;
+    /**
+     * Annotation pins rendered as a dedicated amber circle layer.
+     * Omit (or pass undefined) to hide annotation pins — used in the share viewer.
+     */
+    annotationPins?: AnnotationPinCollection;
   }
 
-  let { readonly = false, layerData, onfeaturedrawn }: Props = $props();
+  let { readonly = false, layerData, onfeaturedrawn, annotationPins }: Props = $props();
 
   let mapInstance = $state<MapLibreMap | undefined>(undefined);
 
@@ -217,6 +249,22 @@
     selectionStore.selectFeature(feature, { lng: e.lngLat.lng, lat: e.lngLat.lat });
   }
 
+  // ── Annotation pin popup ──────────────────────────────────────────────────
+
+  /** State for the annotation popup — set when an annotation pin is clicked. */
+  interface SelectedAnnotationPopup {
+    content: AnnotationContentType;
+    authorName: string;
+    createdAt: string;
+    lngLat: { lng: number; lat: number };
+  }
+
+  let selectedAnnotation = $state<SelectedAnnotationPopup | null>(null);
+
+  // handleAnnotationClick is inlined in the template (see CircleLayer onclick below)
+  // because svelte-maplibre-gl layer events are MapLayerMouseEvent (has .features),
+  // while MapMouseEvent (used for onmoveend etc.) does not carry feature data.
+
   // Always render all three sublayers (fill + line + circle) per source.
   // MapLibre routes each sublayer to the matching geometry natively:
   //   FillLayer   → Polygon / MultiPolygon only
@@ -353,6 +401,63 @@
         onclose={() => selectionStore.clearSelection()}
       >
         <FeaturePopup feature={selectionStore.selectedFeature} />
+      </Popup>
+    {/if}
+
+    <!-- Annotation pins — rendered above data layers, below the feature popup -->
+    {#if annotationPins && annotationPins.features.length > 0}
+      <GeoJSONSource
+        id="source-annotations"
+        data={annotationPins as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}
+      >
+        <CircleLayer
+          id="layer-annotations-circle"
+          paint={{
+            'circle-radius': 10,
+            'circle-color': '#f59e0b',
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff',
+            'circle-opacity': 0.92,
+          }}
+          onclick={(e) => {
+            // Don't interrupt active drawing tools
+            const tool = selectionStore.activeTool;
+            if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
+
+            const f = e.features?.[0];
+            if (!f) return;
+
+            const props = f.properties as AnnotationPinProperties | null;
+            if (!props?.contentJson) return;
+
+            // TYPE_DEBT: JSON.parse is unvalidated here — the DB + Zod schema are the
+            // source of truth. Invalid content will render as an empty popup rather than
+            // crashing; a safeParse guard can be added if this becomes a problem.
+            const content = JSON.parse(props.contentJson) as AnnotationContentType;
+
+            selectedAnnotation = {
+              content,
+              authorName: props.authorName,
+              createdAt: props.createdAt,
+              lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
+            };
+          }}
+        />
+      </GeoJSONSource>
+    {/if}
+
+    <!-- Annotation popup — shown on pin click; independent of selectionStore -->
+    {#if selectedAnnotation}
+      <Popup
+        lnglat={selectedAnnotation.lngLat}
+        closeButton={true}
+        onclose={() => { selectedAnnotation = null; }}
+      >
+        <AnnotationContent
+          content={selectedAnnotation.content}
+          authorName={selectedAnnotation.authorName}
+          createdAt={selectedAnnotation.createdAt}
+        />
       </Popup>
     {/if}
   </MapLibre>

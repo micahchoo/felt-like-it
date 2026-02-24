@@ -20,6 +20,9 @@
   import CommentPanel from './CommentPanel.svelte';
   import CollaboratorsPanel from './CollaboratorsPanel.svelte';
   import GeoprocessingPanel from '$lib/components/geoprocessing/GeoprocessingPanel.svelte';
+  import AnnotationPanel from '$lib/components/annotations/AnnotationPanel.svelte';
+  import type { AnnotationPinCollection } from '$lib/components/map/MapCanvas.svelte';
+  import type { Annotation } from '@felt-like-it/shared-types';
 
   interface Props {
     mapId: string;
@@ -46,7 +49,37 @@
   let showComments = $state(false);
   let showCollaborators = $state(false);
   let showGeoprocessing = $state(false);
+  let showAnnotations = $state(false);
   let savingViewport = $state(false);
+
+  // ── Annotation pin GeoJSON ──────────────────────────────────────────────────
+  // Annotations are stored as tRPC records but rendered via MapCanvas as a
+  // dedicated GeoJSON source. Content is embedded in feature properties so the
+  // popup can render without a second fetch.
+  let annotationPins = $state<AnnotationPinCollection>({ type: 'FeatureCollection', features: [] });
+
+  async function loadAnnotationPins() {
+    try {
+      const rows = await trpc.annotations.list.query({ mapId });
+      annotationPins = {
+        type: 'FeatureCollection',
+        features: (rows as unknown as Array<Annotation & { createdAt: string }>).map((a) => ({
+          type: 'Feature' as const,
+          id: a.id,
+          geometry: a.anchor,
+          properties: {
+            authorName: a.authorName,
+            createdAt: a.createdAt as unknown as string,
+            contentJson: JSON.stringify(a.content),
+          },
+        })),
+      };
+    } catch {
+      // Best-effort — annotation pins are non-critical; silently degrade
+    }
+  }
+
+  $effect(() => { loadAnnotationPins(); });
 
   // Initialize layers
   $effect(() => {
@@ -196,6 +229,19 @@
           </Button>
         </Tooltip>
 
+        <Tooltip content="Geographic annotations (text, emoji, GIF, image, link, IIIF)">
+          <Button
+            variant="ghost"
+            size="sm"
+            onclick={() => (showAnnotations = !showAnnotations)}
+          >
+            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z"/>
+            </svg>
+            Annotate
+          </Button>
+        </Tooltip>
+
         <Tooltip content="Spatial geoprocessing (buffer, clip, intersect…)">
           <Button
             variant="ghost"
@@ -243,6 +289,7 @@
         {readonly}
         {layerData}
         onfeaturedrawn={handleFeatureDrawn}
+        {...(!readonly ? { annotationPins } : {})}
       />
 
       <!-- Map overlay controls -->
@@ -287,6 +334,17 @@
   {#if showCollaborators && !readonly}
     <div class="w-72 shrink-0 overflow-hidden flex flex-col">
       <CollaboratorsPanel {mapId} />
+    </div>
+  {/if}
+
+  <!-- Annotation panel (collapsible, right side) -->
+  {#if showAnnotations && !readonly}
+    <div class="w-72 shrink-0 overflow-hidden flex flex-col">
+      <AnnotationPanel
+        {mapId}
+        {...(userId !== undefined ? { userId } : {})}
+        onannotationchange={loadAnnotationPins}
+      />
     </div>
   {/if}
 

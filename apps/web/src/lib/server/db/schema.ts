@@ -12,11 +12,16 @@ import {
 import { customType } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
-// Custom PostGIS geometry type
-// We always read via ST_AsGeoJSON and write via ST_GeomFromGeoJSON in raw SQL,
-// so the driver data is a JSON string when reading.
+// Custom PostGIS geometry type — mixed geometry (Point / LineString / Polygon / etc.)
+// Always read via ST_AsGeoJSON; always written via ST_GeomFromGeoJSON in raw SQL.
 export const geometryType = customType<{ data: string; driverData: string }>({
   dataType: () => 'geometry(Geometry, 4326)',
+});
+
+// Custom PostGIS point type — used for annotation anchors.
+// Always read via ST_X(col) / ST_Y(col); written via ST_GeomFromGeoJSON.
+export const geometryPointType = customType<{ data: string; driverData: string }>({
+  dataType: () => 'geometry(Point, 4326)',
 });
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -211,6 +216,48 @@ export const mapEvents = pgTable(
   ]
 );
 
+// ─── Annotations ──────────────────────────────────────────────────────────────
+export const annotations = pgTable(
+  'annotations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    mapId: uuid('map_id')
+      .notNull()
+      .references(() => maps.id, { onDelete: 'cascade' }),
+    /**
+     * Null when the originating user account has been deleted.
+     * Mirrors the `comments.userId` nullable FK pattern.
+     */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * Author name denormalized at insert time (mirrors `comments.authorName`).
+     * Survives user deletion; no JOIN is required when listing annotations.
+     */
+    authorName: text('author_name').notNull(),
+    /**
+     * Geographic anchor: PostGIS geometry(Point, 4326).
+     *
+     * Reading: use ST_X(anchor_point) for longitude, ST_Y(anchor_point) for latitude.
+     * Writing: use ST_GeomFromGeoJSON('{"type":"Point","coordinates":[lng,lat]}').
+     */
+    anchorPoint: geometryPointType('anchor_point').notNull(),
+    /**
+     * Annotation content as JSONB — AnnotationContentSchema discriminated union.
+     * The `type` field ('text'|'emoji'|'gif'|'image'|'link'|'iiif') is always present.
+     * Validated by the application layer (Zod) before any DB write.
+     */
+    content: jsonb('content').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Composite index: the primary query pattern is map-scoped chronological listing
+    index('annotations_map_id_created_at_idx').on(t.mapId, t.createdAt),
+    // Spatial index for future proximity queries (ST_DWithin / KNN)
+    index('annotations_anchor_point_idx').using('gist', t.anchorPoint),
+  ]
+);
+
 // ─── Import Jobs ──────────────────────────────────────────────────────────────
 export const importJobs = pgTable(
   'import_jobs',
@@ -255,3 +302,5 @@ export type CommentRow = typeof comments.$inferSelect;
 export type NewComment = typeof comments.$inferInsert;
 export type MapCollaboratorRow = typeof mapCollaborators.$inferSelect;
 export type NewMapCollaborator = typeof mapCollaborators.$inferInsert;
+export type AnnotationRow = typeof annotations.$inferSelect;
+export type NewAnnotation = typeof annotations.$inferInsert;

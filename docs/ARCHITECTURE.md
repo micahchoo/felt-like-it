@@ -1,6 +1,6 @@
 # Felt Like It — Architecture
 
-Living document describing the **built** system as of Phase 2 (Feb 2026).
+Living document describing the **built** system as of Phase 4 (Feb 2026).
 For the original design vision, see [`OriginalVision.md`](OriginalVision.md).
 For architecture decision records, see [`adr/`](adr/).
 
@@ -75,6 +75,11 @@ Browser polls GET /api/job/[jobId]  ←→  worker updates import_jobs.progress
 | `features` | `id uuid PK`, `layer_id FK`, `geometry geometry(Geometry,4326)`, `properties jsonb` |
 | `shares` | `id uuid PK`, `map_id FK`, `token unique`, `access_level` (public\|unlisted) |
 | `import_jobs` | `id uuid PK`, `map_id FK`, `layer_id FK nullable`, `status`, `file_name`, `file_size`, `error_message`, `progress int` |
+| `map_collaborators` | `id uuid PK`, `map_id FK CASCADE`, `user_id FK CASCADE`, `role text` (viewer\|commenter\|editor), `invited_by FK SET NULL`; UNIQUE(map_id, user_id) |
+| `comments` | `id uuid PK`, `map_id FK CASCADE`, `user_id FK SET NULL`, `author_name text`, `body text`, `resolved bool`, `created_at`, `updated_at` |
+| `map_events` | `id uuid PK`, `map_id FK CASCADE`, `user_id FK SET NULL`, `event_type text`, `payload jsonb`, `created_at` |
+
+`maps` also has `is_template bool default false` — template maps are shared across all users and cloned config-only (features are not copied).
 
 **Geometry column** uses a Drizzle `customType`:
 ```typescript
@@ -109,11 +114,16 @@ SELECT $newLayerId, geometry, properties FROM features WHERE layer_id = $oldLaye
 
 | Router | Procedure | Auth |
 |---|---|---|
-| maps | list, get, create, update, delete, clone | protected |
+| maps | list, get, create, update, delete, clone, listTemplates, createFromTemplate | protected |
 | layers | list, get, create, update, delete, reorder | protected |
 | features | list, upsert, delete | protected |
 | styles | update | protected |
 | shares | create, update, getByToken | create/update: protected; getByToken: public |
+| collaborators | list, invite, remove, updateRole | protected |
+| comments | list, create, delete, resolve | protected |
+| comments | listForShare, createForShare | public (share token validated against `shares` table) |
+| events | list, log | protected |
+| geoprocessing | run | protected |
 
 **`maps.clone`** deep-copies map + all layers + all features:
 1. Insert new map row (new UUID, `title: "Copy of …"`)
@@ -200,9 +210,12 @@ POST /api/upload
 
 [BullMQ worker process]
   → UPDATE import_jobs SET status='processing'
-  → detect format: GeoJSON | CSV
-  → GeoJSON: parse → validate → batch INSERT features (ST_GeomFromGeoJSON)
-  → CSV:     papaparse → detect lat/lng columns → build Point GeoJSON → batch INSERT
+  → detect format: GeoJSON | CSV | Shapefile | KML | GPX | GeoPackage
+  → GeoJSON:     parse → validate → batch INSERT features (ST_GeomFromGeoJSON)
+  → CSV:         papaparse → detect lat/lng columns (or geocode address column) → batch INSERT
+  → Shapefile:   shpjs (.shp/.zip) → GeoJSON → batch INSERT
+  → KML/GPX:     @tmcw/togeojson + @xmldom/xmldom → GeoJSON → batch INSERT
+  → GeoPackage:  sql.js WASM SQLite → OGC binary header parse → ST_GeomFromWKB + ST_Transform → batch INSERT
   → UPDATE import_jobs SET status='done', layer_id=...
   → publish progress events (polled by GET /api/job/[jobId])
 ```
@@ -242,6 +255,56 @@ draw.on('finish', (id: string | number) => {
 
 ---
 
+## Collaboration (Phase 3)
+
+### Granular Permissions
+
+`map_collaborators` records users invited to a map with a role (`viewer`, `commenter`, `editor`). Roles are stored but not yet enforced on tRPC procedures — enforcement is Phase 5 hardening.
+
+```
+collaborators.invite({ mapId, email, role })
+  → ownership check → find user by email → self-invite guard → duplicate check → insert
+collaborators.remove({ mapId, userId })     → ownership check → delete
+collaborators.updateRole({ mapId, userId, role }) → ownership check → update + returning
+```
+
+### Comment Threads
+
+`comments` table stores all comments with `author_name` denormalized at insert time (survives user deletion). Map owner can resolve/unresolve. Guests can comment via share links using public procedures:
+
+- `comments.createForShare({ shareToken, authorName, body })` — validates share token, inserts with `userId: null`
+- `comments.listForShare({ shareToken })` — no auth required
+
+### Activity Feed
+
+`map_events` records client-side events (imports, viewport saves) for display in `ActivityFeed.svelte`. Written via `events.log` from `MapEditor.svelte` after key actions.
+
+---
+
+## Geoprocessing (Phase 4)
+
+Seven PostGIS operations available via `geoprocessing.run({ op, mapId })`:
+
+| Operation | SQL | Inputs |
+|---|---|---|
+| Buffer | `ST_Buffer(::geography, distM)::geometry` | single layer + `distanceKm` |
+| Convex Hull | `ST_ConvexHull(ST_Collect(...))` | single layer |
+| Centroid | `ST_Centroid(geometry)` | single layer |
+| Dissolve | `ST_Union(geometry)` grouped by optional `field` | single layer |
+| Union | `ST_Union(geometry)` whole layer | single layer |
+| Intersect | `ST_Intersection` with `ST_Intersects` guard | two layers |
+| Clip | `ST_Intersection` cross join | two layers |
+
+Output layers always get `type: 'mixed'` — safe for geometry-type-changing ops like Buffer. The `GeoprocessingOpSchema` discriminated union in `packages/shared-types` is the single source of truth for op validation and UI labels.
+
+The `geoprocessing.run` mutation:
+1. Verifies ownership of all input layers (one `SELECT` per layer — avoids Drizzle `inArray` column inspection)
+2. Inserts the output layer row
+3. Calls `runGeoprocessing(op, newLayerId)` — exhaustive switch via `assertNever`
+4. Rolls back output layer on error
+
+---
+
 ## Known Quirks & Hard-Won Fixes
 
 | Symptom | Root Cause | Fix |
@@ -276,10 +339,13 @@ web      → SvelteKit (port 3000), adapter-node
 worker   → standalone BullMQ process (pnpm --filter worker deploy)
 postgres → postgis/postgis:16-3.4-alpine  (volume: postgres_data)
 redis    → redis:7-alpine                 (volume: redis_data)
+martin   → ghcr.io/maplibre/martin (port 3001 external, 3000 internal)
 ```
 
-Volumes: `postgres_data`, `redis_data`, `/uploads` (bind mount).
-All services on `felt-network`. Health-check: `wget -qO- http://127.0.0.1:3000/` (Alpine: use 127.0.0.1, not localhost).
+Martin auto-discovers PostGIS geometry tables and serves vector tiles. Layers with >10,000 features switch from `GeoJSONSource` to `VectorTileSource` automatically. Set `PUBLIC_MARTIN_URL=""` to disable and always use GeoJSON.
+
+Volumes: `postgres_data`, `redis_data`, `uploads`.
+All services on `felt-network`. Health-check: `wget -qO- http://127.0.0.1:3000/` (Alpine resolves `localhost` to `::1` — use `127.0.0.1`).
 
 ---
 
@@ -291,3 +357,7 @@ All services on `felt-network`. Health-check: `wget -qO- http://127.0.0.1:3000/`
 | `REDIS_URL` | `redis://redis:6379` | Redis (BullMQ) |
 | `UPLOAD_DIR` | `/uploads` | File upload directory |
 | `ORIGIN` | `http://localhost:3000` | SvelteKit CSRF origin |
+| `SESSION_SECRET` | _(must set)_ | 32-byte hex secret for session signing. `openssl rand -hex 32` |
+| `PUBLIC_MARTIN_URL` | `http://localhost:3001` | Browser-facing Martin vector tile URL. Set to `""` to disable. |
+| `NOMINATIM_URL` | _(unset)_ | Self-hosted Nominatim for address geocoding. Defaults to OSM Nominatim. |
+| `GEOCODING_USER_AGENT` | _(unset)_ | User-agent string sent with Nominatim requests. Required when geocoding is used. |

@@ -36,7 +36,7 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 
 ---
 
-## Phase 2 — Power Features 🚧 IN PROGRESS
+## Phase 2 — Power Features ✅ COMPLETE
 
 **Goal:** Handle real-world datasets and common GIS workflows.
 
@@ -69,9 +69,9 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 
 ---
 
-## Phase 3 — Collaboration 🚧 IN PROGRESS
+## Phase 3 — Collaboration ✅ COMPLETE
 
-**Goal:** Multi-user real-time editing.
+**Goal:** Comment threads, granular permissions, and guest access. (Real-time concurrent editing — Yjs, presence, team library — deferred to Phase 5.)
 
 | Feature | Status |
 |---|---|
@@ -85,16 +85,19 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 
 ---
 
-## Phase 4 — Spatial Analysis
+## Phase 4 — Spatial Analysis 🚧 IN PROGRESS
 
 **Goal:** PostGIS geoprocessing without writing SQL.
 
-- **PostGIS geoprocessing UI**: Buffer, Clip, Intersect, Union, Dissolve, Convex Hull, Centroid
-- Spatial joins: point-in-polygon, nearest neighbor, attribute join by location
-- Aggregation: point-to-polygon count / sum / avg
-- Measurement tools: distance, area, perimeter with unit conversion
-- Boundary analysis: census/admin boundary datasets; choropleth by aggregated metrics
-- deck.gl integration: large-scale point clouds, 3D buildings, heatmaps (optional overlay)
+| Feature | Status |
+|---|---|
+| **PostGIS geoprocessing UI** (Buffer, Clip, Intersect, Union, Dissolve, Convex Hull, Centroid — `GeoprocessingOpSchema` discriminated union; `runGeoprocessing` exhaustive switch; `GeoprocessingPanel.svelte`) | ✅ |
+| **Rich annotation suite** (text / emoji / GIF / image / link / IIIF NavPlace; WGS84 Point anchor; `AnnotationContentSchema` discriminated union; `annotations` PostGIS table; full CRUD + `fetchIiifNavPlace` tRPC; amber pin layer in MapCanvas; `AnnotationContent.svelte` + `AnnotationPanel.svelte`) | ✅ |
+| Spatial joins: point-in-polygon, nearest neighbor, attribute join by location | ⬜ |
+| Aggregation: point-to-polygon count / sum / avg | ⬜ |
+| Measurement tools: distance, area, perimeter with unit conversion | ⬜ |
+| Boundary analysis: census/admin boundary datasets; choropleth by aggregated metrics | ⬜ |
+| deck.gl integration: large-scale point clouds, 3D buildings, heatmaps (optional overlay) | ⬜ |
 
 ---
 

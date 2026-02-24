@@ -7,6 +7,7 @@ import { eventsRouter } from './routers/events.js';
 import { commentsRouter } from './routers/comments.js';
 import { collaboratorsRouter } from './routers/collaborators.js';
 import { geoprocessingRouter } from './routers/geoprocessing.js';
+import { annotationsRouter } from './routers/annotations.js';
 
 export const appRouter = router({
   maps: mapsRouter,
@@ -17,6 +18,7 @@ export const appRouter = router({
   comments: commentsRouter,
   collaborators: collaboratorsRouter,
   geoprocessing: geoprocessingRouter,
+  annotations: annotationsRouter,
 });
 
 export type AppRouter = typeof appRouter;

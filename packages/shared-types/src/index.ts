@@ -6,4 +6,5 @@ export * from './schemas/style.js';
 export * from './schemas/share.js';
 export * from './schemas/job.js';
 export * from './schemas/geoprocessing.js';
+export * from './schemas/annotation.js';
 export * from './types.js';

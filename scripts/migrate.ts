@@ -21,7 +21,7 @@ const MIGRATIONS_DIR = resolve(
   '../apps/web/src/lib/server/db/migrations'
 );
 
-const MIGRATION_FILES = ['0000_initial.sql', '0001_add_map_templates.sql', '0002_add_map_events.sql', '0003_add_comments.sql', '0004_add_collaborators.sql'];
+const MIGRATION_FILES = ['0000_initial.sql', '0001_add_map_templates.sql', '0002_add_map_events.sql', '0003_add_comments.sql', '0004_add_collaborators.sql', '0005_add_annotations.sql'];
 
 async function migrate(): Promise<void> {
   const client = new pg.Client({ connectionString: DATABASE_URL });
