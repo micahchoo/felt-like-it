@@ -9,6 +9,7 @@
   import type { DrawTool } from '$lib/stores/selection.svelte.js';
   import { measureLine, measurePolygon } from '@felt-like-it/geo-engine';
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
+  import type { GeoJSONStoreFeatures } from 'terra-draw';
 
   interface Props {
     map: MapLibreMap;
@@ -25,6 +26,7 @@
 
   // Lazy-load Terra Draw to avoid SSR issues
   let draw: import('terra-draw').TerraDraw | null = null;
+  let drawReady = $state(false);
 
   async function initTeraDraw() {
     const { TerraDraw, TerraDrawPointMode, TerraDrawLineStringMode, TerraDrawPolygonMode, TerraDrawSelectMode } = await import('terra-draw');
@@ -45,6 +47,8 @@
 
     // terra-draw ≥1.x: finish fires with a single FeatureId (string | number),
     // not an array. Use getSnapshotFeature(id) for direct lookup.
+    drawReady = true;
+
     draw.on('finish', async (id: string | number) => {
       if (!draw) return;
 
@@ -53,9 +57,9 @@
       if (f) {
         if (onmeasured) {
           // Measurement mode — compute result and notify parent; do NOT persist to DB
-          measureFeature(f as unknown as { geometry: Record<string, unknown> });
+          measureFeature(f);
         } else {
-          await saveFeature(f as unknown as { geometry: Record<string, unknown>; properties: Record<string, unknown> });
+          await saveFeature(f);
         }
       }
 
@@ -83,7 +87,11 @@
     function startDraw() {
       draw?.stop();
       draw = null;
-      initTeraDraw().catch((err) => console.error('TerraDraw init failed:', err));
+      drawReady = false;
+      initTeraDraw().catch((err) => {
+        console.error('TerraDraw init failed:', err);
+        toastStore.error('Drawing tools failed to load. Try refreshing.');
+      });
     }
 
     // If style is already loaded (common when navigating to the page), start immediately.
@@ -108,33 +116,36 @@
    * Compute a measurement from a drawn GeoJSON feature and pass it to `onmeasured`.
    * Only LineString and Polygon geometries produce a meaningful result.
    */
-  function measureFeature(f: { geometry: Record<string, unknown> }) {
+  function measureFeature(f: GeoJSONStoreFeatures) {
     const geom = f.geometry;
-    if (geom['type'] === 'LineString') {
-      const coords = geom['coordinates'] as [number, number][];
-      onmeasured?.(measureLine(coords));
-    } else if (geom['type'] === 'Polygon') {
-      const coords = geom['coordinates'] as [number, number][][];
-      onmeasured?.(measurePolygon(coords));
+    if (geom.type === 'LineString') {
+      onmeasured?.(measureLine(geom.coordinates as [number, number][]));
+    } else if (geom.type === 'Polygon') {
+      onmeasured?.(measurePolygon(geom.coordinates as [number, number][][]));
     }
     // Point geometry has no length/area — silently ignore
   }
 
-  async function saveFeature(f: { geometry: Record<string, unknown>; properties: Record<string, unknown> }) {
+  async function saveFeature(f: GeoJSONStoreFeatures) {
     const activeLayer = layersStore.active;
     if (!activeLayer) {
       toastStore.error('No active layer. Please create or select a layer first.');
       return;
     }
 
+    // Serialize typed GeoJSON geometry/properties to plain records for the tRPC boundary
+    // TYPE_DEBT: GeoJSON geometry interfaces lack index signatures, requiring cast to Record for tRPC schema
+    const geometry = f.geometry as unknown as Record<string, unknown>;
+    const properties = (f.properties ?? {}) as Record<string, unknown>;
+
     try {
       const { upsertedIds } = await trpc.features.upsert.mutate({
         layerId: activeLayer.id,
-        features: [{ geometry: f.geometry, properties: f.properties }],
+        features: [{ geometry, properties }],
       });
 
       undoStore.push({
-        description: `Draw ${String(f.geometry['type'] ?? 'feature')}`,
+        description: `Draw ${f.geometry.type}`,
         undo: async () => {
           if (upsertedIds[0]) {
             await trpc.features.delete.mutate({ layerId: activeLayer.id, ids: [upsertedIds[0]] });
@@ -143,14 +154,14 @@
         redo: async () => {
           await trpc.features.upsert.mutate({
             layerId: activeLayer.id,
-            features: [{ geometry: f.geometry, properties: f.properties }],
+            features: [{ geometry, properties }],
           });
         },
       });
 
       // Await the data reload so the GeoJSON source is updated BEFORE
       // removeFeatures() clears the Terra Draw overlay — no visual gap.
-      await onfeaturedrawn?.(activeLayer.id, f);
+      await onfeaturedrawn?.(activeLayer.id, { geometry, properties });
     } catch {
       toastStore.error('Failed to save drawn feature.');
     }
@@ -186,10 +197,13 @@
     <Tooltip content={tool.label} position="right">
       <button
         onclick={() => setTool(tool.id)}
+        disabled={!drawReady}
         class="h-9 w-9 rounded-md flex items-center justify-center text-base transition-colors
-               {selectionStore.activeTool === tool.id
-                 ? 'bg-blue-600 text-white'
-                 : 'text-slate-300 hover:bg-slate-700 hover:text-white'}"
+               {!drawReady
+                 ? 'opacity-50 cursor-not-allowed text-slate-500'
+                 : selectionStore.activeTool === tool.id
+                   ? 'bg-blue-600 text-white'
+                   : 'text-slate-300 hover:bg-slate-700 hover:text-white'}"
         aria-label={tool.label}
         aria-pressed={selectionStore.activeTool === tool.id}
       >
