@@ -1,7 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RequestEvent } from '@sveltejs/kit';
-import type { User } from 'lucia';
 
 // --- Module mocks ---
 
@@ -27,21 +25,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 
 import { apiKeysRouter } from '../lib/server/trpc/routers/apiKeys.js';
 import { db } from '$lib/server/db/index.js';
-
-// --- Helpers ---
-
-function drizzleChain<T>(value: T) {
-  const c: Record<string, unknown> = {
-    then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(value).then(res, rej),
-  };
-  for (const m of ['from', 'where', 'orderBy', 'set', 'limit']) {
-    c[m] = vi.fn(() => c);
-  }
-  c['values']    = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
-  c['returning'] = vi.fn().mockResolvedValue(value);
-  return c as unknown as ReturnType<typeof db.select>;
-}
+import { drizzleChain, mockContext } from './test-utils.js';
 
 // --- Constants ---
 
@@ -57,11 +41,7 @@ const MOCK_KEY_RECORD = {
 };
 
 function makeCaller() {
-  return apiKeysRouter.createCaller({
-    user:    { id: USER_ID, name: 'Test User', email: 'test@test.com' } as unknown as User,
-    session: { id: 'sess', userId: USER_ID, expiresAt: new Date(Date.now() + 3_600_000), fresh: false },
-    event:   {} as RequestEvent,
-  });
+  return apiKeysRouter.createCaller(mockContext({ userId: USER_ID, userEmail: 'test@test.com' }));
 }
 
 // --- Tests ---
@@ -93,9 +73,7 @@ describe('apiKeys.create', () => {
 
   it('generates and stores an API key, returning the plaintext key once', async () => {
     const createdRecord = { id: KEY_ID, name: 'My Key', prefix: 'flk_abc12345', createdAt: new Date() };
-    vi.mocked(db.insert).mockReturnValue(
-      drizzleChain([createdRecord]) as unknown as ReturnType<typeof db.insert>
-    );
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([createdRecord]));
 
     const result = await makeCaller().create({ name: 'My Key' });
 
@@ -107,12 +85,12 @@ describe('apiKeys.create', () => {
 
   it('key hash stored is not the raw key', async () => {
     const insertSpy = vi.mocked(db.insert).mockReturnValue(
-      drizzleChain([{ id: KEY_ID, name: 'K', prefix: 'flk_x', createdAt: new Date() }]) as unknown as ReturnType<typeof db.insert>
+      drizzleChain([{ id: KEY_ID, name: 'K', prefix: 'flk_x', createdAt: new Date() }])
     );
 
     const result = await makeCaller().create({ name: 'K' });
 
-    // The values passed to insert should include keyHash ≠ rawKey
+    // The values passed to insert should include keyHash != rawKey
     const valuesCall = (insertSpy.mock.results[0]?.value as { values: ReturnType<typeof vi.fn> })?.values;
     const insertedValues = valuesCall?.mock.calls[0]?.[0] as { keyHash: string } | undefined;
     if (insertedValues) {
@@ -122,9 +100,7 @@ describe('apiKeys.create', () => {
   });
 
   it('throws INTERNAL_SERVER_ERROR when insert returns empty', async () => {
-    vi.mocked(db.insert).mockReturnValue(
-      drizzleChain([]) as unknown as ReturnType<typeof db.insert>
-    );
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([]));
 
     await expect(makeCaller().create({ name: 'My Key' })).rejects.toMatchObject({
       code: 'INTERNAL_SERVER_ERROR',
@@ -137,9 +113,7 @@ describe('apiKeys.revoke', () => {
 
   it('revokes a key owned by the caller and returns { revoked: true }', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([{ id: KEY_ID }]));
-    vi.mocked(db.delete).mockReturnValue(
-      drizzleChain(undefined) as unknown as ReturnType<typeof db.delete>
-    );
+    vi.mocked(db.delete).mockReturnValue(drizzleChain(undefined));
 
     const result = await makeCaller().revoke({ id: KEY_ID });
 

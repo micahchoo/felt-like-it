@@ -1,7 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RequestEvent } from '@sveltejs/kit';
-import type { User } from 'lucia';
 
 // --- Module mocks ---
 
@@ -21,21 +19,9 @@ vi.mock('$lib/server/db/index.js', () => ({
 
 import { layersRouter } from '../lib/server/trpc/routers/layers.js';
 import { db } from '$lib/server/db/index.js';
+import { drizzleChain, mockContext } from './test-utils.js';
 
 // --- Helpers ---
-
-function drizzleChain<T>(value: T) {
-  const c: Record<string, unknown> = {
-    then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(value).then(res, rej),
-  };
-  for (const m of ['from', 'where', 'orderBy', 'set']) {
-    c[m] = vi.fn(() => c);
-  }
-  c['values']    = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
-  c['returning'] = vi.fn().mockResolvedValue(value);
-  return c as unknown as ReturnType<typeof db.select>;
-}
 
 const USER_ID   = 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
 const MAP_ID    = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
@@ -55,11 +41,7 @@ const MOCK_LAYER = {
 };
 
 function makeCaller() {
-  return layersRouter.createCaller({
-    user: { id: USER_ID } as unknown as User,
-    session: { id: 'sess', userId: USER_ID, expiresAt: new Date(Date.now() + 3600_000), fresh: false },
-    event: {} as RequestEvent,
-  });
+  return layersRouter.createCaller(mockContext({ userId: USER_ID }));
 }
 
 // --- Tests ---
@@ -97,7 +79,7 @@ describe('layers.create', () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))           // map ownership
       .mockReturnValueOnce(drizzleChain([existingLayer]));     // existing layers for z-index
-    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_LAYER]) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_LAYER]));
 
     const result = await makeCaller().create({ mapId: MAP_ID, name: 'New Layer' });
     expect(result.id).toBe(LAYER_ID);
@@ -110,7 +92,7 @@ describe('layers.create', () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))
       .mockReturnValueOnce(drizzleChain([])); // no existing layers
-    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_LAYER]) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_LAYER]));
 
     await makeCaller().create({ mapId: MAP_ID, name: 'First Layer' });
     expect(db.insert).toHaveBeenCalledOnce();
@@ -128,7 +110,7 @@ describe('layers.create', () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))
       .mockReturnValueOnce(drizzleChain([]));
-    vi.mocked(db.insert).mockReturnValue(drizzleChain([]) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([]));
 
     await expect(makeCaller().create({ mapId: MAP_ID, name: 'Fail' })).rejects.toMatchObject({
       code: 'INTERNAL_SERVER_ERROR',
@@ -144,7 +126,7 @@ describe('layers.update', () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([{ id: LAYER_ID, mapId: MAP_ID }])) // layer lookup
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]));                         // map ownership
-    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]) as unknown as ReturnType<typeof db.update>);
+    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]));
 
     const result = await makeCaller().update({ id: LAYER_ID, name: 'Renamed' });
     expect(result?.name).toBe('Renamed');
@@ -177,7 +159,7 @@ describe('layers.delete', () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([{ id: LAYER_ID, mapId: MAP_ID }]))
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.delete).mockReturnValue(drizzleChain(undefined) as unknown as ReturnType<typeof db.delete>);
+    vi.mocked(db.delete).mockReturnValue(drizzleChain(undefined));
 
     const result = await makeCaller().delete({ id: LAYER_ID });
     expect(result).toEqual({ deleted: true });

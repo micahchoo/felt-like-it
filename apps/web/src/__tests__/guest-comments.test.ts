@@ -1,6 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RequestEvent } from '@sveltejs/kit';
 
 // --- Module mocks ---
 
@@ -19,21 +18,9 @@ vi.mock('$lib/server/db/index.js', () => ({
 
 import { commentsRouter } from '../lib/server/trpc/routers/comments.js';
 import { db } from '$lib/server/db/index.js';
+import { drizzleChain, publicContext } from './test-utils.js';
 
 // --- Helpers ---
-
-function drizzleChain<T>(value: T) {
-  const c: Record<string, unknown> = {
-    then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(value).then(res, rej),
-  };
-  for (const m of ['from', 'where', 'orderBy', 'set', 'limit']) {
-    c[m] = vi.fn(() => c);
-  }
-  c['values']    = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
-  c['returning'] = vi.fn().mockResolvedValue(value);
-  return c as unknown as ReturnType<typeof db.select>;
-}
 
 const SHARE_TOKEN = 'test-share-token-abc123';
 const MAP_ID      = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
@@ -48,11 +35,7 @@ const MOCK_COMMENT = {
 
 /** Public caller — no auth context needed */
 function makeCaller() {
-  return commentsRouter.createCaller({
-    user: null,
-    session: null,
-    event: {} as RequestEvent,
-  });
+  return commentsRouter.createCaller(publicContext());
 }
 
 // --- Tests ---
@@ -94,9 +77,7 @@ describe('comments.createForShare', () => {
 
   it('creates a guest comment with null userId and provided authorName', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_SHARE]));
-    vi.mocked(db.insert).mockReturnValue(
-      drizzleChain([MOCK_COMMENT]) as unknown as ReturnType<typeof db.insert>
-    );
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_COMMENT]));
 
     const result = await makeCaller().createForShare({
       shareToken: SHARE_TOKEN,

@@ -13,21 +13,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 
 import { requireMapAccess } from '../lib/server/geo/access.js';
 import { db } from '$lib/server/db/index.js';
-
-// --- Helpers ---
-
-function drizzleChain<T>(value: T) {
-  const c: Record<string, unknown> = {
-    then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(value).then(res, rej),
-  };
-  for (const m of ['from', 'where', 'orderBy', 'set']) {
-    c[m] = vi.fn(() => c);
-  }
-  c['values']    = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
-  c['returning'] = vi.fn().mockResolvedValue(value);
-  return c as unknown as ReturnType<typeof db.select>;
-}
+import { drizzleChain } from './test-utils.js';
 
 // --- Constants ---
 
@@ -79,14 +65,14 @@ describe('requireMapAccess', () => {
     });
   });
 
-  it('resolves when collaborator role exactly meets minRole (viewer → viewer)', async () => {
+  it('resolves when collaborator role exactly meets minRole (viewer -> viewer)', async () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([OTHER_MAP]))
       .mockReturnValueOnce(drizzleChain([{ role: 'viewer' }]));
     await expect(requireMapAccess(USER_ID, MAP_ID, 'viewer')).resolves.toBeUndefined();
   });
 
-  it('resolves when collaborator role exceeds minRole (editor → viewer)', async () => {
+  it('resolves when collaborator role exceeds minRole (editor -> viewer)', async () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([OTHER_MAP]))
       .mockReturnValueOnce(drizzleChain([{ role: 'editor' }]));

@@ -1,9 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RequestEvent } from '@sveltejs/kit';
-import type { User } from 'lucia';
 
-// ─── Module mocks ────────────────────────────────────────────────────────────
+// --- Module mocks ---
 
 vi.mock('$lib/server/db/index.js', () => ({
   db: {
@@ -20,28 +18,9 @@ vi.mock('$lib/server/db/index.js', () => ({
 
 import { annotationsRouter } from '../lib/server/trpc/routers/annotations.js';
 import { db } from '$lib/server/db/index.js';
+import { drizzleChain, mockContext, type DbExecuteResult } from './test-utils.js';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Minimal drizzle chain mock — thenable so await works; all builder methods
- * return the same chain object. Mirrors the pattern from comments.test.ts.
- */
-function drizzleChain<T>(value: T) {
-  const c: Record<string, unknown> = {
-    then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(value).then(res, rej),
-  };
-  for (const m of ['from', 'where', 'orderBy', 'set', 'innerJoin']) {
-    c[m] = vi.fn(() => c);
-  }
-  c['values']    = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
-  c['returning'] = vi.fn().mockResolvedValue(value);
-  return c as unknown as ReturnType<typeof db.select>;
-}
-
-// Type helper so TypeScript accepts vi.mocked(db.execute).mockResolvedValueOnce(...)
-type DbExecuteResult = Awaited<ReturnType<typeof db.execute>>;
+// --- Helpers ---
 
 const USER_ID   = 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
 const MAP_ID    = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
@@ -63,14 +42,10 @@ const MOCK_ANNOT_ROW = {
 };
 
 function makeCaller() {
-  return annotationsRouter.createCaller({
-    user: { id: USER_ID, name: 'Test User' } as unknown as User,
-    session: { id: 'sess', userId: USER_ID, expiresAt: new Date(Date.now() + 3_600_000), fresh: false },
-    event: {} as RequestEvent,
-  });
+  return annotationsRouter.createCaller(mockContext({ userId: USER_ID }));
 }
 
-// ─── annotations.list ────────────────────────────────────────────────────────
+// --- annotations.list ---
 
 describe('annotations.list', () => {
   beforeEach(() => vi.resetAllMocks());
@@ -109,7 +84,7 @@ describe('annotations.list', () => {
   });
 });
 
-// ─── annotations.create ──────────────────────────────────────────────────────
+// --- annotations.create ---
 
 describe('annotations.create', () => {
   beforeEach(() => vi.resetAllMocks());
@@ -133,7 +108,7 @@ describe('annotations.create', () => {
   });
 
   it('creates an emoji annotation', async () => {
-    const emojiRow = { ...MOCK_ANNOT_ROW, content: { type: 'emoji', emoji: '🌊', label: 'Ocean' } };
+    const emojiRow = { ...MOCK_ANNOT_ROW, content: { type: 'emoji', emoji: '\u{1F30A}', label: 'Ocean' } };
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
     vi.mocked(db.execute).mockResolvedValueOnce(
       { rows: [emojiRow] } as unknown as DbExecuteResult
@@ -142,7 +117,7 @@ describe('annotations.create', () => {
     const result = await makeCaller().create({
       mapId: MAP_ID,
       anchor: { type: 'Point', coordinates: [-122.4, 37.8] },
-      content: { type: 'emoji', emoji: '🌊', label: 'Ocean' },
+      content: { type: 'emoji', emoji: '\u{1F30A}', label: 'Ocean' },
     });
 
     expect(result.content.type).toBe('emoji');
@@ -197,7 +172,7 @@ describe('annotations.create', () => {
   });
 });
 
-// ─── annotations.update ──────────────────────────────────────────────────────
+// --- annotations.update ---
 
 describe('annotations.update', () => {
   beforeEach(() => vi.resetAllMocks());
@@ -240,7 +215,7 @@ describe('annotations.update', () => {
   });
 });
 
-// ─── annotations.delete ──────────────────────────────────────────────────────
+// --- annotations.delete ---
 
 describe('annotations.delete', () => {
   beforeEach(() => vi.resetAllMocks());
@@ -249,9 +224,7 @@ describe('annotations.delete', () => {
     vi.mocked(db.select).mockReturnValueOnce(
       drizzleChain([{ id: ANNOT_ID, userId: USER_ID }])
     );
-    vi.mocked(db.delete).mockReturnValue(
-      drizzleChain(undefined) as unknown as ReturnType<typeof db.delete>
-    );
+    vi.mocked(db.delete).mockReturnValue(drizzleChain(undefined));
 
     const result = await makeCaller().delete({ id: ANNOT_ID });
     expect(result).toEqual({ deleted: true });
@@ -278,7 +251,7 @@ describe('annotations.delete', () => {
   });
 });
 
-// ─── annotations.fetchIiifNavPlace ───────────────────────────────────────────
+// --- annotations.fetchIiifNavPlace ---
 
 describe('annotations.fetchIiifNavPlace', () => {
   beforeEach(() => {

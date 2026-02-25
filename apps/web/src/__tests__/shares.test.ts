@@ -1,7 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RequestEvent } from '@sveltejs/kit';
-import type { User } from 'lucia';
 
 // --- Module mocks ---
 
@@ -21,21 +19,9 @@ vi.mock('$lib/server/audit/index.js', () => ({ appendAuditLog: vi.fn() }));
 
 import { sharesRouter } from '../lib/server/trpc/routers/shares.js';
 import { db } from '$lib/server/db/index.js';
+import { drizzleChain, mockContext, publicContext } from './test-utils.js';
 
 // --- Helpers ---
-
-function drizzleChain<T>(value: T) {
-  const c: Record<string, unknown> = {
-    then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(value).then(res, rej),
-  };
-  for (const m of ['from', 'where', 'orderBy', 'set', 'innerJoin']) {
-    c[m] = vi.fn(() => c);
-  }
-  c['values']    = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
-  c['returning'] = vi.fn().mockResolvedValue(value);
-  return c as unknown as ReturnType<typeof db.select>;
-}
 
 const USER_ID  = 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
 const MAP_ID   = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
@@ -60,19 +46,11 @@ const MOCK_LAYER = {
 };
 
 function makeCaller() {
-  return sharesRouter.createCaller({
-    user: { id: USER_ID } as unknown as User,
-    session: { id: 'sess', userId: USER_ID, expiresAt: new Date(Date.now() + 3600_000), fresh: false },
-    event: {} as RequestEvent,
-  });
+  return sharesRouter.createCaller(mockContext({ userId: USER_ID }));
 }
 
 function makePublicCaller() {
-  return sharesRouter.createCaller({
-    user: null,
-    session: null,
-    event: {} as RequestEvent,
-  });
+  return sharesRouter.createCaller(publicContext());
 }
 
 // --- Tests ---
@@ -84,9 +62,7 @@ describe('shares.create', () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))   // map ownership
       .mockReturnValueOnce(drizzleChain([]));           // no existing share
-    vi.mocked(db.insert).mockReturnValue(
-      drizzleChain([MOCK_SHARE]) as unknown as ReturnType<typeof db.insert>
-    );
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_SHARE]));
 
     const result = await makeCaller().create({ mapId: MAP_ID, accessLevel: 'public' });
     expect(result?.id).toBe(SHARE_ID);
@@ -98,9 +74,7 @@ describe('shares.create', () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))    // map ownership
       .mockReturnValueOnce(drizzleChain([MOCK_SHARE])); // existing share found
-    vi.mocked(db.update).mockReturnValue(
-      drizzleChain([updatedShare]) as unknown as ReturnType<typeof db.update>
-    );
+    vi.mocked(db.update).mockReturnValue(drizzleChain([updatedShare]));
 
     const result = await makeCaller().create({ mapId: MAP_ID, accessLevel: 'unlisted' });
     expect(result?.accessLevel).toBe('unlisted');
@@ -153,9 +127,7 @@ describe('shares.delete', () => {
 
   it('deletes the share and returns { deleted: true }', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.delete).mockReturnValue(
-      drizzleChain(undefined) as unknown as ReturnType<typeof db.delete>
-    );
+    vi.mocked(db.delete).mockReturnValue(drizzleChain(undefined));
 
     const result = await makeCaller().delete({ mapId: MAP_ID });
     expect(result).toEqual({ deleted: true });

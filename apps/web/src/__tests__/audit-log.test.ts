@@ -1,7 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RequestEvent } from '@sveltejs/kit';
-import type { User } from 'lucia';
 
 // --- Module mocks ---
 
@@ -20,21 +18,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 import { auditLogRouter } from '../lib/server/trpc/routers/auditLog.js';
 import { db } from '$lib/server/db/index.js';
 import { computeChainHash, GENESIS_HASH } from '../lib/server/audit/index.js';
-
-// --- Helpers ---
-
-function drizzleChain<T>(value: T) {
-  const c: Record<string, unknown> = {
-    then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(value).then(res, rej),
-  };
-  for (const m of ['from', 'where', 'orderBy', 'set', 'limit', 'offset']) {
-    c[m] = vi.fn(() => c);
-  }
-  c['values']    = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
-  c['returning'] = vi.fn().mockResolvedValue(value);
-  return c as unknown as ReturnType<typeof db.select>;
-}
+import { drizzleChain, mockContext } from './test-utils.js';
 
 // --- Constants ---
 
@@ -43,11 +27,7 @@ const MAP_ID   = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
 const MOCK_MAP = { id: MAP_ID };
 
 function makeCaller() {
-  return auditLogRouter.createCaller({
-    user:    { id: OWNER_ID, name: 'Owner', email: 'owner@test.com' } as unknown as User,
-    session: { id: 'sess', userId: OWNER_ID, expiresAt: new Date(Date.now() + 3_600_000), fresh: false },
-    event:   {} as RequestEvent,
-  });
+  return auditLogRouter.createCaller(mockContext({ userId: OWNER_ID, userName: 'Owner', userEmail: 'owner@test.com' }));
 }
 
 // --- Tests ---

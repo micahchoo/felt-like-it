@@ -1,7 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RequestEvent } from '@sveltejs/kit';
-import type { User } from 'lucia';
 
 // --- Module mocks ---
 
@@ -30,21 +28,9 @@ vi.mock('../lib/server/geo/geoprocessing.js', () => ({
 import { geoprocessingRouter } from '../lib/server/trpc/routers/geoprocessing.js';
 import { db } from '$lib/server/db/index.js';
 import { runGeoprocessing } from '../lib/server/geo/geoprocessing.js';
+import { drizzleChain, mockContext } from './test-utils.js';
 
 // --- Helpers ---
-
-function drizzleChain<T>(value: T) {
-  const c: Record<string, unknown> = {
-    then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(value).then(res, rej),
-  };
-  for (const m of ['from', 'where', 'orderBy', 'set', 'innerJoin', 'limit']) {
-    c[m] = vi.fn(() => c);
-  }
-  c['values']    = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
-  c['returning'] = vi.fn().mockResolvedValue(value);
-  return c as unknown as ReturnType<typeof db.select>;
-}
 
 const USER_ID      = 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
 const MAP_ID       = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
@@ -58,11 +44,7 @@ const MOCK_LAYER_B = { id: LAYER_ID_B };
 const MOCK_NEW_LAYER = { id: NEW_LAYER_ID, name: 'Buffered Layer', mapId: MAP_ID, type: 'mixed', style: {}, visible: true, zIndex: 1, sourceFileName: null };
 
 function makeCaller() {
-  return geoprocessingRouter.createCaller({
-    user: { id: USER_ID, name: 'Test User' } as unknown as User,
-    session: { id: 'sess', userId: USER_ID, expiresAt: new Date(Date.now() + 3600_000), fresh: false },
-    event: {} as RequestEvent,
-  });
+  return geoprocessingRouter.createCaller(mockContext({ userId: USER_ID }));
 }
 
 // --- Tests ---
@@ -77,9 +59,7 @@ beforeEach(() => vi.clearAllMocks());
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))           // ownership
       .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))         // layer on map
       .mockReturnValueOnce(drizzleChain([{ zIndex: 0 }]));    // max zIndex
-    vi.mocked(db.insert).mockReturnValue(
-      drizzleChain([MOCK_NEW_LAYER]) as unknown as ReturnType<typeof db.insert>
-    );
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_NEW_LAYER]));
 
     const result = await makeCaller().run({
       mapId: MAP_ID,
@@ -96,10 +76,8 @@ beforeEach(() => vi.clearAllMocks());
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))
       .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))
-      .mockReturnValueOnce(drizzleChain([]));                  // no existing layers → maxZ = -1
-    vi.mocked(db.insert).mockReturnValue(
-      drizzleChain([MOCK_NEW_LAYER]) as unknown as ReturnType<typeof db.insert>
-    );
+      .mockReturnValueOnce(drizzleChain([]));                  // no existing layers -> maxZ = -1
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_NEW_LAYER]));
 
     const result = await makeCaller().run({
       mapId: MAP_ID,
@@ -169,9 +147,7 @@ beforeEach(() => vi.clearAllMocks());
       .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))    // layer A verified
       .mockReturnValueOnce(drizzleChain([MOCK_LAYER_B]))  // layer B verified
       .mockReturnValueOnce(drizzleChain([{ zIndex: 2 }])); // max zIndex
-    vi.mocked(db.insert).mockReturnValue(
-      drizzleChain([MOCK_NEW_LAYER]) as unknown as ReturnType<typeof db.insert>
-    );
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_NEW_LAYER]));
 
     const result = await makeCaller().run({
       mapId: MAP_ID,
@@ -186,7 +162,7 @@ beforeEach(() => vi.clearAllMocks());
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))  // ownership
       .mockReturnValueOnce(drizzleChain([MOCK_LAYER])) // layer A found
-      .mockReturnValueOnce(drizzleChain([]));           // layer B NOT found → throws
+      .mockReturnValueOnce(drizzleChain([]));           // layer B NOT found -> throws
 
     await expect(
       makeCaller().run({

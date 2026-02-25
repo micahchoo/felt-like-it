@@ -1,7 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RequestEvent } from '@sveltejs/kit';
-import type { User } from 'lucia';
 
 // --- Module mocks ---
 
@@ -21,21 +19,9 @@ vi.mock('$lib/server/db/index.js', () => ({
 
 import { collaboratorsRouter } from '../lib/server/trpc/routers/collaborators.js';
 import { db } from '$lib/server/db/index.js';
+import { drizzleChain, mockContext } from './test-utils.js';
 
 // --- Helpers ---
-
-function drizzleChain<T>(value: T) {
-  const c: Record<string, unknown> = {
-    then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(value).then(res, rej),
-  };
-  for (const m of ['from', 'where', 'orderBy', 'set', 'innerJoin', 'limit']) {
-    c[m] = vi.fn(() => c);
-  }
-  c['values']    = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
-  c['returning'] = vi.fn().mockResolvedValue(value);
-  return c as unknown as ReturnType<typeof db.select>;
-}
 
 const OWNER_ID = 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
 const OTHER_ID = 'dddddddd-0000-0000-0000-dddddddddddd';
@@ -51,11 +37,7 @@ const MOCK_COLLAB = {
 };
 
 function makeCaller() {
-  return collaboratorsRouter.createCaller({
-    user: { id: OWNER_ID, name: 'Owner' } as unknown as User,
-    session: { id: 'sess', userId: OWNER_ID, expiresAt: new Date(Date.now() + 3600_000), fresh: false },
-    event: {} as RequestEvent,
-  });
+  return collaboratorsRouter.createCaller(mockContext({ userId: OWNER_ID, userName: 'Owner' }));
 }
 
 // --- Tests ---
@@ -100,9 +82,7 @@ describe('collaborators.invite', () => {
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))    // ownership
       .mockReturnValueOnce(drizzleChain([MOCK_USER]))   // find by email
       .mockReturnValueOnce(drizzleChain([]));            // not already invited
-    vi.mocked(db.insert).mockReturnValue(
-      drizzleChain([MOCK_COLLAB]) as unknown as ReturnType<typeof db.insert>
-    );
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_COLLAB]));
 
     const result = await makeCaller().invite({ mapId: MAP_ID, email: 'other@test.com', role: 'viewer' });
     expect(result.userId).toBe(OTHER_ID);
@@ -156,7 +136,7 @@ describe('collaborators.remove', () => {
 
   it('removes a collaborator and returns { removed: true }', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.delete).mockReturnValue(drizzleChain(undefined) as unknown as ReturnType<typeof db.delete>);
+    vi.mocked(db.delete).mockReturnValue(drizzleChain(undefined));
 
     const result = await makeCaller().remove({ mapId: MAP_ID, userId: OTHER_ID });
     expect(result).toEqual({ removed: true });
@@ -177,9 +157,7 @@ describe('collaborators.updateRole', () => {
   it('updates the collaborator role and returns the updated record', async () => {
     const updated = { ...MOCK_COLLAB, role: 'editor' };
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.update).mockReturnValue(
-      drizzleChain([updated]) as unknown as ReturnType<typeof db.update>
-    );
+    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]));
 
     const result = await makeCaller().updateRole({ mapId: MAP_ID, userId: OTHER_ID, role: 'editor' });
     expect(result.role).toBe('editor');
@@ -195,9 +173,7 @@ describe('collaborators.updateRole', () => {
 
   it('throws NOT_FOUND when collaborator does not exist', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.update).mockReturnValue(
-      drizzleChain([]) as unknown as ReturnType<typeof db.update>
-    );
+    vi.mocked(db.update).mockReturnValue(drizzleChain([]));
 
     await expect(
       makeCaller().updateRole({ mapId: MAP_ID, userId: OTHER_ID, role: 'editor' })

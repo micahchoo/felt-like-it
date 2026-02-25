@@ -1,7 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RequestEvent } from '@sveltejs/kit';
-import type { User } from 'lucia';
 
 // --- Module mocks ---
 
@@ -19,22 +17,9 @@ vi.mock('$lib/server/db/index.js', () => ({
 
 import { eventsRouter } from '../lib/server/trpc/routers/events.js';
 import { db } from '$lib/server/db/index.js';
+import { drizzleChain, mockContext } from './test-utils.js';
 
 // --- Helpers ---
-
-/** Drizzle-compatible chain mock with limit() support for events.list. */
-function drizzleChain<T>(value: T) {
-  const c: Record<string, unknown> = {
-    then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(value).then(res, rej),
-  };
-  for (const m of ['from', 'where', 'orderBy', 'groupBy', 'set', 'limit']) {
-    c[m] = vi.fn(() => c);
-  }
-  c['values']    = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
-  c['returning'] = vi.fn().mockResolvedValue(value);
-  return c as unknown as ReturnType<typeof db.select>;
-}
 
 const USER_ID = 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
 const MAP_ID  = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
@@ -51,11 +36,7 @@ const MOCK_EVENT = {
 };
 
 function makeCaller() {
-  return eventsRouter.createCaller({
-    user: { id: USER_ID } as unknown as User,
-    session: { id: 'sess', userId: USER_ID, expiresAt: new Date(Date.now() + 3600_000), fresh: false },
-    event: {} as RequestEvent,
-  });
+  return eventsRouter.createCaller(mockContext({ userId: USER_ID }));
 }
 
 // --- Tests ---
@@ -98,7 +79,7 @@ describe('events.log', () => {
 
   it('inserts an event and returns { logged: true }', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.insert).mockReturnValue(drizzleChain([{}]) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([{}]));
 
     const result = await makeCaller().log({
       mapId: MAP_ID,
