@@ -57,14 +57,13 @@
     // interleaved: false → deck.gl renders on its own canvas above the MapLibre canvas.
     // This avoids shared-WebGL-context complexities and is fully compatible with MapLibre 5.
     const o = new MapboxOverlay({ interleaved: false, layers: [] });
-    // MapboxOverlay satisfies the MapLibre IControl interface at runtime.
-    // The type cast is necessary because @deck.gl/mapbox bundles its own IControl
-    // type definition that may not perfectly match maplibre-gl 5's signature.
+    // TYPE_DEBT: deck.gl MapboxOverlay implements IControl but its type definition
+    // diverges from maplibre-gl 5's IControl interface. Runtime-compatible.
     map.addControl(o as unknown as Parameters<MapLibreMap['addControl']>[0]);
     overlay = o;
 
     return () => {
-      map.removeControl(o as unknown as Parameters<MapLibreMap['removeControl']>[0]);
+      map.removeControl(o as unknown as Parameters<MapLibreMap['removeControl']>[0]); // TYPE_DEBT: same as addControl above
       overlay = null;
     };
   });

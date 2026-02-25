@@ -258,6 +258,9 @@
     return ['all', ...parts];
   }
 
+  // TYPE_DEBT: getSymbolPaint/getSymbolLayout return object literals cast to MapLibre spec unions.
+  // The spec types are strict discriminated unions; our dynamic builders produce compatible shapes
+  // but TypeScript can't verify the union narrowing. Runtime-safe — MapLibre validates on use.
   function getSymbolPaint(layer: Layer): NonNullable<SymbolLayerSpecification['paint']> {
     const style = layer.style as Record<string, unknown> | null | undefined;
     const label = style?.['label'] as Record<string, unknown> | undefined;
@@ -327,7 +330,11 @@
     class="w-full h-full"
     autoloadGlobalCss={false}
     canvasContextAttributes={{ preserveDrawingBuffer: true }}
-    onload={(e) => { mapInstance = e.target as unknown as MapLibreMap; }}
+    onload={(e) => {
+      // TYPE_DEBT: svelte-maplibre-gl onload event type is generic; e.target is MapLibreMap
+      // at runtime. bind:map unusable due to exactOptionalPropertyTypes.
+      mapInstance = e.target as unknown as MapLibreMap;
+    }}
     onmoveend={(e) => {
       const m = e.target as MapLibreMap;
       const c = m.getCenter();
@@ -346,6 +353,11 @@
 
         {@const layerStyle = layer.style as LayerStyle | null | undefined}
 
+        <!-- TYPE_DEBT: paint/filter casts below — our dynamic builders return Record<string,unknown>
+             but svelte-maplibre-gl props expect strict MapLibre spec union types. Runtime-safe;
+             svelte-maplibre-gl validates before passing to MapLibre. Same applies to onclick
+             feature casts: svelte-maplibre-gl returns its own feature type, not maplibre-gl's
+             GeoJSONFeature — structurally compatible at runtime. -->
         <!-- Heatmap layers are rendered by DeckGLOverlay (mounted below). Skip MapLibre. -->
         {#if !isHeatmap && usesVectorTiles(layer)}
           <!-- Martin vector tiles — used for layers above VECTOR_TILE_THRESHOLD features -->
@@ -452,6 +464,7 @@
 
     <!-- Annotation pins — rendered above data layers, below the feature popup -->
     {#if annotationPins && annotationPins.features.length > 0}
+      <!-- TYPE_DEBT: AnnotationPinCollection uses typed geometry but GeoJSONSource expects maplibre-gl types -->
       <GeoJSONSource
         id="source-annotations"
         data={annotationPins as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}
