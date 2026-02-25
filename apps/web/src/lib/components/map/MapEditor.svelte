@@ -28,6 +28,22 @@
   import type { AnnotationPinCollection } from '$lib/components/map/MapCanvas.svelte';
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
 
+  /**
+   * TYPE_DEBT: features.list returns geometry as Record<string, unknown> from raw SQL;
+   * the actual runtime shape is always a valid GeoJSON FeatureCollection. This guard
+   * validates the structural contract so we can narrow without a double cast.
+   */
+  function isFeatureCollection(
+    data: unknown
+  ): data is { type: 'FeatureCollection'; features: GeoJSONFeature[] } {
+    return (
+      typeof data === 'object' &&
+      data !== null &&
+      (data as Record<string, unknown>)['type'] === 'FeatureCollection' &&
+      Array.isArray((data as Record<string, unknown>)['features'])
+    );
+  }
+
   interface Props {
     mapId: string;
     mapTitle: string;
@@ -111,10 +127,10 @@
   async function loadLayerData(layerId: string) {
     try {
       const fc = await trpc.features.list.query({ layerId });
-      // TYPE_DEBT: features.list returns geometry as Record<string, unknown> from raw SQL;
-      // the actual runtime shape is always a valid GeoJSON geometry object.
-      const featureCollection = fc as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] };
-      layerData = { ...layerData, [layerId]: featureCollection };
+      if (!isFeatureCollection(fc)) {
+        throw new Error(`Unexpected response shape from features.list for layer ${layerId}`);
+      }
+      layerData = { ...layerData, [layerId]: fc };
 
       // Push data directly to the MapLibre source to bypass svelte-maplibre-gl's
       // firstRun guard, which only sets data after the source is first registered.
