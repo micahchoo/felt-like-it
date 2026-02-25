@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { env } from '$env/dynamic/private';
 import { db, importJobs, maps } from '$lib/server/db/index.js';
+import { mapCollaborators } from '$lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { enqueueImportJob } from '$lib/server/jobs/queues.js';
 import { randomUUID } from 'crypto';
@@ -29,14 +30,28 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     error(413, `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024} MB`);
   }
 
-  // Verify map ownership
+  // Verify map access (owner or editor collaborator)
   const [map] = await db
-    .select()
+    .select({ id: maps.id, userId: maps.userId })
     .from(maps)
-    .where(and(eq(maps.id, mapId), eq(maps.userId, locals.user.id)));
+    .where(eq(maps.id, mapId));
 
   if (!map) {
     error(404, 'Map not found');
+  }
+
+  if (map.userId !== locals.user.id) {
+    const [collab] = await db
+      .select({ role: mapCollaborators.role })
+      .from(mapCollaborators)
+      .where(and(
+        eq(mapCollaborators.mapId, mapId),
+        eq(mapCollaborators.userId, locals.user.id),
+      ));
+
+    if (!collab || collab.role === 'viewer' || collab.role === 'commenter') {
+      error(404, 'Map not found');
+    }
   }
 
   // Create job ID and save file to disk
