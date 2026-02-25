@@ -137,7 +137,7 @@
       const map = mapStore.mapInstance;
       const src = map?.getSource(`source-${layerId}`);
       if (src && 'setData' in src) {
-        (src as { setData: (_data: unknown) => void }).setData(featureCollection);
+        (src as { setData: (_data: unknown) => void }).setData(fc);
       }
     } catch (err) {
       console.error('[loadLayerData] failed:', err);
