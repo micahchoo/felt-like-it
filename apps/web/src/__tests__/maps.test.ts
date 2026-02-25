@@ -1,7 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { RequestEvent } from '@sveltejs/kit';
-import type { User } from 'lucia';
 
 // --- Module mocks ---
 
@@ -25,25 +23,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 import { mapsRouter } from '../lib/server/trpc/routers/maps.js';
 import { db } from '$lib/server/db/index.js';
 import { appendAuditLog } from '$lib/server/audit/index.js';
-
-// Type helper so TypeScript accepts vi.mocked(db.execute).mockResolvedValue(...)
-type DbExecuteResult = Awaited<ReturnType<typeof db.execute>>;
-
-// --- Helpers ---
-
-/** Build a Drizzle-compatible awaitable chain mock that resolves to `value`. */
-function drizzleChain<T>(value: T) {
-  const c: Record<string, unknown> = {
-    then: (res: (v: T) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(value).then(res, rej),
-  };
-  for (const m of ['from', 'where', 'orderBy', 'groupBy', 'set', 'innerJoin']) {
-    c[m] = vi.fn(() => c);
-  }
-  c['values'] = vi.fn(() => ({ returning: vi.fn().mockResolvedValue(value) }));
-  c['returning'] = vi.fn().mockResolvedValue(value);
-  return c as unknown as ReturnType<typeof db.select>;
-}
+import { drizzleChain, mockContext, type DbExecuteResult } from './test-utils.js';
 
 const USER_ID = 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
 const MAP_ID  = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
@@ -76,11 +56,7 @@ const MOCK_TEMPLATE = {
 };
 
 function makeCaller() {
-  return mapsRouter.createCaller({
-    user: { id: USER_ID } as unknown as User,
-    session: { id: 'sess', userId: USER_ID, expiresAt: new Date(Date.now() + 3600_000), fresh: false },
-    event: {} as RequestEvent,
-  });
+  return mapsRouter.createCaller(mockContext({ userId: USER_ID }));
 }
 
 // --- Tests ---
@@ -137,7 +113,7 @@ describe('maps.create', () => {
   beforeEach(() => vi.resetAllMocks());
 
   it('creates and returns a new map', async () => {
-    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_MAP]) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_MAP]));
 
     const result = await makeCaller().create({ title: 'My New Map' });
 
@@ -147,7 +123,7 @@ describe('maps.create', () => {
   });
 
   it('throws INTERNAL_SERVER_ERROR when insert returns nothing', async () => {
-    vi.mocked(db.insert).mockReturnValue(drizzleChain([]) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([]));
 
     await expect(makeCaller().create({ title: 'Fail' })).rejects.toMatchObject({
       code: 'INTERNAL_SERVER_ERROR',
@@ -161,7 +137,7 @@ describe('maps.update', () => {
   it('updates the map and returns the updated record', async () => {
     const updated = { ...MOCK_MAP, title: 'Renamed Map' };
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]) as unknown as ReturnType<typeof db.update>);
+    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]));
 
     const result = await makeCaller().update({ id: MAP_ID, title: 'Renamed Map' });
     expect(result?.title).toBe('Renamed Map');
@@ -170,7 +146,7 @@ describe('maps.update', () => {
   it('calls appendAuditLog with map.update after a successful update', async () => {
     const updated = { ...MOCK_MAP, title: 'Renamed Map' };
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]) as unknown as ReturnType<typeof db.update>);
+    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]));
 
     await makeCaller().update({ id: MAP_ID, title: 'Renamed Map' });
 
@@ -197,7 +173,7 @@ describe('maps.delete', () => {
 
   it('deletes the map and returns { deleted: true }', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.delete).mockReturnValue(drizzleChain(undefined) as unknown as ReturnType<typeof db.delete>);
+    vi.mocked(db.delete).mockReturnValue(drizzleChain(undefined));
 
     const result = await makeCaller().delete({ id: MAP_ID });
     expect(result).toEqual({ deleted: true });
@@ -250,7 +226,7 @@ describe('maps.createFromTemplate', () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([MOCK_TEMPLATE]))  // template lookup
       .mockReturnValueOnce(drizzleChain([]));              // no layers on template
-    vi.mocked(db.insert).mockReturnValue(drizzleChain([newMap]) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([newMap]));
 
     const result = await makeCaller().createFromTemplate({ id: TEMPLATE_MAP_ID });
 
@@ -273,8 +249,8 @@ describe('maps.createFromTemplate', () => {
       .mockReturnValueOnce(drizzleChain([MOCK_TEMPLATE]))     // template lookup
       .mockReturnValueOnce(drizzleChain([templateLayer]));   // layers
     vi.mocked(db.insert)
-      .mockReturnValueOnce(drizzleChain([newMap]) as unknown as ReturnType<typeof db.insert>) // map
-      .mockReturnValueOnce(drizzleChain([{id: 'new-layer'}]) as unknown as ReturnType<typeof db.insert>); // layer
+      .mockReturnValueOnce(drizzleChain([newMap])) // map
+      .mockReturnValueOnce(drizzleChain([{id: 'new-layer'}])); // layer
 
     await makeCaller().createFromTemplate({ id: TEMPLATE_MAP_ID });
 
@@ -294,7 +270,7 @@ describe('maps.createFromTemplate', () => {
   it('throws INTERNAL_SERVER_ERROR when map insert returns nothing', async () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([MOCK_TEMPLATE]));
-    vi.mocked(db.insert).mockReturnValue(drizzleChain([]) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([]));
 
     await expect(makeCaller().createFromTemplate({ id: TEMPLATE_MAP_ID })).rejects.toMatchObject({
       code: 'INTERNAL_SERVER_ERROR',
@@ -323,9 +299,9 @@ describe('maps.clone', () => {
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))       // ownership check
       .mockReturnValueOnce(drizzleChain([MOCK_LAYER]));    // get layers
     vi.mocked(db.insert)
-      .mockReturnValueOnce(drizzleChain([clonedMap]) as unknown as ReturnType<typeof db.insert>)
-      .mockReturnValueOnce(drizzleChain([newLayer])  as unknown as ReturnType<typeof db.insert>);
-    vi.mocked(db.execute).mockResolvedValue({ rows: [] } as unknown as DbExecuteResult);
+      .mockReturnValueOnce(drizzleChain([clonedMap]))
+      .mockReturnValueOnce(drizzleChain([newLayer]));
+    vi.mocked(db.execute).mockResolvedValue({ rows: [] } as DbExecuteResult);
 
     const result = await makeCaller().clone({ id: MAP_ID });
 
@@ -342,7 +318,7 @@ describe('maps.clone', () => {
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))   // ownership check
       .mockReturnValueOnce(drizzleChain([]));           // no layers
     vi.mocked(db.insert)
-      .mockReturnValueOnce(drizzleChain([clonedMap]) as unknown as ReturnType<typeof db.insert>);
+      .mockReturnValueOnce(drizzleChain([clonedMap]));
 
     const result = await makeCaller().clone({ id: MAP_ID });
     expect(result.id).toBe(CLONED_MAP_ID);
@@ -360,7 +336,7 @@ describe('maps.clone', () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]));
     vi.mocked(db.insert)
-      .mockReturnValueOnce(drizzleChain([]) as unknown as ReturnType<typeof db.insert>);
+      .mockReturnValueOnce(drizzleChain([]));
 
     await expect(makeCaller().clone({ id: MAP_ID })).rejects.toMatchObject({
       code: 'INTERNAL_SERVER_ERROR',
