@@ -74,41 +74,40 @@ export const featuresRouter = router({
       // Editor+ access required to upsert features
       await requireMapAccess(ctx.user.id, layer.mapId, 'editor');
 
-      const upsertedIds: string[] = [];
+      const upsertedIds = await Promise.all(
+        input.features.map(async (feature) => {
+          const geomJson = JSON.stringify(feature.geometry);
+          const props = feature.properties ?? {};
 
-      for (const feature of input.features) {
-        const geomJson = JSON.stringify(feature.geometry);
-        const props = feature.properties ?? {};
+          if (feature.id) {
+            // Update existing
+            await db.execute(sql`
+              UPDATE features
+              SET
+                geometry = ST_GeomFromGeoJSON(${geomJson}),
+                properties = ${JSON.stringify(props)}::jsonb,
+                updated_at = NOW()
+              WHERE id = ${feature.id}
+                AND layer_id = ${input.layerId}
+            `);
+            return feature.id;
+          } else {
+            // Insert new
+            const result = await db.execute(sql`
+              INSERT INTO features (layer_id, geometry, properties)
+              VALUES (
+                ${input.layerId},
+                ST_GeomFromGeoJSON(${geomJson}),
+                ${JSON.stringify(props)}::jsonb
+              )
+              RETURNING id
+            `);
+            return (result.rows[0]?.['id'] as string | undefined) ?? null;
+          }
+        })
+      );
 
-        if (feature.id) {
-          // Update existing
-          await db.execute(sql`
-            UPDATE features
-            SET
-              geometry = ST_GeomFromGeoJSON(${geomJson}),
-              properties = ${JSON.stringify(props)}::jsonb,
-              updated_at = NOW()
-            WHERE id = ${feature.id}
-              AND layer_id = ${input.layerId}
-          `);
-          upsertedIds.push(feature.id);
-        } else {
-          // Insert new
-          const result = await db.execute(sql`
-            INSERT INTO features (layer_id, geometry, properties)
-            VALUES (
-              ${input.layerId},
-              ST_GeomFromGeoJSON(${geomJson}),
-              ${JSON.stringify(props)}::jsonb
-            )
-            RETURNING id
-          `);
-          const id = result.rows[0]?.['id'] as string | undefined;
-          if (id) upsertedIds.push(id);
-        }
-      }
-
-      return { upsertedIds };
+      return { upsertedIds: upsertedIds.filter((id): id is string => id !== null) };
     }),
 
   /** Delete features by ID */

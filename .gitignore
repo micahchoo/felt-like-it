@@ -13,3 +13,7 @@ coverage/
 .nyc_output
 test-results/
 playwright-report/
+
+# Claude Code
+.claude/settings.local.json
+.claude/.fuse_hidden*

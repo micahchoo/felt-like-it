@@ -6,6 +6,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import { hashPassword, verifyPassword } from '$lib/server/auth/password.js';
 import { lucia } from '$lib/server/auth/index.js';
 import { insertFeatures } from '$lib/server/geo/queries.js';
+import type { Geometry } from '@felt-like-it/shared-types';
 
 const DEMO_EMAIL = 'demo@felt-like-it.local';
 
@@ -17,7 +18,7 @@ const PARKS_STYLE = {
 };
 
 const SF_PARKS_FEATURES: Array<{
-  geometry: Record<string, unknown>;
+  geometry: Geometry;
   properties: Record<string, unknown>;
 }> = [
   {

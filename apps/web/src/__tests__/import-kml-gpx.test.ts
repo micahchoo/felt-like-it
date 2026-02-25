@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { drizzleChain } from './test-utils.js';
 
 // ─── Module mocks (hoisted before any imports) ────────────────────────────────
 
@@ -115,8 +116,7 @@ const EMPTY_FC: MockFC = { type: 'FeatureCollection', features: [] };
 // Coerce a MockFC to whatever return type vi.mocked().mockReturnValue expects.
 // kml() returns FeatureCollection<Geometry|null> and gpx() returns FeatureCollection<Geometry>,
 // so a direct cast from MockFC (which has geometry: MockGeom|null) fails without
-// going via unknown. Explicit cast at each call site matches the pattern used elsewhere
-// in the test suite (e.g. `as unknown as ReturnType<typeof db.insert>`).
+// going via unknown.
 function asKmlReturn(fc: MockFC): ReturnType<typeof mockKml> {
   return fc as unknown as ReturnType<typeof mockKml>;
 }
@@ -125,23 +125,8 @@ function asGpxReturn(fc: MockFC): ReturnType<typeof mockGpx> {
 }
 
 function setupDbMocks(): void {
-  vi.mocked(db.insert).mockImplementation(
-    () =>
-      ({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([MOCK_LAYER]),
-        }),
-      }) as unknown as ReturnType<typeof db.insert>
-  );
-
-  vi.mocked(db.update).mockImplementation(
-    () =>
-      ({
-        set: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue([]),
-        }),
-      }) as unknown as ReturnType<typeof db.update>
-  );
+  vi.mocked(db.insert).mockImplementation(() => drizzleChain([MOCK_LAYER]));
+  vi.mocked(db.update).mockImplementation(() => drizzleChain([]));
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -203,14 +188,7 @@ describe('importXmlGeo — KML', () => {
   });
 
   it('throws when layer insert returns nothing', async () => {
-    vi.mocked(db.insert).mockImplementation(
-      () =>
-        ({
-          values: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([]),
-          }),
-        }) as unknown as ReturnType<typeof db.insert>
-    );
+    vi.mocked(db.insert).mockImplementation(() => drizzleChain([]));
     await expect(
       importXmlGeo('/tmp/cities.kml', MAP_ID, 'Cities', JOB_ID, 'kml')
     ).rejects.toThrow('Failed to create layer');

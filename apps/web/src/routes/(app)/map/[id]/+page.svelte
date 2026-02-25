@@ -22,5 +22,6 @@
   mapTitle={data.map.title}
   initialLayers={data.layers as Layer[]}
   userId={data.userId}
-  readonly={false}
+  readonly={data.userRole === 'viewer' || data.userRole === 'commenter'}
+  isOwner={data.userRole === 'owner'}
 />

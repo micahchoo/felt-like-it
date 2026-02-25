@@ -2,7 +2,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 
 export type InteractionMode = 'default' | 'draw-point' | 'draw-line' | 'draw-polygon' | 'select' | 'pan';
 
-export type BasemapId = 'osm' | 'osm-bright' | 'positron' | 'dark-matter' | 'satellite' | 'custom';
+export type BasemapId = 'osm' | 'positron' | 'dark-matter';
 
 export interface BasemapOption {
   id: BasemapId;

@@ -23,7 +23,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 import { mapsRouter } from '../lib/server/trpc/routers/maps.js';
 import { db } from '$lib/server/db/index.js';
 import { appendAuditLog } from '$lib/server/audit/index.js';
-import { drizzleChain, mockContext, type DbExecuteResult } from './test-utils.js';
+import { drizzleChain, mockContext, mockExecuteResult } from './test-utils.js';
 
 const USER_ID = 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
 const MAP_ID  = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
@@ -301,7 +301,7 @@ describe('maps.clone', () => {
     vi.mocked(db.insert)
       .mockReturnValueOnce(drizzleChain([clonedMap]))
       .mockReturnValueOnce(drizzleChain([newLayer]));
-    vi.mocked(db.execute).mockResolvedValue({ rows: [] } as unknown as DbExecuteResult);
+    vi.mocked(db.execute).mockResolvedValue(mockExecuteResult([]));
 
     const result = await makeCaller().clone({ id: MAP_ID });
 

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { mapStore, BASEMAPS } from '$lib/stores/map.svelte.js';
-  import type { BasemapId } from '$lib/stores/map.svelte.js';
 
   let open = $state(false);
 </script>
@@ -45,12 +44,12 @@
           role="option"
           aria-selected={mapStore.basemapId === basemap.id}
           onclick={() => {
-            mapStore.setBasemap(basemap.id as BasemapId);
+            mapStore.setBasemap(basemap.id);
             open = false;
           }}
           onkeydown={(e) => {
             if (e.key === 'Enter') {
-              mapStore.setBasemap(basemap.id as BasemapId);
+              mapStore.setBasemap(basemap.id);
               open = false;
             }
           }}

@@ -77,3 +77,11 @@ export function publicContext() {
 		event: {} as RequestEvent,
 	};
 }
+
+/**
+ * Build a mock db.execute() result with typed rows.
+ * Centralises the single cast from { rows } to DbExecuteResult.
+ */
+export function mockExecuteResult<T>(rows: T[]): DbExecuteResult {
+	return { rows } as unknown as DbExecuteResult;
+}

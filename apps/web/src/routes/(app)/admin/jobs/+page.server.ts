@@ -8,12 +8,10 @@ export const load: PageServerLoad = async () => {
     .select({
       id: importJobs.id,
       fileName: importJobs.fileName,
-      fileSize: importJobs.fileSize,
       status: importJobs.status,
       progress: importJobs.progress,
       errorMessage: importJobs.errorMessage,
       createdAt: importJobs.createdAt,
-      updatedAt: importJobs.updatedAt,
     })
     .from(importJobs)
     .orderBy(desc(importJobs.createdAt))

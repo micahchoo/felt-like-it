@@ -114,7 +114,7 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 
 ---
 
-## Phase 5b — Delta & Hardening ⬜ NEXT
+## Phase 5b — Delta & Hardening ✅ COMPLETE
 
 **Goal:** Close the gap between `OriginalVision.md` and what's built. Scheduled bug-squash passes keep quality high before the Collab v2 and Enterprise phases.
 
@@ -157,12 +157,35 @@ Self-hostable collaborative GIS platform. One `docker compose up` deployment.
 | Admin panel (user list, storage stats, import job monitor) | ✅ |
 | `admin-cli.ts` (create user, reset password, promote admin) | ✅ |
 
+### UI Wiring (audit: backend exists, no user-reachable surface)
+
+| Item | Status |
+|---|---|
+| Share button + dialog in MapEditor | ✅ |
+| Export format buttons in ExportDialog (GeoPackage, Shapefile, PDF) | ✅ |
+| Audit log viewer page (admin panel + hash-chain verification) | ✅ |
+| Layer reorder up/down arrows in LayerPanel | ✅ |
+| Map rename inline edit on dashboard map cards | ✅ |
+| Undo/Redo toolbar buttons + Ctrl+Z/Shift+Z keyboard shortcuts | ✅ |
+
+### FSL Style Editors (audit: rendering works, no UI to configure)
+
+| Item | Status |
+|---|---|
+| Label attribute editor in StylePanel | ✅ |
+| Categorical style editor in StylePanel | ✅ |
+| `isClickable` toggle in StylePanel | ✅ |
+| Popup config editor (`titleAttribute` / `keyAttributes`) | ✅ |
+| Attributes block editor (`displayName`) | ✅ |
+| `highlightColor` picker in StylePanel | ✅ |
+| `isSandwiched` toggle in StylePanel | ✅ |
+
 ### Infrastructure
 
 | Item | Status |
 |---|---|
-| S3 / MinIO file storage (pluggable `UPLOAD_DIR` backend) | ⬜ |
-| Tippecanoe tile pipeline (huge datasets → pre-tiled MBTiles via BullMQ) | ⬜ |
+| S3 / MinIO file storage (pluggable `UPLOAD_DIR` backend) | ⬜ → Phase 6+ |
+| Tippecanoe tile pipeline (huge datasets → pre-tiled MBTiles via BullMQ) | ⬜ → Phase 6+ |
 
 ---
 

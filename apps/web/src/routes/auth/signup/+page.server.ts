@@ -4,6 +4,7 @@ import { lucia } from '$lib/server/auth/index.js';
 import { hashPassword } from '$lib/server/auth/password.js';
 import { db, users } from '$lib/server/db/index.js';
 import { eq } from 'drizzle-orm';
+import { checkRateLimit } from '$lib/server/rate-limit.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (locals.user) redirect(302, '/dashboard');
@@ -11,7 +12,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  default: async ({ request, cookies }) => {
+  default: async ({ request, cookies, getClientAddress }) => {
+    if (!checkRateLimit(getClientAddress())) {
+      return fail(429, { field: '', message: 'Too many attempts. Please wait a minute.' });
+    }
+
     const formData = await request.formData();
     const name = (formData.get('name') as string | null)?.trim();
     const email = (formData.get('email') as string | null)?.trim().toLowerCase();

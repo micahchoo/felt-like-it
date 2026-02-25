@@ -115,6 +115,7 @@ export default [
       '@typescript-eslint/no-non-null-assertion': 'error',
       '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-await-in-loop': 'error',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },

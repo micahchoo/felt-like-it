@@ -111,7 +111,7 @@ describe('undoStore', () => {
       expect(undoStore.undoLabel).toBe('cmd-59');
       // Undo 50 times should exhaust the stack
       const undoAll = async () => {
-        for (let i = 0; i < 50; i++) await undoStore.undo();
+        for (let i = 0; i < 50; i++) await undoStore.undo(); // eslint-disable-line no-await-in-loop -- sequential: each undo depends on previous state
         return undoStore.canUndo;
       };
       return undoAll().then((canUndo) => expect(canUndo).toBe(false));

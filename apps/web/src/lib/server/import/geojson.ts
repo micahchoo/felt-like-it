@@ -6,6 +6,34 @@ import type { ImportResult } from './shared.js';
 
 export type { ImportResult } from './shared.js';
 
+/** Narrow parsed JSON to a GeoJSON Feature with geometry and optional properties. */
+function isGeoJSONFeature(
+  data: unknown
+): data is {
+  type: 'Feature';
+  geometry: { type: string; coordinates: unknown };
+  properties: Record<string, unknown> | null;
+} {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as Record<string, unknown>)['type'] === 'Feature' &&
+    typeof (data as Record<string, unknown>)['geometry'] === 'object'
+  );
+}
+
+/** Narrow parsed JSON to a bare GeoJSON geometry (has type + coordinates). */
+function isGeoJSONGeometry(
+  data: unknown
+): data is { type: string; coordinates: unknown } {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'type' in data &&
+    'coordinates' in data
+  );
+}
+
 /**
  * Import a GeoJSON file into a new layer in the given map.
  * Updates job progress during processing.
@@ -48,15 +76,12 @@ export async function importGeoJSON(
       geometry: f.geometry as { type: string; coordinates: unknown },
       properties: f.properties ?? {},
     }));
-  } else if (data.type === 'Feature') {
-    const f = data as unknown as {
-      geometry: { type: string; coordinates: unknown };
-      properties: Record<string, unknown> | null;
-    };
-    featureList = [{ geometry: f.geometry, properties: f.properties ?? {} }];
+  } else if (isGeoJSONFeature(geojson)) {
+    featureList = [{ geometry: geojson.geometry, properties: geojson.properties ?? {} }];
+  } else if (isGeoJSONGeometry(geojson)) {
+    featureList = [{ geometry: geojson, properties: {} }];
   } else {
-    // Single geometry
-    featureList = [{ geometry: data as unknown as { type: string; coordinates: unknown }, properties: {} }];
+    throw new Error('Unrecognized GeoJSON structure');
   }
 
   if (featureList.length === 0) {

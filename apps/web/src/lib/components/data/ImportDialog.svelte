@@ -21,7 +21,7 @@
   let progress = $state(0);
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-  const ACCEPTED_TYPES = ['.geojson', '.json', '.csv'];
+  const ACCEPTED_TYPES = ['.geojson', '.json', '.csv', '.kml', '.gpx', '.gpkg', '.geojsonl', '.zip'];
 
   function handleDrop(e: DragEvent) {
     e.preventDefault();

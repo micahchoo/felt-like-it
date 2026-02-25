@@ -1,7 +1,20 @@
 import { readFile } from 'fs/promises';
 import type { Geometry } from '@felt-like-it/shared-types';
+import type { Geometry as GeoJSONGeometry } from 'geojson';
 import { createLayerAndInsertFeatures } from './shared.js';
 import type { ImportResult } from './shared.js';
+
+/**
+ * Narrow a GeoJSON Geometry (which includes GeometryCollection) to the
+ * project's Geometry type (which excludes it). Throws on GeometryCollection
+ * since the project schema does not support it.
+ */
+function toProjectGeometry(g: GeoJSONGeometry): Geometry {
+  if (g.type === 'GeometryCollection') {
+    throw new Error('GeometryCollection is not supported');
+  }
+  return g as Geometry;
+}
 
 /** Format handled by this module — KML and GPX are both XML-based geo formats */
 export type XmlGeoFormat = 'kml' | 'gpx';
@@ -40,9 +53,7 @@ async function parseXmlGeo(filePath: string, format: XmlGeoFormat): Promise<Pars
   for (const f of fc.features) {
     if (f.geometry === null) continue;
     features.push({
-      // f.geometry is narrowed to non-null Geometry by the guard above.
-      // Cast: togeojson's Geometry includes GeometryCollection; ours doesn't.
-      geometry: f.geometry as unknown as Geometry,
+      geometry: toProjectGeometry(f.geometry),
       properties: (f.properties ?? {}) as Record<string, unknown>,
     });
   }

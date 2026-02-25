@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { drizzleChain } from './test-utils.js';
 
 // ─── Hoisted mock state ────────────────────────────────────────────────────────
 // vi.hoisted runs before vi.mock factories so mockSqlExec is initialised
@@ -178,20 +179,8 @@ function setSqlMocks(opts: {
 }
 
 function setupDbMocks(): void {
-  vi.mocked(db.insert).mockImplementation(
-    () =>
-      ({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([MOCK_LAYER]),
-        }),
-      }) as unknown as ReturnType<typeof db.insert>
-  );
-  vi.mocked(db.update).mockImplementation(
-    () =>
-      ({
-        set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
-      }) as unknown as ReturnType<typeof db.update>
-  );
+  vi.mocked(db.insert).mockImplementation(() => drizzleChain([MOCK_LAYER]));
+  vi.mocked(db.update).mockImplementation(() => drizzleChain([]));
 }
 
 // ─── parseGpkgBlob unit tests ─────────────────────────────────────────────────
@@ -415,14 +404,7 @@ describe('importGeoPackage', () => {
   });
 
   it('throws when layer insert returns nothing', async () => {
-    vi.mocked(db.insert).mockImplementation(
-      () =>
-        ({
-          values: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([]),
-          }),
-        }) as unknown as ReturnType<typeof db.insert>
-    );
+    vi.mocked(db.insert).mockImplementation(() => drizzleChain([]));
     await expect(
       importGeoPackage('/tmp/test.gpkg', MAP_ID, 'Layer', JOB_ID)
     ).rejects.toThrow('Failed to create layer');

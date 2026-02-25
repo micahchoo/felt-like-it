@@ -18,7 +18,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 
 import { annotationsRouter } from '../lib/server/trpc/routers/annotations.js';
 import { db } from '$lib/server/db/index.js';
-import { drizzleChain, mockContext, type DbExecuteResult } from './test-utils.js';
+import { drizzleChain, mockContext, mockExecuteResult } from './test-utils.js';
 
 // --- Helpers ---
 
@@ -52,9 +52,7 @@ describe('annotations.list', () => {
 
   it('returns annotations in chronological order', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP])); // ownership
-    vi.mocked(db.execute).mockResolvedValueOnce(
-      { rows: [MOCK_ANNOT_ROW] } as unknown as DbExecuteResult
-    );
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ANNOT_ROW]));
 
     const result = await makeCaller().list({ mapId: MAP_ID });
 
@@ -69,7 +67,7 @@ describe('annotations.list', () => {
 
   it('returns empty array when map has no annotations', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.execute).mockResolvedValueOnce({ rows: [] } as unknown as DbExecuteResult);
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([]));
 
     const result = await makeCaller().list({ mapId: MAP_ID });
     expect(result).toHaveLength(0);
@@ -91,9 +89,7 @@ describe('annotations.create', () => {
 
   it('creates a text annotation and returns it with a reconstructed anchor', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP])); // ownership
-    vi.mocked(db.execute).mockResolvedValueOnce(
-      { rows: [MOCK_ANNOT_ROW] } as unknown as DbExecuteResult
-    );
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ANNOT_ROW]));
 
     const result = await makeCaller().create({
       mapId: MAP_ID,
@@ -110,9 +106,7 @@ describe('annotations.create', () => {
   it('creates an emoji annotation', async () => {
     const emojiRow = { ...MOCK_ANNOT_ROW, content: { type: 'emoji', emoji: '\u{1F30A}', label: 'Ocean' } };
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.execute).mockResolvedValueOnce(
-      { rows: [emojiRow] } as unknown as DbExecuteResult
-    );
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([emojiRow]));
 
     const result = await makeCaller().create({
       mapId: MAP_ID,
@@ -126,9 +120,7 @@ describe('annotations.create', () => {
   it('creates an iiif annotation without navPlace', async () => {
     const iiifRow = { ...MOCK_ANNOT_ROW, content: { type: 'iiif', manifestUrl: 'https://example.com/manifest.json', label: 'Test Manifest' } };
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.execute).mockResolvedValueOnce(
-      { rows: [iiifRow] } as unknown as DbExecuteResult
-    );
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([iiifRow]));
 
     const result = await makeCaller().create({
       mapId: MAP_ID,
@@ -183,9 +175,7 @@ describe('annotations.update', () => {
     vi.mocked(db.select).mockReturnValueOnce(
       drizzleChain([{ id: ANNOT_ID, userId: USER_ID }]) // existence + authorship
     );
-    vi.mocked(db.execute).mockResolvedValueOnce(
-      { rows: [updatedRow] } as unknown as DbExecuteResult
-    );
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([updatedRow]));
 
     const result = await makeCaller().update({
       id: ANNOT_ID,

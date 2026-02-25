@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { writeFileSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { drizzleChain } from './test-utils.js';
 
 // --- Module mocks ---
 
@@ -65,17 +66,9 @@ describe('importCSV', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    vi.mocked(db.insert).mockImplementation(() => ({
-      values: vi.fn().mockReturnValue({
-        returning: vi.fn().mockResolvedValue([MOCK_LAYER]),
-      }),
-    }) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockImplementation(() => drizzleChain([MOCK_LAYER]));
 
-    vi.mocked(db.update).mockImplementation(() => ({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([]),
-      }),
-    }) as unknown as ReturnType<typeof db.update>);
+    vi.mocked(db.update).mockImplementation(() => drizzleChain([]));
   });
 
   it('parses a CSV with lat/lng column names', async () => {
@@ -144,11 +137,7 @@ describe('importCSV', () => {
   });
 
   it('throws when the layer insert returns nothing', async () => {
-    vi.mocked(db.insert).mockImplementation(() => ({
-      values: vi.fn().mockReturnValue({
-        returning: vi.fn().mockResolvedValue([]),
-      }),
-    }) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockImplementation(() => drizzleChain([]));
 
     const csv = 'lat,lng\n40.7,-74.0';
     const path = writeTmpCSV(csv);

@@ -61,7 +61,7 @@ export function toFeatureCollection(data: ExportData): FeatureCollection {
     features: data.features.map((row): Feature => ({
       type: 'Feature' as const,
       id: row.id,
-      geometry: row.geometry as unknown as Geometry, // TYPE_DEBT: GeoJSONFeatureRow.geometry is Record<string,unknown>
+      geometry: row.geometry as Geometry,
       properties: row.properties,
     })),
   };

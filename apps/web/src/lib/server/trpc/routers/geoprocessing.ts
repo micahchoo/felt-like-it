@@ -30,16 +30,18 @@ export const geoprocessingRouter = router({
       // One query per layer so eq()-only predicates work cleanly against mock columns in tests.
       const inputLayerIds = getOpLayerIds(input.op);
 
-      for (const layerId of inputLayerIds) {
-        const [ownedLayer] = await db
-          .select({ id: layers.id })
-          .from(layers)
-          .where(and(eq(layers.id, layerId), eq(layers.mapId, input.mapId)));
+      await Promise.all(
+        inputLayerIds.map(async (layerId) => {
+          const [ownedLayer] = await db
+            .select({ id: layers.id })
+            .from(layers)
+            .where(and(eq(layers.id, layerId), eq(layers.mapId, input.mapId)));
 
-        if (!ownedLayer) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'One or more input layers not found on this map.' });
-        }
-      }
+          if (!ownedLayer) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'One or more input layers not found on this map.' });
+          }
+        })
+      );
 
       // 3 — Cross-field validation that Zod discriminated union can't enforce inline:
       //     aggregate sum/avg require a non-empty `field`.

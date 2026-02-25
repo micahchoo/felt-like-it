@@ -5,28 +5,28 @@ import type { PageServerLoad } from './$types';
 const UPLOAD_DIR = process.env['UPLOAD_DIR'] ?? 'uploads';
 
 async function getDirectoryStats(dir: string): Promise<{ totalBytes: number; fileCount: number }> {
-  let totalBytes = 0;
-  let fileCount = 0;
-
   try {
     const entries = await readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = join(dir, entry.name);
-      if (entry.isFile()) {
-        const s = await stat(fullPath);
-        totalBytes += s.size;
-        fileCount++;
-      } else if (entry.isDirectory()) {
-        const sub = await getDirectoryStats(fullPath);
-        totalBytes += sub.totalBytes;
-        fileCount += sub.fileCount;
-      }
-    }
+    const results = await Promise.all(
+      entries.map(async (entry) => {
+        const fullPath = join(dir, entry.name);
+        if (entry.isFile()) {
+          const s = await stat(fullPath);
+          return { totalBytes: s.size, fileCount: 1 };
+        } else if (entry.isDirectory()) {
+          return getDirectoryStats(fullPath);
+        }
+        return { totalBytes: 0, fileCount: 0 };
+      })
+    );
+    return results.reduce(
+      (acc, r) => ({ totalBytes: acc.totalBytes + r.totalBytes, fileCount: acc.fileCount + r.fileCount }),
+      { totalBytes: 0, fileCount: 0 }
+    );
   } catch {
     // Directory doesn't exist or isn't readable
+    return { totalBytes: 0, fileCount: 0 };
   }
-
-  return { totalBytes, fileCount };
 }
 
 function formatBytes(bytes: number): string {
@@ -40,7 +40,6 @@ export const load: PageServerLoad = async () => {
   const stats = await getDirectoryStats(UPLOAD_DIR);
   return {
     uploadDir: UPLOAD_DIR,
-    totalBytes: stats.totalBytes,
     totalFormatted: formatBytes(stats.totalBytes),
     fileCount: stats.fileCount,
   };

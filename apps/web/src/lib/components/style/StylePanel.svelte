@@ -47,6 +47,14 @@
     });
   })());
 
+  // ── All property names (for FSL attribute selectors) ──────────────────────
+  const allProperties = $derived((() => {
+    if (layerFeatures.length === 0) return [];
+    const first = layerFeatures[0];
+    if (!first?.properties) return [];
+    return Object.keys(first.properties);
+  })());
+
   // ── Simple style controls ──────────────────────────────────────────────────
 
   let saving = $state(false);
@@ -119,6 +127,63 @@
       saving = false;
     }
   }
+
+  // ── FSL property editors ──────────────────────────────────────────────────
+
+  function updateStyleField<K extends keyof LayerStyle>(key: K, value: LayerStyle[K]) {
+    if (!layer || !style) return;
+    const newStyle: LayerStyle = { ...style, [key]: value };
+    styleStore.setStyle(layer.id, newStyle);
+    layersStore.updateStyle(layer.id, newStyle);
+  }
+
+  function updateConfig(patch: Record<string, unknown>) {
+    if (!layer || !style) return;
+    const newStyle: LayerStyle = {
+      ...style,
+      config: { ...style.config, ...patch },
+    };
+    styleStore.setStyle(layer.id, newStyle);
+    layersStore.updateStyle(layer.id, newStyle);
+  }
+
+  function updatePopup(patch: Record<string, unknown>) {
+    if (!layer || !style) return;
+    const newStyle: LayerStyle = {
+      ...style,
+      popup: { ...style.popup, ...patch },
+    };
+    styleStore.setStyle(layer.id, newStyle);
+    layersStore.updateStyle(layer.id, newStyle);
+  }
+
+  function updateAttributes(propName: string, displayName: string) {
+    if (!layer || !style) return;
+    const attrs = { ...(style.attributes ?? {}) };
+    if (displayName) {
+      attrs[propName] = { ...attrs[propName], displayName };
+    } else {
+      // Clear display name override
+      const { displayName: _, ...rest } = attrs[propName] ?? {};
+      if (Object.keys(rest).length === 0) {
+        delete attrs[propName];
+      } else {
+        attrs[propName] = rest;
+      }
+    }
+    updateStyleField('attributes', Object.keys(attrs).length > 0 ? attrs : undefined);
+  }
+
+  // Detect unique string values for categorical editor
+  const categoricalCandidates = $derived((() => {
+    if (layerFeatures.length === 0) return [];
+    return allProperties.filter((k) => {
+      const vals = layerFeatures
+        .map((f) => f.properties?.[k])
+        .filter((v) => v !== null && v !== undefined);
+      return vals.length > 0 && vals.every((v) => typeof v === 'string') && new Set(vals).size <= 20;
+    });
+  })());
 
   // ── Choropleth controls ────────────────────────────────────────────────────
 
@@ -319,6 +384,182 @@
           {style.type}
         </span>
       </div>
+
+      <!-- ── FSL Properties ───────────────────────────────────────────────── -->
+      {#if allProperties.length > 0}
+        <div class="border-t border-white/10 pt-3 space-y-3">
+          <span class="text-xs font-semibold text-slate-300 uppercase tracking-wide">Layer Properties</span>
+
+          <!-- Label attribute -->
+          <div class="space-y-1">
+            <label class="text-xs text-slate-400" for="fsl-label">Label attribute</label>
+            <select
+              id="fsl-label"
+              value={style.config?.labelAttribute ?? ''}
+              onchange={(e) => updateConfig({ labelAttribute: (e.target as HTMLSelectElement).value || undefined })}
+              class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">None</option>
+              {#each allProperties as prop (prop)}
+                <option value={prop}>{prop}</option>
+              {/each}
+            </select>
+          </div>
+
+          <!-- Categorical attribute -->
+          {#if categoricalCandidates.length > 0}
+            <div class="space-y-1">
+              <label class="text-xs text-slate-400" for="fsl-categorical">Categorical attribute</label>
+              <select
+                id="fsl-categorical"
+                value={style.config?.categoricalAttribute ?? ''}
+                onchange={(e) => {
+                  const attr = (e.target as HTMLSelectElement).value || undefined;
+                  if (attr) {
+                    const vals = [...new Set(
+                      layerFeatures
+                        .map((f) => f.properties?.[attr])
+                        .filter((v): v is string => typeof v === 'string')
+                    )];
+                    updateConfig({ categoricalAttribute: attr, categories: vals });
+                  } else {
+                    updateConfig({ categoricalAttribute: undefined, categories: undefined });
+                  }
+                }}
+                class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">None</option>
+                {#each categoricalCandidates as prop (prop)}
+                  <option value={prop}>{prop}</option>
+                {/each}
+              </select>
+            </div>
+          {/if}
+
+          <!-- isClickable toggle -->
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-slate-400">Clickable</span>
+            <button
+              type="button"
+              onclick={() => updateStyleField('isClickable', style.isClickable === false ? undefined : false)}
+              class="relative h-5 w-9 rounded-full transition-colors {style.isClickable !== false ? 'bg-blue-600' : 'bg-slate-600'}"
+              role="switch"
+              aria-checked={style.isClickable !== false}
+              aria-label="Toggle layer clickability"
+            >
+              <span class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform {style.isClickable !== false ? 'translate-x-4' : ''}"></span>
+            </button>
+          </div>
+
+          <!-- highlightColor picker -->
+          <div class="space-y-1">
+            <span class="text-xs text-slate-400">Highlight color</span>
+            <div class="flex items-center gap-2">
+              <input
+                type="color"
+                value={style.highlightColor ?? '#ff6600'}
+                oninput={(e) => updateStyleField('highlightColor', (e.target as HTMLInputElement).value)}
+                class="h-7 w-8 rounded cursor-pointer border-0 bg-transparent p-0"
+                aria-label="Selection highlight color"
+              />
+              {#if style.highlightColor}
+                <span class="text-xs text-slate-400 font-mono">{style.highlightColor}</span>
+                <button
+                  onclick={() => updateStyleField('highlightColor', undefined)}
+                  class="text-xs text-slate-500 hover:text-white"
+                  aria-label="Clear highlight color"
+                >clear</button>
+              {:else}
+                <span class="text-xs text-slate-500">Not set</span>
+              {/if}
+            </div>
+          </div>
+
+          <!-- isSandwiched toggle (polygon/mixed layers only) -->
+          {#if layer.type === 'polygon' || layer.type === 'mixed'}
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-slate-400">Sandwiched</span>
+              <button
+                type="button"
+                onclick={() => updateStyleField('isSandwiched', style.isSandwiched ? undefined : true)}
+                class="relative h-5 w-9 rounded-full transition-colors {style.isSandwiched ? 'bg-blue-600' : 'bg-slate-600'}"
+                role="switch"
+                aria-checked={style.isSandwiched ?? false}
+                aria-label="Place fill below basemap labels"
+              >
+                <span class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform {style.isSandwiched ? 'translate-x-4' : ''}"></span>
+              </button>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- ── Popup config ──────────────────────────────────────────────────── -->
+      {#if allProperties.length > 0}
+        <div class="border-t border-white/10 pt-3 space-y-3">
+          <span class="text-xs font-semibold text-slate-300 uppercase tracking-wide">Popup</span>
+
+          <div class="space-y-1">
+            <label class="text-xs text-slate-400" for="fsl-popup-title">Title attribute</label>
+            <select
+              id="fsl-popup-title"
+              value={style.popup?.titleAttribute ?? ''}
+              onchange={(e) => updatePopup({ titleAttribute: (e.target as HTMLSelectElement).value || undefined })}
+              class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">Default (all properties)</option>
+              {#each allProperties as prop (prop)}
+                <option value={prop}>{prop}</option>
+              {/each}
+            </select>
+          </div>
+
+          <div class="space-y-1">
+            <span class="text-xs text-slate-400">Visible attributes</span>
+            <div class="max-h-24 overflow-y-auto space-y-0.5">
+              {#each allProperties as prop (prop)}
+                <label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!style.popup?.keyAttributes || style.popup.keyAttributes.includes(prop)}
+                    onchange={(e) => {
+                      const checked = (e.target as HTMLInputElement).checked;
+                      const current = style.popup?.keyAttributes ?? [...allProperties];
+                      const next = checked
+                        ? [...current, prop]
+                        : current.filter((k: string) => k !== prop);
+                      updatePopup({ keyAttributes: next.length < allProperties.length ? next : undefined });
+                    }}
+                    class="rounded accent-blue-500"
+                  />
+                  {prop}
+                </label>
+              {/each}
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <!-- ── Attribute display overrides ────────────────────────────────────── -->
+      {#if allProperties.length > 0}
+        <div class="border-t border-white/10 pt-3 space-y-3">
+          <span class="text-xs font-semibold text-slate-300 uppercase tracking-wide">Column Labels</span>
+          <div class="space-y-1.5 max-h-40 overflow-y-auto">
+            {#each allProperties as prop (prop)}
+              <div class="flex items-center gap-1">
+                <span class="text-xs text-slate-500 w-16 truncate shrink-0" title={prop}>{prop}</span>
+                <input
+                  type="text"
+                  value={style.attributes?.[prop]?.displayName ?? ''}
+                  placeholder={prop}
+                  onchange={(e) => updateAttributes(prop, (e.target as HTMLInputElement).value)}
+                  class="flex-1 min-w-0 rounded bg-slate-700 border border-white/10 px-1.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       <!-- ── Choropleth configurator ─────────────────────────────────────── -->
       {#if showChoropleth}

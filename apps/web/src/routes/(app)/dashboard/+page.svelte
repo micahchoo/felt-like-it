@@ -1,15 +1,49 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { formatRelativeTime } from '$lib/utils/format.js';
+  import { trpc } from '$lib/utils/trpc.js';
   import Button from '$lib/components/ui/Button.svelte';
-  import type { PageData } from './$types';
+  import { toastStore } from '$lib/components/ui/Toast.svelte';
+  import type { ActionData, PageData } from './$types';
 
-  let { data }: { data: PageData } = $props();
+  let { data, form }: { data: PageData; form: ActionData } = $props();
 
   let showNewMapForm = $state(false);
   let showTemplates = $state(false);
   let newMapTitle = $state('');
   let creating = $state(false);
+  let editingMapId = $state<string | null>(null);
+  let editingTitle = $state('');
+
+  function startRename(mapId: string, currentTitle: string): void {
+    editingMapId = mapId;
+    editingTitle = currentTitle;
+  }
+
+  async function saveRename(mapId: string): Promise<void> {
+    if (editingMapId !== mapId) return;
+    const newTitle = editingTitle.trim();
+    if (!newTitle) {
+      editingMapId = null;
+      return;
+    }
+    try {
+      await trpc.maps.update.mutate({ id: mapId, title: newTitle });
+      const map = data.maps.find((m) => m.id === mapId);
+      if (map) map.title = newTitle;
+      toastStore.success('Map renamed.');
+    } catch {
+      toastStore.error('Failed to rename map.');
+    } finally {
+      editingMapId = null;
+    }
+  }
+
+  $effect(() => {
+    if (form && 'error' in form) {
+      toastStore.error((form as { error: string }).error);
+    }
+  });
 </script>
 
 <svelte:head>
@@ -133,14 +167,38 @@
 
             <div class="p-4">
               <div class="flex items-start justify-between gap-2">
-                <a
-                  href="/map/{map.id}"
-                  class="flex-1 text-sm font-semibold text-white hover:text-blue-400 transition-colors truncate"
-                >
-                  {map.title}
-                </a>
+                {#if editingMapId === map.id}
+                  <!-- svelte-ignore a11y_autofocus -->
+                  <input
+                    type="text"
+                    bind:value={editingTitle}
+                    autofocus
+                    onblur={() => saveRename(map.id)}
+                    onkeydown={(e) => {
+                      if (e.key === 'Enter') saveRename(map.id);
+                      if (e.key === 'Escape') { editingMapId = null; }
+                    }}
+                    class="flex-1 min-w-0 rounded bg-slate-700 border border-blue-500 px-1 py-0.5 text-sm font-semibold text-white focus:outline-none"
+                  />
+                {:else}
+                  <a
+                    href="/map/{map.id}"
+                    class="flex-1 text-sm font-semibold text-white hover:text-blue-400 transition-colors truncate"
+                    title="Double-click to rename"
+                  >
+                    {map.title}
+                  </a>
+                {/if}
 
                 <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                  <!-- Rename -->
+                  <button
+                    type="button"
+                    onclick={() => startRename(map.id, map.title)}
+                    class="text-slate-500 hover:text-blue-400 transition-colors text-xs"
+                    aria-label="Rename map"
+                    title="Rename map"
+                  >&#x270E;</button>
                   <!-- Clone -->
                   <form method="POST" action="?/cloneMap" use:enhance>
                     <input type="hidden" name="mapId" value={map.id} />

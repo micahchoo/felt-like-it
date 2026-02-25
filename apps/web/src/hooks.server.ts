@@ -3,7 +3,6 @@ import { eq } from 'drizzle-orm';
 import { lucia } from '$lib/server/auth/index.js';
 import { db, apiKeys, users } from '$lib/server/db/index.js';
 import { logger } from '$lib/server/logger.js';
-import { checkRateLimit } from '$lib/server/rate-limit.js';
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 
 export const handle: Handle = async ({ event, resolve }) => {
@@ -11,14 +10,8 @@ export const handle: Handle = async ({ event, resolve }) => {
   const { method } = event.request;
   const path = event.url.pathname;
 
-  // ── Rate limiting on auth endpoints ──────────────────────────────────────
-  const isAuthEndpoint = method === 'POST' && (path === '/auth/login' || path === '/auth/signup');
-  if (isAuthEndpoint) {
-    const ip = event.getClientAddress();
-    if (!checkRateLimit(ip)) {
-      return new Response('Too many requests', { status: 429 });
-    }
-  }
+  // Rate limiting moved to form actions (login/signup +page.server.ts)
+  // so fail(429) flows through SvelteKit's ActionData for user feedback.
 
   // ── API key (Bearer) auth — takes priority over session cookie ────────────
   const authHeader = event.request.headers.get('authorization');

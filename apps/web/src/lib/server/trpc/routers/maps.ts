@@ -242,17 +242,19 @@ export const mapsRouter = router({
         .where(eq(layers.mapId, input.id))
         .orderBy(layers.zIndex);
 
-      for (const layer of templateLayers) {
-        await db.insert(layers).values({
-          mapId: newMap.id,
-          name: layer.name,
-          type: layer.type,
-          style: layer.style,
-          visible: layer.visible,
-          zIndex: layer.zIndex,
-          sourceFileName: null,
-        });
-      }
+      await Promise.all(
+        templateLayers.map((layer) =>
+          db.insert(layers).values({
+            mapId: newMap.id,
+            name: layer.name,
+            type: layer.type,
+            style: layer.style,
+            visible: layer.visible,
+            zIndex: layer.zIndex,
+            sourceFileName: null,
+          })
+        )
+      );
 
       return newMap;
     }),
@@ -300,30 +302,32 @@ export const mapsRouter = router({
         .where(eq(layers.mapId, input.id))
         .orderBy(layers.zIndex);
 
-      for (const layer of origLayers) {
-        const [newLayer] = await db
-          .insert(layers)
-          .values({
-            mapId: newMap.id,
-            name: layer.name,
-            type: layer.type,
-            style: layer.style,
-            visible: layer.visible,
-            zIndex: layer.zIndex,
-            sourceFileName: layer.sourceFileName,
-          })
-          .returning();
+      await Promise.all(
+        origLayers.map(async (layer) => {
+          const [newLayer] = await db
+            .insert(layers)
+            .values({
+              mapId: newMap.id,
+              name: layer.name,
+              type: layer.type,
+              style: layer.style,
+              visible: layer.visible,
+              zIndex: layer.zIndex,
+              sourceFileName: layer.sourceFileName,
+            })
+            .returning();
 
-        if (!newLayer) continue;
+          if (!newLayer) return;
 
-        // Copy features in one shot — preserves PostGIS geometry binary without WKB round-trip
-        await db.execute(sql`
-          INSERT INTO features (layer_id, geometry, properties)
-          SELECT ${newLayer.id}, geometry, properties
-          FROM features
-          WHERE layer_id = ${layer.id}
-        `);
-      }
+          // Copy features in one shot — preserves PostGIS geometry binary without WKB round-trip
+          await db.execute(sql`
+            INSERT INTO features (layer_id, geometry, properties)
+            SELECT ${newLayer.id}, geometry, properties
+            FROM features
+            WHERE layer_id = ${layer.id}
+          `);
+        })
+      );
 
       return newMap;
     }),

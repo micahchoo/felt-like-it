@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { writeFileSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { drizzleChain } from './test-utils.js';
 
 // --- Module mocks (hoisted before any imports) ---
 
@@ -91,18 +92,10 @@ describe('importGeoJSON', () => {
     vi.clearAllMocks();
 
     // Default: insert returns our mock layer
-    vi.mocked(db.insert).mockImplementation(() => ({
-      values: vi.fn().mockReturnValue({
-        returning: vi.fn().mockResolvedValue([MOCK_LAYER]),
-      }),
-    }) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockImplementation(() => drizzleChain([MOCK_LAYER]));
 
     // Default: update resolves (progress updates)
-    vi.mocked(db.update).mockImplementation(() => ({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([]),
-      }),
-    }) as unknown as ReturnType<typeof db.update>);
+    vi.mocked(db.update).mockImplementation(() => drizzleChain([]));
   });
 
   it('imports a FeatureCollection and returns the correct count', async () => {
@@ -155,11 +148,7 @@ describe('importGeoJSON', () => {
   });
 
   it('throws when the layer insert returns nothing', async () => {
-    vi.mocked(db.insert).mockImplementation(() => ({
-      values: vi.fn().mockReturnValue({
-        returning: vi.fn().mockResolvedValue([]), // empty → layer is undefined
-      }),
-    }) as unknown as ReturnType<typeof db.insert>);
+    vi.mocked(db.insert).mockImplementation(() => drizzleChain([])); // empty → layer is undefined
 
     const path = writeTmpGeoJSON(VALID_FEATURE_COLLECTION);
     await expect(importGeoJSON(path, 'map-uuid', 'Parks', 'job-uuid')).rejects.toThrow(

@@ -16,6 +16,7 @@
       <a href="/admin" class="text-sm text-slate-300 hover:text-white transition-colors">Users</a>
       <a href="/admin/storage" class="text-sm text-slate-300 hover:text-white transition-colors">Storage</a>
       <a href="/admin/jobs" class="text-sm text-slate-300 hover:text-white transition-colors">Jobs</a>
+      <a href="/admin/audit" class="text-sm text-slate-300 hover:text-white transition-colors">Audit</a>
     </div>
   </nav>
 

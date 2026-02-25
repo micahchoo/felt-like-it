@@ -13,12 +13,14 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   if (!map) error(404, 'Map not found');
 
   // 2 — Owner fast-path; collaborator fallback
+  let userRole: 'owner' | 'editor' | 'commenter' | 'viewer' = 'owner';
   if (map.userId !== userId) {
     const [collab] = await db
-      .select({ id: mapCollaborators.id })
+      .select({ id: mapCollaborators.id, role: mapCollaborators.role })
       .from(mapCollaborators)
       .where(and(eq(mapCollaborators.mapId, mapId), eq(mapCollaborators.userId, userId)));
     if (!collab) error(404, 'Map not found');
+    userRole = collab.role as 'editor' | 'commenter' | 'viewer';
   }
 
   const mapLayers = await db
@@ -31,5 +33,6 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     map,
     layers: mapLayers,
     userId: locals.user.id,
+    userRole,
   };
 };

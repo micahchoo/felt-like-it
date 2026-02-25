@@ -31,16 +31,20 @@ export const load: PageServerLoad = async ({ locals }) => {
     .where(and(eq(maps.userId, userId), eq(maps.isArchived, false)))
     .orderBy(desc(maps.updatedAt));
 
-  // Get layer counts
-  const counts = await db
-    .select({
-      mapId: layers.mapId,
-      count: sql<number>`count(*)`,
-    })
-    .from(layers)
-    .groupBy(layers.mapId);
-
-  const countMap = new Map(counts.map((c) => [c.mapId, c.count]));
+  // Get layer counts scoped to user's maps
+  const mapIds = userMaps.map((m) => m.id);
+  const countMap = new Map<string, number>();
+  if (mapIds.length > 0) {
+    const counts = await db
+      .select({
+        mapId: layers.mapId,
+        count: sql<number>`count(*)`,
+      })
+      .from(layers)
+      .where(sql`${layers.mapId} IN (${sql.join(mapIds.map((id) => sql`${id}`), sql`, `)})`)
+      .groupBy(layers.mapId);
+    for (const c of counts) countMap.set(c.mapId, c.count);
+  }
 
   // Load template maps (shared across all users, ordered by title)
   const templateRows = await db
@@ -112,9 +116,13 @@ export const actions: Actions = {
     const formData = await request.formData();
     const mapId = formData.get('mapId') as string;
 
-    await db
-      .delete(maps)
-      .where(and(eq(maps.id, mapId), eq(maps.userId, userId)));
+    try {
+      await db
+        .delete(maps)
+        .where(and(eq(maps.id, mapId), eq(maps.userId, userId)));
+    } catch {
+      return fail(500, { error: 'Failed to delete map.' });
+    }
 
     return { deleted: true };
   },
@@ -151,29 +159,31 @@ export const actions: Actions = {
       .where(eq(layers.mapId, mapId))
       .orderBy(asc(layers.zIndex));
 
-    for (const layer of origLayers) {
-      const [newLayer] = await db
-        .insert(layers)
-        .values({
-          mapId: newMap.id,
-          name: layer.name,
-          type: layer.type,
-          style: layer.style,
-          visible: layer.visible,
-          zIndex: layer.zIndex,
-          sourceFileName: layer.sourceFileName,
-        })
-        .returning({ id: layers.id });
+    await Promise.all(
+      origLayers.map(async (layer) => {
+        const [newLayer] = await db
+          .insert(layers)
+          .values({
+            mapId: newMap.id,
+            name: layer.name,
+            type: layer.type,
+            style: layer.style,
+            visible: layer.visible,
+            zIndex: layer.zIndex,
+            sourceFileName: layer.sourceFileName,
+          })
+          .returning({ id: layers.id });
 
-      if (!newLayer) continue;
+        if (!newLayer) return;
 
-      await db.execute(sql`
-        INSERT INTO features (layer_id, geometry, properties)
-        SELECT ${newLayer.id}, geometry, properties
-        FROM features
-        WHERE layer_id = ${layer.id}
-      `);
-    }
+        await db.execute(sql`
+          INSERT INTO features (layer_id, geometry, properties)
+          SELECT ${newLayer.id}, geometry, properties
+          FROM features
+          WHERE layer_id = ${layer.id}
+        `);
+      })
+    );
 
     redirect(302, `/map/${newMap.id}`);
   },
@@ -218,17 +228,19 @@ export const actions: Actions = {
       .where(eq(layers.mapId, templateId))
       .orderBy(asc(layers.zIndex));
 
-    for (const layer of templateLayers) {
-      await db.insert(layers).values({
-        mapId: newMap.id,
-        name: layer.name,
-        type: layer.type,
-        style: layer.style,
-        visible: layer.visible,
-        zIndex: layer.zIndex,
-        sourceFileName: null,
-      });
-    }
+    await Promise.all(
+      templateLayers.map((layer) =>
+        db.insert(layers).values({
+          mapId: newMap.id,
+          name: layer.name,
+          type: layer.type,
+          style: layer.style,
+          visible: layer.visible,
+          zIndex: layer.zIndex,
+          sourceFileName: null,
+        })
+      )
+    );
 
     redirect(302, `/map/${newMap.id}`);
   },

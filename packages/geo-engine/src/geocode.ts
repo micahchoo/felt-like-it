@@ -95,12 +95,15 @@ export async function geocodeBatch(
 
   for (let i = 0; i < addresses.length; i++) {
     const address = (addresses[i] ?? '').trim();
+    // eslint-disable-next-line no-await-in-loop -- sequential rate-limited geocoding
     results.push(address ? await geocodeAddress(address, options) : null);
 
+    // eslint-disable-next-line no-await-in-loop -- progress callback between sequential requests
     if (onProgress) await onProgress(i + 1, addresses.length);
 
     // Rate-limit: skip delay after the last request
     if (i < addresses.length - 1 && rateDelayMs > 0) {
+      // eslint-disable-next-line no-await-in-loop -- intentional rate-limit delay
       await sleep(rateDelayMs);
     }
   }

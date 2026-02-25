@@ -51,7 +51,9 @@ test.describe('Import / Export', () => {
     const layers = layersBody.result.data.json;
     expect(layers.length).toBeGreaterThan(0);
 
-    const layerId = layers[0]!.id;
+    const firstLayer = layers[0];
+    if (!firstLayer) throw new Error('Expected at least one layer');
+    const layerId = firstLayer.id;
 
     // Use page.request (inherits auth cookies) to download the export
     const exportResponse = await page.request.get(`/api/export/${layerId}?format=geojson`);
