@@ -11,7 +11,7 @@ vi.mock('$lib/server/db/index.js', () => ({
     delete:  vi.fn(),
     execute: vi.fn(),
   },
-  maps:             { id: {}, userId: {}, isArchived: {} },
+  maps:             { id: {}, userId: {} },
   layers:           { id: {}, mapId: {}, zIndex: {}, style: {}, name: {}, type: {}, visible: {}, sourceFileName: {}, createdAt: {}, updatedAt: {} },
   mapCollaborators: { mapId: {}, userId: {}, role: {} },
   users:            {},
@@ -30,7 +30,7 @@ const LAYER_ID2 = 'dddddddd-0000-0000-0000-dddddddddddd';
 
 const MOCK_MAP = {
   id: MAP_ID, userId: USER_ID, title: 'Test Map', description: null,
-  viewport: {}, basemap: 'osm', isArchived: false,
+  viewport: {}, basemap: 'osm',
   createdAt: new Date(), updatedAt: new Date(),
 };
 

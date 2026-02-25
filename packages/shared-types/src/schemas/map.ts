@@ -14,7 +14,6 @@ export const MapSchema = z.object({
   description: z.string().max(2000).nullable(),
   viewport: ViewportSchema,
   basemap: z.string().default('osm'),
-  isArchived: z.boolean().default(false),
   layerCount: z.number().optional(),
   createdAt: z.date(),
   updatedAt: z.date(),

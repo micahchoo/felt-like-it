@@ -18,12 +18,11 @@ export const mapsRouter = router({
         description: maps.description,
         viewport: maps.viewport,
         basemap: maps.basemap,
-        isArchived: maps.isArchived,
         createdAt: maps.createdAt,
         updatedAt: maps.updatedAt,
       })
       .from(maps)
-      .where(and(eq(maps.userId, userId), eq(maps.isArchived, false)))
+      .where(eq(maps.userId, userId))
       .orderBy(desc(maps.updatedAt));
 
     // Get layer counts per map
@@ -177,13 +176,12 @@ export const mapsRouter = router({
         title: maps.title,
         description: maps.description,
         basemap: maps.basemap,
-        isArchived: maps.isArchived,
         createdAt: maps.createdAt,
         updatedAt: maps.updatedAt,
         role: mapCollaborators.role,
       })
       .from(mapCollaborators)
-      .innerJoin(maps, and(eq(maps.id, mapCollaborators.mapId), eq(maps.isArchived, false)))
+      .innerJoin(maps, eq(maps.id, mapCollaborators.mapId))
       .where(eq(mapCollaborators.userId, ctx.user.id))
       .orderBy(desc(maps.updatedAt));
 

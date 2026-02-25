@@ -31,7 +31,7 @@ const LAYER_ID = 'dddddddd-0000-0000-0000-dddddddddddd';
 const MOCK_MAP = {
   id: MAP_ID, userId: USER_ID, title: 'Test Map', description: null,
   viewport: { center: [0, 0], zoom: 4, bearing: 0, pitch: 0 },
-  basemap: 'osm', isArchived: false, createdAt: new Date(), updatedAt: new Date(),
+  basemap: 'osm', createdAt: new Date(), updatedAt: new Date(),
 };
 
 const MOCK_SHARE = {

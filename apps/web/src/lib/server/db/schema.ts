@@ -65,7 +65,6 @@ export const maps = pgTable(
       .notNull()
       .default(sql`'{"center":[-98.35,39.5],"zoom":4,"bearing":0,"pitch":0}'::jsonb`),
     basemap: text('basemap').notNull().default('osm'),
-    isArchived: boolean('is_archived').notNull().default(false),
     /**
      * Template maps are visible to all users via maps.listTemplates and can be cloned
      * as a starting point for a new map (see maps.createFromTemplate).

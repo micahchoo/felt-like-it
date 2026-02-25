@@ -108,14 +108,12 @@ describe('MapSchema', () => {
       description: null,
       viewport: { center: [-122.4, 37.8], zoom: 12 },
       basemap: 'osm',
-      isArchived: false,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
     expect(map.title).toBe('My Map');
     expect(map.id).toBe('00000000-0000-0000-0000-000000000001');
     expect(map.userId).toBe('00000000-0000-0000-0000-000000000002');
-    expect(map.isArchived).toBe(false);
   });
 });
 

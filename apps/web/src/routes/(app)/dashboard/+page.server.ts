@@ -1,6 +1,6 @@
 import type { PageServerLoad, Actions } from './$types';
 import { db, maps } from '$lib/server/db/index.js';
-import { eq, and, desc, asc } from 'drizzle-orm';
+import { eq, desc, asc } from 'drizzle-orm';
 import { layers, mapCollaborators } from '$lib/server/db/schema.js';
 import { sql } from 'drizzle-orm';
 import { fail, redirect } from '@sveltejs/kit';
@@ -29,7 +29,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       updatedAt: maps.updatedAt,
     })
     .from(maps)
-    .where(and(eq(maps.userId, userId), eq(maps.isArchived, false)))
+    .where(eq(maps.userId, userId))
     .orderBy(desc(maps.updatedAt));
 
   // Get layer counts scoped to user's maps
@@ -80,7 +80,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       role: mapCollaborators.role,
     })
     .from(mapCollaborators)
-    .innerJoin(maps, and(eq(maps.id, mapCollaborators.mapId), eq(maps.isArchived, false)))
+    .innerJoin(maps, eq(maps.id, mapCollaborators.mapId))
     .where(eq(mapCollaborators.userId, userId))
     .orderBy(desc(maps.updatedAt));
 

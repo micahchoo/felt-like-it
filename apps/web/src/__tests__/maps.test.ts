@@ -14,7 +14,7 @@ vi.mock('$lib/server/db/index.js', () => ({
     execute:     vi.fn(),
     transaction: vi.fn(),
   },
-  maps:             { id: {}, userId: {}, isArchived: {}, isTemplate: {}, updatedAt: {}, title: {}, description: {}, viewport: {}, basemap: {}, createdAt: {} },
+  maps:             { id: {}, userId: {},  isTemplate: {}, updatedAt: {}, title: {}, description: {}, viewport: {}, basemap: {}, createdAt: {} },
   layers:           { mapId: {}, zIndex: {}, id: {}, style: {} },
   mapCollaborators: { mapId: {}, userId: {}, role: {} },
   users: {},
@@ -35,8 +35,7 @@ const MOCK_MAP = {
   description: null,
   viewport: { center: [-122.4, 37.7] as [number, number], zoom: 10, bearing: 0, pitch: 0 },
   basemap: 'osm',
-  isArchived: false,
-  isTemplate: false,
+    isTemplate: false,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -49,8 +48,7 @@ const MOCK_TEMPLATE = {
   description: 'A blank world map.',
   viewport: { center: [0, 20] as [number, number], zoom: 2, bearing: 0, pitch: 0 },
   basemap: 'osm',
-  isArchived: false,
-  isTemplate: true,
+    isTemplate: true,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -380,8 +378,7 @@ describe('maps.listCollaborating', () => {
       title: 'Shared Map',
       description: null,
       basemap: 'osm',
-      isArchived: false,
-      createdAt: new Date(),
+            createdAt: new Date(),
       updatedAt: new Date(),
       role: 'viewer',
     };
