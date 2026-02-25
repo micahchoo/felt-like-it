@@ -3,7 +3,7 @@ import { generateAutoStyle } from '@felt-like-it/geo-engine';
 import { db, layers, importJobs } from '../db/index.js';
 import { insertWkbFeatures, getLayerBbox, type WkbFeatureRow } from '../geo/queries.js';
 import { eq } from 'drizzle-orm';
-import type { ImportResult } from './geojson.js';
+import type { ImportResult } from './shared.js';
 
 // ─── GeoPackage Binary Header constants (OGC 12-128r18 §2.1.3) ────────────────
 // Header layout: magic[2] + version[1] + flags[1] + srs_id[4] = 8 bytes,
@@ -278,10 +278,12 @@ export async function importGeoPackage(
 
     for (let i = 0; i < wkbRows.length; i += BATCH_SIZE) {
       const batch = wkbRows.slice(i, i + BATCH_SIZE);
+      // eslint-disable-next-line no-await-in-loop -- sequential batches: progress tracking requires ordered completion
       await insertWkbFeatures(layer.id, batch);
       inserted += batch.length;
 
       const progress = Math.round(10 + (inserted / wkbRows.length) * 80);
+      // eslint-disable-next-line no-await-in-loop -- progress update depends on sequential batch count
       await db.update(importJobs).set({ progress }).where(eq(importJobs.id, jobId));
     }
 

@@ -5,9 +5,9 @@ import { importShapefile } from './shapefile.js';
 import { importXmlGeo } from './xmlgeo.js';
 import { importGeoPackage } from './geopackage.js';
 import { deleteLayer, getImportJobLayerId } from '../geo/queries.js';
-import type { ImportResult } from './geojson.js';
+import type { ImportResult } from './shared.js';
 
-export type { ImportResult } from './geojson.js';
+export type { ImportResult } from './shared.js';
 
 export type SupportedFormat = 'geojson' | 'csv' | 'shapefile' | 'kml' | 'gpx' | 'geopackage';
 

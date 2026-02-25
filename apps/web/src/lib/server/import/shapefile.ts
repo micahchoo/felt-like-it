@@ -1,10 +1,8 @@
 import { readFile } from 'fs/promises';
 import { extname } from 'path';
-import { detectLayerType, generateAutoStyle } from '@felt-like-it/geo-engine';
-import { db, layers, importJobs } from '../db/index.js';
-import { insertFeatures, getLayerBbox } from '../geo/queries.js';
-import { eq } from 'drizzle-orm';
-import type { ImportResult } from './geojson.js';
+import type { Geometry } from '@felt-like-it/shared-types';
+import { createLayerAndInsertFeatures } from './shared.js';
+import type { ImportResult } from './shared.js';
 
 type ShpFeature = {
   type: 'Feature';
@@ -72,7 +70,7 @@ export async function importShapefile(
   const featureList = rawFeatures
     .filter((f) => f.geometry !== null && f.geometry !== undefined)
     .map((f) => ({
-      geometry: f.geometry as Record<string, unknown>,
+      geometry: f.geometry as Geometry,
       properties: f.properties ?? {},
     }));
 
@@ -80,50 +78,10 @@ export async function importShapefile(
     throw new Error('Shapefile contains no features with valid geometry');
   }
 
-  // Detect layer type from the dominant geometry type
-  const layerType = detectLayerType(
-    featureList.map((f) => ({ geometry: { type: String(f.geometry['type'] ?? 'Point') } }))
-  );
-
-  const autoStyle = generateAutoStyle(layerType, featureList.map((f) => ({ properties: f.properties })));
-
-  // Create layer
-  const [layer] = await db
-    .insert(layers)
-    .values({
-      mapId,
-      name: layerName,
-      type: layerType,
-      style: autoStyle,
-      sourceFileName: layerName,
-    })
-    .returning();
-
-  if (!layer) throw new Error('Failed to create layer');
-
-  await db
-    .update(importJobs)
-    .set({ layerId: layer.id, progress: 10, status: 'processing' })
-    .where(eq(importJobs.id, jobId));
-
-  // Insert features in batches of 500 (one multi-row INSERT per batch)
-  const BATCH_SIZE = 500;
-  let inserted = 0;
-
-  for (let i = 0; i < featureList.length; i += BATCH_SIZE) {
-    const batch = featureList.slice(i, i + BATCH_SIZE);
-    await insertFeatures(layer.id, batch);
-    inserted += batch.length;
-
-    const progress = Math.round(10 + (inserted / featureList.length) * 80);
-    await db.update(importJobs).set({ progress }).where(eq(importJobs.id, jobId));
-  }
-
-  const bbox = await getLayerBbox(layer.id);
-
-  return {
-    layerId: layer.id,
-    featureCount: inserted,
-    bbox,
-  };
+  return createLayerAndInsertFeatures({
+    mapId,
+    jobId,
+    layerName,
+    features: featureList,
+  });
 }

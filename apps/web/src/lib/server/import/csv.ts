@@ -4,15 +4,14 @@ import {
   detectAddressColumn,
   isValidLatitude,
   isValidLongitude,
-  detectLayerType,
-  generateAutoStyle,
   geocodeBatch,
   type GeocodingOptions,
 } from '@felt-like-it/geo-engine';
-import { db, layers, importJobs } from '../db/index.js';
-import { insertFeatures, getLayerBbox } from '../geo/queries.js';
+import type { Geometry } from '@felt-like-it/shared-types';
+import { db, importJobs } from '../db/index.js';
 import { eq } from 'drizzle-orm';
-import type { ImportResult } from './geojson.js';
+import { createLayerAndInsertFeatures } from './shared.js';
+import type { ImportResult } from './shared.js';
 
 /**
  * Parse a CSV file and return rows.
@@ -55,7 +54,7 @@ export async function importCSV(
     throw new Error('CSV file is empty');
   }
 
-  type Feature = { geometry: Record<string, unknown>; properties: Record<string, unknown> };
+  type Feature = { geometry: Geometry; properties: Record<string, unknown> };
   let validFeatures: Feature[];
 
   // ── Path A: explicit lat/lng columns ──────────────────────────────────────
@@ -74,7 +73,7 @@ export async function importCSV(
       for (const [key, value] of Object.entries(row)) {
         if (key !== latCol && key !== lngCol) properties[key] = value;
       }
-      acc.push({ geometry: { type: 'Point', coordinates: [lng, lat] }, properties });
+      acc.push({ geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties });
     }
 
     if (acc.length === 0) {
@@ -84,7 +83,7 @@ export async function importCSV(
     }
     validFeatures = acc;
 
-  // ── Path B: address column → Nominatim geocoding ──────────────────────────
+  // ── Path B: address column -> Nominatim geocoding ──────────────────────────
   } else {
     const addrCol = detectAddressColumn(headers);
 
@@ -128,7 +127,7 @@ export async function importCSV(
       for (const [key, value] of Object.entries(row)) {
         properties[key] = value; // keep address column in properties
       }
-      acc.push({ geometry: { type: 'Point', coordinates: [point.lng, point.lat] }, properties });
+      acc.push({ geometry: { type: 'Point' as const, coordinates: [point.lng, point.lat] as [number, number] }, properties });
     }
 
     if (acc.length === 0) {
@@ -140,52 +139,11 @@ export async function importCSV(
     validFeatures = acc;
   }
 
-  // Detect layer type and generate auto-style
-  const layerType = detectLayerType(
-    validFeatures.map(() => ({ geometry: { type: 'Point' } }))
-  );
-  const autoStyle = generateAutoStyle(
-    layerType,
-    validFeatures.map((f) => ({ properties: f.properties }))
-  );
-
-  // Create the layer
-  const [layer] = await db
-    .insert(layers)
-    .values({
-      mapId,
-      name: layerName,
-      type: layerType,
-      style: autoStyle,
-      sourceFileName: layerName,
-    })
-    .returning();
-
-  if (!layer) throw new Error('Failed to create layer');
-
-  await db
-    .update(importJobs)
-    .set({ layerId: layer.id, progress: 10, status: 'processing' })
-    .where(eq(importJobs.id, jobId));
-
-  // Insert in batches
-  const BATCH_SIZE = 500;
-  let inserted = 0;
-
-  for (let i = 0; i < validFeatures.length; i += BATCH_SIZE) {
-    const batch = validFeatures.slice(i, i + BATCH_SIZE);
-    await insertFeatures(layer.id, batch);
-    inserted += batch.length;
-
-    const progress = Math.round(10 + (inserted / validFeatures.length) * 80);
-    await db.update(importJobs).set({ progress }).where(eq(importJobs.id, jobId));
-  }
-
-  const bbox = await getLayerBbox(layer.id);
-
-  return {
-    layerId: layer.id,
-    featureCount: inserted,
-    bbox,
-  };
+  return createLayerAndInsertFeatures({
+    mapId,
+    jobId,
+    layerName,
+    features: validFeatures,
+    layerTypeOverride: 'point',
+  });
 }
