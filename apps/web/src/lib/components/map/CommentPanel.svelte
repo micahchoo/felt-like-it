@@ -6,12 +6,11 @@
     mapId: string;
     /** ID of the current authenticated user — gates delete and resolve buttons. */
     userId?: string;
+    /** When true, hide resolve/delete actions (viewer/commenter/share viewers). */
+    readonly?: boolean;
   }
 
-  /**
-   * Comment shape from tRPC comments.list.
-   * createdAt / updatedAt are ISO-8601 strings (tRPC JSON wire type).
-   */
+  /** Comment shape from tRPC comments.list. */
   interface CommentEntry {
     id: string;
     mapId: string;
@@ -19,11 +18,11 @@
     authorName: string;
     body: string;
     resolved: boolean;
-    createdAt: string;
-    updatedAt: string;
+    createdAt: Date;
+    updatedAt: Date;
   }
 
-  let { mapId, userId }: Props = $props();
+  let { mapId, userId, readonly = false }: Props = $props();
 
   let comments = $state<CommentEntry[]>([]);
   let loading = $state(true);
@@ -80,8 +79,8 @@
     }
   }
 
-  function relativeTime(date: string): string {
-    const sec = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+  function relativeTime(date: Date): string {
+    const sec = Math.floor((Date.now() - date.getTime()) / 1000);
     if (sec < 60) return 'just now';
     if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
     if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
@@ -122,26 +121,26 @@
             <!-- Body -->
             <p class="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap break-words">{comment.body}</p>
 
-            <!-- Actions -->
-            <div class="flex gap-2 mt-1">
-              <!-- Map owner can resolve / unresolve any comment -->
-              <button
-                class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-                onclick={() => handleResolve(comment.id)}
-              >
-                {comment.resolved ? 'Unresolve' : 'Resolve'}
-              </button>
-
-              <!-- Only the comment author can delete their own comment -->
-              {#if comment.userId === userId}
+            <!-- Actions — hidden for readonly users (viewers, share visitors) -->
+            {#if !readonly && userId}
+              <div class="flex gap-2 mt-1">
                 <button
-                  class="text-xs text-slate-500 hover:text-red-400 transition-colors"
-                  onclick={() => handleDelete(comment.id)}
+                  class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                  onclick={() => handleResolve(comment.id)}
                 >
-                  Delete
+                  {comment.resolved ? 'Unresolve' : 'Resolve'}
                 </button>
-              {/if}
-            </div>
+
+                {#if comment.userId === userId}
+                  <button
+                    class="text-xs text-slate-500 hover:text-red-400 transition-colors"
+                    onclick={() => handleDelete(comment.id)}
+                  >
+                    Delete
+                  </button>
+                {/if}
+              </div>
+            {/if}
           </li>
         {/each}
       </ul>

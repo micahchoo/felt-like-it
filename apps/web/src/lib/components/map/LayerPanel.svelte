@@ -20,7 +20,7 @@
     creatingLayer = true;
     try {
       const layer = await trpc.layers.create.mutate({ mapId, name });
-      layersStore.add(layer as unknown as Parameters<typeof layersStore.add>[0]);
+      layersStore.add(layer);
       newLayerName = '';
       onlayerchange?.();
       toastStore.success(`Layer "${name}" created.`);
@@ -36,6 +36,7 @@
     try {
       await trpc.layers.delete.mutate({ id: layerId });
       layersStore.remove(layerId);
+      styleStore.clearStyle(layerId);
       onlayerchange?.();
       toastStore.info(`Layer "${layerName}" deleted.`);
     } catch {
@@ -53,6 +54,22 @@
       // Revert optimistic update
       layersStore.toggle(layerId);
       toastStore.error('Failed to update layer visibility.');
+    }
+  }
+
+  async function moveLayer(index: number, direction: 'up' | 'down'): Promise<void> {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= layersStore.all.length) return;
+
+    layersStore.reorder(index, targetIndex);
+
+    try {
+      await trpc.layers.reorder.mutate({
+        mapId,
+        order: layersStore.getOrderedIds(),
+      });
+    } catch {
+      toastStore.error('Failed to reorder layers.');
     }
   }
 
@@ -81,7 +98,7 @@
       </p>
     {/if}
 
-    {#each layersStore.all as layer (layer.id)}
+    {#each layersStore.all as layer, index (layer.id)}
       <div
         class="group flex items-center gap-2 rounded-md px-2 py-2 cursor-pointer transition-colors
                {layersStore.activeLayerId === layer.id
@@ -108,6 +125,36 @@
 
         <!-- Actions -->
         <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <!-- Move up -->
+          {#if index > 0}
+            <Tooltip content="Move up" position="top">
+              <button
+                onclick={(e) => { e.stopPropagation(); moveLayer(index, 'up'); }}
+                class="h-6 w-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-600 transition-colors"
+                aria-label="Move layer up"
+              >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M7.646 4.646a.5.5 0 01.708 0l3 3a.5.5 0 01-.708.708L8.5 6.207V12.5a.5.5 0 01-1 0V6.207L5.354 8.354a.5.5 0 11-.708-.708l3-3z"/>
+                </svg>
+              </button>
+            </Tooltip>
+          {/if}
+
+          <!-- Move down -->
+          {#if index < layersStore.all.length - 1}
+            <Tooltip content="Move down" position="top">
+              <button
+                onclick={(e) => { e.stopPropagation(); moveLayer(index, 'down'); }}
+                class="h-6 w-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-600 transition-colors"
+                aria-label="Move layer down"
+              >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M8.354 11.354a.5.5 0 01-.708 0l-3-3a.5.5 0 11.708-.708L7.5 9.793V3.5a.5.5 0 011 0v6.293l2.146-2.147a.5.5 0 01.708.708l-3 3z"/>
+                </svg>
+              </button>
+            </Tooltip>
+          {/if}
+
           <!-- Style editor -->
           <Tooltip content="Edit style" position="top">
             <button

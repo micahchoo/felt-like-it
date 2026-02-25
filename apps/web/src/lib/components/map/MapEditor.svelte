@@ -3,6 +3,7 @@
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { mapStore } from '$lib/stores/map.svelte.js';
   import { filterStore } from '$lib/stores/filters.svelte.js';
+  import { undoStore } from '$lib/stores/undo.svelte.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import MapCanvas from './MapCanvas.svelte';
   import LayerPanel from './LayerPanel.svelte';
@@ -20,11 +21,11 @@
   import ActivityFeed from './ActivityFeed.svelte';
   import CommentPanel from './CommentPanel.svelte';
   import CollaboratorsPanel from './CollaboratorsPanel.svelte';
+  import ShareDialog from './ShareDialog.svelte';
   import GeoprocessingPanel from '$lib/components/geoprocessing/GeoprocessingPanel.svelte';
   import AnnotationPanel from '$lib/components/annotations/AnnotationPanel.svelte';
   import MeasurementPanel from '$lib/components/map/MeasurementPanel.svelte';
   import type { AnnotationPinCollection } from '$lib/components/map/MapCanvas.svelte';
-  import type { Annotation } from '@felt-like-it/shared-types';
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
 
   interface Props {
@@ -40,9 +41,11 @@
      * Used by the /embed/[token] route for iframe embedding.
      */
     embed?: boolean;
+    /** When true, show owner-only controls (collaborator management, etc.). */
+    isOwner?: boolean;
   }
 
-  let { mapId, mapTitle, initialLayers, userId, readonly = false, embed = false }: Props = $props();
+  let { mapId, mapTitle, initialLayers, userId, readonly = false, embed = false, isOwner = false }: Props = $props();
 
   // embed implies readonly — illegal state prevented at the prop level.
   const effectiveReadonly = $derived(readonly || embed);
@@ -63,6 +66,7 @@
   let showGeoprocessing = $state(false);
   let showAnnotations = $state(false);
   let showMeasure = $state(false);
+  let showShareDialog = $state(false);
   let measureResult = $state<MeasurementResult | null>(null);
   let savingViewport = $state(false);
 
@@ -77,13 +81,13 @@
       const rows = await trpc.annotations.list.query({ mapId });
       annotationPins = {
         type: 'FeatureCollection',
-        features: (rows as unknown as Array<Annotation & { createdAt: string }>).map((a) => ({
+        features: rows.map((a) => ({
           type: 'Feature' as const,
           id: a.id,
           geometry: a.anchor,
           properties: {
             authorName: a.authorName,
-            createdAt: a.createdAt as unknown as string,
+            createdAt: a.createdAt.toISOString(),
             contentJson: JSON.stringify(a.content),
           },
         })),
@@ -107,7 +111,9 @@
   async function loadLayerData(layerId: string) {
     try {
       const fc = await trpc.features.list.query({ layerId });
-      const featureCollection = fc as { type: 'FeatureCollection'; features: GeoJSONFeature[] };
+      // TYPE_DEBT: features.list returns geometry as Record<string, unknown> from raw SQL;
+      // the actual runtime shape is always a valid GeoJSON geometry object.
+      const featureCollection = fc as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] };
       layerData = { ...layerData, [layerId]: featureCollection };
 
       // Push data directly to the MapLibre source to bypass svelte-maplibre-gl's
@@ -141,6 +147,7 @@
       await trpc.maps.update.mutate({
         id: mapId,
         viewport: mapStore.getViewportSnapshot(),
+        basemap: mapStore.basemapId,
       });
       toastStore.success('Viewport saved.');
       // Fire-and-forget: log activity event (best-effort, never blocks the UI)
@@ -158,14 +165,35 @@
     loadLayerData(layerId);
     // Refresh layers list, then log the activity event with the layer name
     trpc.layers.list.query({ mapId }).then((newLayers) => {
-      layersStore.set(newLayers as unknown as Layer[]);
-      const imported = (newLayers as { id: string; name: string }[]).find((l) => l.id === layerId);
+      layersStore.set(newLayers);
+      const imported = newLayers.find((l) => l.id === layerId);
       trpc.events.log
         .mutate({ mapId, action: 'layer.imported', metadata: { name: imported?.name ?? '' } })
         .catch(() => undefined);
     });
   }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (effectiveReadonly) return;
+
+    // Skip when focus is inside a text input
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if ((e.target as HTMLElement)?.isContentEditable) return;
+
+    const mod = e.metaKey || e.ctrlKey;
+    if (!mod || e.key.toLowerCase() !== 'z') return;
+
+    e.preventDefault();
+    if (e.shiftKey) {
+      undoStore.redo();
+    } else {
+      undoStore.undo();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="flex h-screen w-full overflow-hidden bg-slate-900">
   <!-- Left: Layer Panel -->
@@ -237,6 +265,28 @@
           </Button>
         </Tooltip>
 
+        <div class="mx-0.5 h-5 w-px bg-white/10"></div>
+
+        <Tooltip content={undoStore.undoLabel ? `Undo: ${undoStore.undoLabel}` : 'Undo (Ctrl+Z)'}>
+          <Button variant="ghost" size="sm" onclick={() => undoStore.undo()} disabled={!undoStore.canUndo} aria-label="Undo">
+            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm0 1a6 6 0 100 12A6 6 0 008 2z"/>
+              <path d="M5.354 7.354a.5.5 0 010-.708l2-2a.5.5 0 01.708.708L6.707 6.7H10a2.5 2.5 0 010 5H8.5a.5.5 0 010-1H10a1.5 1.5 0 000-3H6.707l1.355 1.346a.5.5 0 11-.708.708l-2-2z"/>
+            </svg>
+          </Button>
+        </Tooltip>
+
+        <Tooltip content={undoStore.redoLabel ? `Redo: ${undoStore.redoLabel}` : 'Redo (Ctrl+Shift+Z)'}>
+          <Button variant="ghost" size="sm" onclick={() => undoStore.redo()} disabled={!undoStore.canRedo} aria-label="Redo">
+            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2z"/>
+              <path d="M10.646 7.354a.5.5 0 000-.708l-2-2a.5.5 0 00-.708.708L9.293 6.7H6a2.5 2.5 0 000 5h1.5a.5.5 0 000-1H6a1.5 1.5 0 010-3h3.293L7.938 9.054a.5.5 0 10.708.708l2-2z"/>
+            </svg>
+          </Button>
+        </Tooltip>
+
+        <div class="mx-0.5 h-5 w-px bg-white/10"></div>
+
         <Tooltip content="Comment threads">
           <Button
             variant="ghost"
@@ -302,6 +352,19 @@
           </Button>
         </Tooltip>
 
+        <Tooltip content="Share map">
+          <Button
+            variant="ghost"
+            size="sm"
+            onclick={() => (showShareDialog = true)}
+          >
+            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M13.5 1a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM11 2.5a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zm-5.5 3a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM3 7a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zm9 4.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm-2.5 1.5a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0z"/>
+              <path d="M7.5 6.35l4-2.3.5.87-4 2.3-.5-.87zm0 4.3l4 2.3.5-.87-4-2.3-.5.87z"/>
+            </svg>
+          </Button>
+        </Tooltip>
+
         <Tooltip content="Map activity log">
           <Button
             variant="ghost"
@@ -324,7 +387,7 @@
         readonly={effectiveReadonly}
         {layerData}
         onfeaturedrawn={handleFeatureDrawn}
-        {...(!effectiveReadonly ? { annotationPins } : {})}
+        {annotationPins}
         {...(showMeasure ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
       />
 
@@ -376,14 +439,14 @@
   <!-- Comment panel (collapsible, right side) -->
   {#if showComments && !effectiveReadonly}
     <div class="w-72 shrink-0 overflow-hidden flex flex-col">
-      <CommentPanel {mapId} {...(userId !== undefined ? { userId } : {})} />
+      <CommentPanel {mapId} readonly={effectiveReadonly} {...(userId !== undefined ? { userId } : {})} />
     </div>
   {/if}
 
   <!-- Collaborators panel (collapsible, right side) -->
   {#if showCollaborators && !effectiveReadonly}
     <div class="w-72 shrink-0 overflow-hidden flex flex-col">
-      <CollaboratorsPanel {mapId} />
+      <CollaboratorsPanel {mapId} {isOwner} />
     </div>
   {/if}
 
@@ -408,7 +471,7 @@
           // Refresh layer list first so the GeoJSONSource is rendered before
           // loadLayerData attempts map.getSource(). Order matters here.
           const newLayers = await trpc.layers.list.query({ mapId });
-          layersStore.set(newLayers as unknown as Layer[]);
+          layersStore.set(newLayers);
           await loadLayerData(layerId);
         }}
       />
@@ -438,3 +501,9 @@
     bind:open={showExportDialog}
   />
 {/if}
+
+<ShareDialog
+  {mapId}
+  bind:open={showShareDialog}
+  onclose={() => (showShareDialog = false)}
+/>

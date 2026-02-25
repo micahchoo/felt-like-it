@@ -4,14 +4,15 @@
   interface Props {
     content: AnnotationContent;
     authorName: string;
-    /** ISO-8601 string from tRPC JSON serialisation — displayed in the header. */
-    createdAt?: string;
+    /** Date object or ISO-8601 string — displayed in the header. */
+    createdAt?: Date | string;
   }
 
   let { content, authorName, createdAt }: Props = $props();
 
-  function formatDate(iso: string): string {
-    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  function formatDate(value: Date | string): string {
+    const d = value instanceof Date ? value : new Date(value);
+    return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   }
 </script>
 

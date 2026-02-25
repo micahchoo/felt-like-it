@@ -66,6 +66,7 @@
     "pino": "^10.3.1",
     "shpjs": "^6.2.0",
     "sql.js": "^1.14.0",
+    "superjson": "^2.2.6",
     "svelte-maplibre-gl": "^1.0.3",
     "terra-draw": "^1.0.7",
     "terra-draw-maplibre-gl-adapter": "^1.0.7",

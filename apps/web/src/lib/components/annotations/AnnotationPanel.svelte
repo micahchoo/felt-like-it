@@ -19,17 +19,7 @@
 
   // ── Annotation list ────────────────────────────────────────────────────────
 
-  /**
-   * Local annotation entry — tRPC serialises Date to ISO-8601 string in JSON,
-   * so `createdAt` / `updatedAt` arrive as strings on the client.
-   * Define a mirror interface rather than importing server-only types.
-   */
-  interface AnnotationEntry extends Omit<Annotation, 'createdAt' | 'updatedAt'> {
-    createdAt: string;
-    updatedAt: string;
-  }
-
-  let annotationList = $state<AnnotationEntry[]>([]);
+  let annotationList = $state<Annotation[]>([]);
   let listLoading = $state(false);
   let listError = $state<string | null>(null);
 
@@ -37,8 +27,7 @@
     listLoading = true;
     listError = null;
     try {
-      const rows = await trpc.annotations.list.query({ mapId });
-      annotationList = rows as unknown as AnnotationEntry[];
+      annotationList = await trpc.annotations.list.query({ mapId });
     } catch (err: unknown) {
       listError = (err as { message?: string })?.message ?? 'Failed to load annotations.';
     } finally {
@@ -47,6 +36,13 @@
   }
 
   $effect(() => { loadAnnotations(); });
+
+  // Cleanup blob URL on component unmount to prevent memory leaks
+  $effect(() => {
+    return () => {
+      if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+    };
+  });
 
   // ── Create form ────────────────────────────────────────────────────────────
 
@@ -296,7 +292,7 @@
   }
 
   /** Fetch the IIIF manifest NavPlace and persist it to the annotation. */
-  async function handleFetchNavPlace(annotation: AnnotationEntry) {
+  async function handleFetchNavPlace(annotation: Annotation) {
     if (annotation.content.type !== 'iiif') return;
     try {
       const navPlace = await trpc.annotations.fetchIiifNavPlace.query({

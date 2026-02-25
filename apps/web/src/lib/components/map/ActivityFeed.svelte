@@ -5,18 +5,14 @@
     mapId: string;
   }
 
-  /**
-   * Shape returned by events.list — mirrors MapEventRow without a server import.
-   * createdAt is typed as string because tRPC uses plain JSON serialization:
-   * Date → ISO-8601 string on the wire; new Date(createdAt) re-hydrates it.
-   */
+  /** Shape returned by events.list — mirrors MapEventRow without a server import. */
   interface EventEntry {
     id: string;
     mapId: string;
     userId: string | null;
     action: string;
     metadata: unknown;
-    createdAt: string;
+    createdAt: Date;
   }
 
   let { mapId }: Props = $props();
@@ -76,8 +72,8 @@
     }
   }
 
-  function relativeTime(date: string): string {
-    const sec = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+  function relativeTime(date: Date): string {
+    const sec = Math.floor((Date.now() - date.getTime()) / 1000);
     if (sec < 60) return 'just now';
     if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
     if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;

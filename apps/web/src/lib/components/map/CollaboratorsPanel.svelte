@@ -4,24 +4,23 @@
 
   interface Props {
     mapId: string;
+    /** When true, show invite/remove/role-change controls (owner only). */
+    isOwner?: boolean;
   }
 
-  /**
-   * Collaborator shape from tRPC collaborators.list.
-   * createdAt is an ISO-8601 string (tRPC JSON wire type).
-   */
+  /** Collaborator shape from tRPC collaborators.list. */
   interface CollaboratorEntry {
     id: string;
     mapId: string;
     userId: string;
     role: string;
     invitedBy: string | null;
-    createdAt: string;
+    createdAt: Date;
     email: string;
     name: string;
   }
 
-  let { mapId }: Props = $props();
+  let { mapId, isOwner = false }: Props = $props();
 
   let collaborators = $state<CollaboratorEntry[]>([]);
   let loading = $state(true);
@@ -121,29 +120,34 @@
               <p class="text-xs font-medium text-slate-300 truncate">{collab.name}</p>
               <p class="text-xs text-slate-500 truncate">{collab.email}</p>
             </div>
-            <!-- Role selector -->
-            <select
-              class="text-xs bg-slate-700 border border-white/10 rounded px-1.5 py-0.5 {roleColor(collab.role)} focus:outline-none focus:ring-1 focus:ring-blue-500"
-              value={collab.role}
-              onchange={(e) => handleRoleChange(collab.userId, (e.target as HTMLSelectElement).value)}
-            >
-              {#each ROLES as r (r)}
-                <option value={r}>{r}</option>
-              {/each}
-            </select>
-            <!-- Remove button -->
-            <button
-              class="text-xs text-slate-500 hover:text-red-400 transition-colors shrink-0 leading-none"
-              onclick={() => handleRemove(collab.userId)}
-              aria-label="Remove collaborator"
-            >×</button>
+            {#if isOwner}
+              <!-- Role selector (owner only) -->
+              <select
+                class="text-xs bg-slate-700 border border-white/10 rounded px-1.5 py-0.5 {roleColor(collab.role)} focus:outline-none focus:ring-1 focus:ring-blue-500"
+                value={collab.role}
+                onchange={(e) => handleRoleChange(collab.userId, (e.target as HTMLSelectElement).value)}
+              >
+                {#each ROLES as r (r)}
+                  <option value={r}>{r}</option>
+                {/each}
+              </select>
+              <!-- Remove button (owner only) -->
+              <button
+                class="text-xs text-slate-500 hover:text-red-400 transition-colors shrink-0 leading-none"
+                onclick={() => handleRemove(collab.userId)}
+                aria-label="Remove collaborator"
+              >×</button>
+            {:else}
+              <span class="text-xs {roleColor(collab.role)}">{collab.role}</span>
+            {/if}
           </li>
         {/each}
       </ul>
     {/if}
   </div>
 
-  <!-- Invite form -->
+  <!-- Invite form (owner only) -->
+  {#if isOwner}
   <form onsubmit={handleInvite} class="shrink-0 border-t border-white/10 p-3 flex flex-col gap-2">
     <input
       bind:value={inviteEmail}
@@ -163,4 +167,5 @@
       Invite
     </Button>
   </form>
+  {/if}
 </div>

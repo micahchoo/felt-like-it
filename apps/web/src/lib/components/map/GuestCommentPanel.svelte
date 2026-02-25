@@ -6,10 +6,7 @@
     shareToken: string;
   }
 
-  /**
-   * Comment shape from tRPC comments.listForShare.
-   * createdAt / updatedAt are ISO-8601 strings (tRPC JSON wire type).
-   */
+  /** Comment shape from tRPC comments.listForShare. */
   interface CommentEntry {
     id: string;
     mapId: string;
@@ -17,8 +14,8 @@
     authorName: string;
     body: string;
     resolved: boolean;
-    createdAt: string;
-    updatedAt: string;
+    createdAt: Date;
+    updatedAt: Date;
   }
 
   let { shareToken }: Props = $props();
@@ -62,8 +59,8 @@
     }
   }
 
-  function relativeTime(date: string): string {
-    const sec = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+  function relativeTime(date: Date): string {
+    const sec = Math.floor((Date.now() - date.getTime()) / 1000);
     if (sec < 60) return 'just now';
     if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
     if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
