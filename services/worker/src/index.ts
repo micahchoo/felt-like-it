@@ -9,7 +9,7 @@ import { Worker, type Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import { sql, eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { readFile, createReadStream } from 'fs';
 import { promisify } from 'util';
 import { extname } from 'path';
@@ -325,12 +325,14 @@ async function insertFeaturesBatch(
       const valueClauses = batch.map((f) =>
         sql`(${layerId}::uuid, ST_GeomFromGeoJSON(${JSON.stringify(f.geometry)}), ${JSON.stringify(f.properties)}::jsonb)`
       );
+      // eslint-disable-next-line no-await-in-loop -- sequential batches: progress tracking requires ordered completion
       await db.execute(
         sql`INSERT INTO features (layer_id, geometry, properties) VALUES ${sql.join(valueClauses, sql`, `)}`
       );
     }
 
     inserted += batch.length;
+    // eslint-disable-next-line no-await-in-loop -- progress callback depends on sequential batch count
     await onProgress(inserted / features.length);
   }
 }
@@ -607,11 +609,13 @@ async function processGeoPackage(
             : sql`ST_Transform(ST_GeomFromWKB(decode(${r.wkbHex}, 'hex'), ${r.srid}), 4326)`;
         return sql`(${layerId}::uuid, ${geomExpr}, ${JSON.stringify(r.properties)}::jsonb)`;
       });
+      // eslint-disable-next-line no-await-in-loop -- sequential batches: progress tracking requires ordered completion
       await db.execute(
         sql`INSERT INTO features (layer_id, geometry, properties) VALUES ${sql.join(valueClauses, sql`, `)}`
       );
       inserted += batch.length;
       const progress = Math.round(10 + (inserted / wkbRows.length) * 80);
+      // eslint-disable-next-line no-await-in-loop -- progress update depends on sequential batch count
       await updateJobStatus(jobId, 'processing', progress);
     }
   } finally {
