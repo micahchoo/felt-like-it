@@ -301,7 +301,7 @@ describe('maps.clone', () => {
     vi.mocked(db.insert)
       .mockReturnValueOnce(drizzleChain([clonedMap]))
       .mockReturnValueOnce(drizzleChain([newLayer]));
-    vi.mocked(db.execute).mockResolvedValue({ rows: [] } as DbExecuteResult);
+    vi.mocked(db.execute).mockResolvedValue({ rows: [] } as unknown as DbExecuteResult);
 
     const result = await makeCaller().clone({ id: MAP_ID });
 

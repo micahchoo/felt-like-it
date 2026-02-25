@@ -22,7 +22,7 @@ export async function createLayerAndInsertFeatures(opts: {
   layerName: string;
   features: Array<{ geometry: Geometry; properties: Record<string, unknown> }>;
   /** Override auto-detected layer type (e.g. CSV always 'Point') */
-  layerTypeOverride?: string;
+  layerTypeOverride?: 'point' | 'line' | 'polygon' | 'mixed';
 }): Promise<ImportResult> {
   const { mapId, jobId, layerName, features } = opts;
 
