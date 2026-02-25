@@ -4,6 +4,7 @@ import { eq, and, desc, asc } from 'drizzle-orm';
 import { layers, mapCollaborators } from '$lib/server/db/schema.js';
 import { sql } from 'drizzle-orm';
 import { fail, redirect } from '@sveltejs/kit';
+import { createMap, deleteMap, cloneMap, createFromTemplate } from '$lib/server/maps/operations.js';
 
 /** Shape returned for each template in PageData.templates */
 interface TemplateEntry {
@@ -96,152 +97,37 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   createMap: async ({ locals, request }) => {
     if (!locals.user) redirect(302, '/auth/login');
-    const userId = locals.user.id;
     const formData = await request.formData();
     const title = (formData.get('title') as string | null)?.trim() ?? 'Untitled Map';
-
-    const [map] = await db
-      .insert(maps)
-      .values({ userId, title })
-      .returning({ id: maps.id });
-
+    const map = await createMap(locals.user.id, title).catch(() => null);
     if (!map) return fail(500, { message: 'Failed to create map.' });
-
     redirect(302, `/map/${map.id}`);
   },
 
   deleteMap: async ({ locals, request }) => {
     if (!locals.user) redirect(302, '/auth/login');
-    const userId = locals.user.id;
     const formData = await request.formData();
     const mapId = formData.get('mapId') as string;
-
-    try {
-      await db
-        .delete(maps)
-        .where(and(eq(maps.id, mapId), eq(maps.userId, userId)));
-    } catch {
-      return fail(500, { error: 'Failed to delete map.' });
-    }
-
+    const result = await deleteMap(locals.user.id, mapId).catch(() => null);
+    if (!result) return fail(500, { error: 'Failed to delete map.' });
     return { deleted: true };
   },
 
   cloneMap: async ({ locals, request }) => {
     if (!locals.user) redirect(302, '/auth/login');
-    const userId = locals.user.id;
     const formData = await request.formData();
     const mapId = formData.get('mapId') as string;
-
-    const [existing] = await db
-      .select()
-      .from(maps)
-      .where(and(eq(maps.id, mapId), eq(maps.userId, userId)));
-
-    if (!existing) return fail(404, { message: 'Map not found.' });
-
-    const [newMap] = await db
-      .insert(maps)
-      .values({
-        userId,
-        title: `Copy of ${existing.title}`,
-        description: existing.description ?? null,
-        viewport: existing.viewport,
-        basemap: existing.basemap,
-      })
-      .returning({ id: maps.id });
-
+    const newMap = await cloneMap(locals.user.id, mapId).catch(() => null);
     if (!newMap) return fail(500, { message: 'Failed to clone map.' });
-
-    const origLayers = await db
-      .select()
-      .from(layers)
-      .where(eq(layers.mapId, mapId))
-      .orderBy(asc(layers.zIndex));
-
-    await Promise.all(
-      origLayers.map(async (layer) => {
-        const [newLayer] = await db
-          .insert(layers)
-          .values({
-            mapId: newMap.id,
-            name: layer.name,
-            type: layer.type,
-            style: layer.style,
-            visible: layer.visible,
-            zIndex: layer.zIndex,
-            sourceFileName: layer.sourceFileName,
-          })
-          .returning({ id: layers.id });
-
-        if (!newLayer) return;
-
-        await db.execute(sql`
-          INSERT INTO features (layer_id, geometry, properties)
-          SELECT ${newLayer.id}, geometry, properties
-          FROM features
-          WHERE layer_id = ${layer.id}
-        `);
-      })
-    );
-
     redirect(302, `/map/${newMap.id}`);
   },
 
-  /**
-   * Create a new user map from a template map.
-   * Clones the template's viewport/basemap/layers to a fresh user-owned map,
-   * then redirects to the new map editor. Features are NOT copied — templates
-   * are config-only starters.
-   */
   useTemplate: async ({ locals, request }) => {
     if (!locals.user) redirect(302, '/auth/login');
-    const userId = locals.user.id;
     const formData = await request.formData();
     const templateId = formData.get('templateId') as string;
-
-    const [template] = await db
-      .select()
-      .from(maps)
-      .where(and(eq(maps.id, templateId), eq(maps.isTemplate, true)));
-
-    if (!template) return fail(404, { message: 'Template not found.' });
-
-    const [newMap] = await db
-      .insert(maps)
-      .values({
-        userId,
-        title: template.title,
-        description: template.description ?? null,
-        viewport: template.viewport,
-        basemap: template.basemap,
-        isTemplate: false,
-      })
-      .returning({ id: maps.id });
-
+    const newMap = await createFromTemplate(locals.user.id, templateId).catch(() => null);
     if (!newMap) return fail(500, { message: 'Failed to create map from template.' });
-
-    // Copy layer config (style, type, name) — no features (templates are config-only)
-    const templateLayers = await db
-      .select()
-      .from(layers)
-      .where(eq(layers.mapId, templateId))
-      .orderBy(asc(layers.zIndex));
-
-    await Promise.all(
-      templateLayers.map((layer) =>
-        db.insert(layers).values({
-          mapId: newMap.id,
-          name: layer.name,
-          type: layer.type,
-          style: layer.style,
-          visible: layer.visible,
-          zIndex: layer.zIndex,
-          sourceFileName: null,
-        })
-      )
-    );
-
     redirect(302, `/map/${newMap.id}`);
   },
 };

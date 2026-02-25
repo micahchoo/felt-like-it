@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { eq, and, desc, asc, count, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, count } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
 import { db, maps, layers, mapCollaborators } from '../../db/index.js';
 import { CreateMapSchema, UpdateMapSchema } from '@felt-like-it/shared-types';
 import { appendAuditLog } from '../../audit/index.js';
+import { createMap, deleteMap, cloneMap, createFromTemplate } from '../../maps/operations.js';
 
 export const mapsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -84,29 +85,7 @@ export const mapsRouter = router({
   create: protectedProcedure
     .input(CreateMapSchema)
     .mutation(async ({ ctx, input }) => {
-      const [map] = await db
-        .insert(maps)
-        .values({
-          userId: ctx.user.id,
-          title: input.title,
-          description: input.description ?? null,
-        })
-        .returning();
-
-      if (!map) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create map.' });
-      }
-
-      void appendAuditLog({
-        userId: ctx.user.id,
-        action: 'map.create',
-        entityType: 'map',
-        entityId: map.id,
-        mapId: map.id,
-        metadata: { title: map.title },
-      });
-
-      return map;
+      return createMap(ctx.user.id, input.title, input.description);
     }),
 
   update: protectedProcedure
@@ -148,26 +127,7 @@ export const mapsRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const [existing] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, input.id), eq(maps.userId, ctx.user.id)));
-
-      if (!existing) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
-
-      void appendAuditLog({
-        userId: ctx.user.id,
-        action: 'map.delete',
-        entityType: 'map',
-        entityId: input.id,
-        mapId: input.id,
-        metadata: { title: existing.title },
-      });
-
-      await db.delete(maps).where(eq(maps.id, input.id));
-      return { deleted: true };
+      return deleteMap(ctx.user.id, input.id);
     }),
 
   /**
@@ -193,143 +153,17 @@ export const mapsRouter = router({
     }));
   }),
 
-  /**
-   * Create a new user map from a template (isTemplate = true map).
-   * Clones the template's layers and config into a fresh map owned by the caller.
-   * Template features are NOT copied — templates are style/config starters, not data starters.
-   */
   createFromTemplate: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const [template] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, input.id), eq(maps.isTemplate, true)));
-
-      if (!template) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Template not found.' });
-      }
-
-      const [newMap] = await db
-        .insert(maps)
-        .values({
-          userId: ctx.user.id,
-          title: template.title,
-          description: template.description ?? null,
-          viewport: template.viewport,
-          basemap: template.basemap,
-          isTemplate: false,
-        })
-        .returning();
-
-      if (!newMap) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create map from template.' });
-      }
-
-      void appendAuditLog({
-        userId: ctx.user.id,
-        action: 'map.createFromTemplate',
-        entityType: 'map',
-        entityId: newMap.id,
-        mapId: newMap.id,
-        metadata: { templateId: input.id, title: newMap.title },
-      });
-
-      // Copy layer config (style, type, name) — do NOT copy features (templates are config-only starters)
-      const templateLayers = await db
-        .select()
-        .from(layers)
-        .where(eq(layers.mapId, input.id))
-        .orderBy(layers.zIndex);
-
-      await Promise.all(
-        templateLayers.map((layer) =>
-          db.insert(layers).values({
-            mapId: newMap.id,
-            name: layer.name,
-            type: layer.type,
-            style: layer.style,
-            visible: layer.visible,
-            zIndex: layer.zIndex,
-            sourceFileName: null,
-          })
-        )
-      );
-
-      return newMap;
+      return createFromTemplate(ctx.user.id, input.id);
     }),
 
   /** Deep-clone a map: copies the map record, all layers, and all features. */
   clone: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const [existing] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, input.id), eq(maps.userId, ctx.user.id)));
-
-      if (!existing) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
-
-      const [newMap] = await db
-        .insert(maps)
-        .values({
-          userId: ctx.user.id,
-          title: `Copy of ${existing.title}`,
-          description: existing.description ?? null,
-          viewport: existing.viewport,
-          basemap: existing.basemap,
-        })
-        .returning();
-
-      if (!newMap) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to clone map.' });
-      }
-
-      void appendAuditLog({
-        userId: ctx.user.id,
-        action: 'map.clone',
-        entityType: 'map',
-        entityId: newMap.id,
-        mapId: newMap.id,
-        metadata: { sourceMapId: input.id, title: newMap.title },
-      });
-
-      const origLayers = await db
-        .select()
-        .from(layers)
-        .where(eq(layers.mapId, input.id))
-        .orderBy(layers.zIndex);
-
-      await Promise.all(
-        origLayers.map(async (layer) => {
-          const [newLayer] = await db
-            .insert(layers)
-            .values({
-              mapId: newMap.id,
-              name: layer.name,
-              type: layer.type,
-              style: layer.style,
-              visible: layer.visible,
-              zIndex: layer.zIndex,
-              sourceFileName: layer.sourceFileName,
-            })
-            .returning();
-
-          if (!newLayer) return;
-
-          // Copy features in one shot — preserves PostGIS geometry binary without WKB round-trip
-          await db.execute(sql`
-            INSERT INTO features (layer_id, geometry, properties)
-            SELECT ${newLayer.id}, geometry, properties
-            FROM features
-            WHERE layer_id = ${layer.id}
-          `);
-        })
-      );
-
-      return newMap;
+      return cloneMap(ctx.user.id, input.id);
     }),
 
   /**
