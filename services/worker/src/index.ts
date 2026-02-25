@@ -29,6 +29,47 @@ import { logger } from './logger.js';
 
 const readFileAsync = promisify(readFile);
 
+// ─── GeoJSON type guards ─────────────────────────────────────────────────────
+
+function isFeatureCollection(
+  data: unknown
+): data is {
+  type: 'FeatureCollection';
+  features: Array<{ geometry: Record<string, unknown>; properties: Record<string, unknown> | null }>;
+} {
+  if (typeof data !== 'object' || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  return obj['type'] === 'FeatureCollection' && Array.isArray(obj['features']);
+}
+
+function isFeature(
+  data: unknown
+): data is {
+  type: 'Feature';
+  geometry: Record<string, unknown>;
+  properties: Record<string, unknown> | null;
+} {
+  if (typeof data !== 'object' || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  return obj['type'] === 'Feature' && typeof obj['geometry'] === 'object';
+}
+
+function isGeometry(
+  data: unknown
+): data is Record<string, unknown> & { type: string; coordinates: unknown } {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'type' in data &&
+    'coordinates' in data
+  );
+}
+
+/** Convert a typed GeoJSON Geometry to Record<string, unknown> without casting. */
+function toRecord(geom: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(geom));
+}
+
 // ─── Database connection ───────────────────────────────────────────────────────
 
 const pool = new pg.Pool({
@@ -107,20 +148,19 @@ async function processGeoJSON(
     throw new Error(`Invalid GeoJSON: ${validation.errors.slice(0, 3).join(', ')}`);
   }
 
-  const data = geojson as { type: string; features?: Array<{ geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> | null }> };
-
   let featureList: Array<{ geometry: Record<string, unknown>; properties: Record<string, unknown> }>;
 
-  if (data.type === 'FeatureCollection' && Array.isArray(data.features)) {
-    featureList = data.features.map((f) => ({
-      geometry: f.geometry as Record<string, unknown>,
+  if (isFeatureCollection(geojson)) {
+    featureList = geojson.features.map((f) => ({
+      geometry: f.geometry,
       properties: f.properties ?? {},
     }));
-  } else if (data.type === 'Feature') {
-    const f = data as unknown as { geometry: Record<string, unknown>; properties: Record<string, unknown> | null };
-    featureList = [{ geometry: f.geometry, properties: f.properties ?? {} }];
+  } else if (isFeature(geojson)) {
+    featureList = [{ geometry: geojson.geometry, properties: geojson.properties ?? {} }];
+  } else if (isGeometry(geojson)) {
+    featureList = [{ geometry: geojson, properties: {} }];
   } else {
-    featureList = [{ geometry: data as unknown as Record<string, unknown>, properties: {} }];
+    throw new Error('Unrecognized GeoJSON structure');
   }
 
   if (featureList.length === 0) throw new Error('No features found');
@@ -376,8 +416,7 @@ async function processXmlGeo(
   for (const f of fc.features) {
     if (f.geometry === null) continue;
     features.push({
-      // Double-cast: Geometry includes GeometryCollection which lacks an index signature.
-      geometry: f.geometry as unknown as Record<string, unknown>,
+      geometry: toRecord(f.geometry),
       properties: (f.properties ?? {}) as Record<string, unknown>,
     });
   }
