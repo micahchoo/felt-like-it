@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
 import { db, annotations } from '../../db/index.js';
 import { requireMapAccess } from '../../geo/access.js';
+import { typedExecute } from '../../geo/queries.js';
 import {
   CreateAnnotationSchema,
   UpdateAnnotationSchema,
@@ -81,14 +82,14 @@ export const annotationsRouter = router({
       await requireMapAccess(ctx.user.id, input.mapId, 'viewer');
 
       // 2 — Fetch annotations with decomposed anchor coordinates
-      const result = await db.execute(sql`
+      const rows = await typedExecute<RawAnnotationRow>(sql`
         SELECT ${ANNOTATION_COLS}
         FROM   annotations
         WHERE  map_id = ${input.mapId}::uuid
         ORDER  BY created_at ASC
       `);
 
-      return (result.rows as unknown as RawAnnotationRow[]).map(rowToAnnotation);
+      return rows.map(rowToAnnotation);
     }),
 
   /**
@@ -106,7 +107,7 @@ export const annotationsRouter = router({
       const anchorGeoJSON = JSON.stringify(input.anchor);
       const contentJSON = JSON.stringify(input.content);
 
-      const result = await db.execute(sql`
+      const rows = await typedExecute<RawAnnotationRow>(sql`
         INSERT INTO annotations (map_id, user_id, author_name, anchor_point, content)
         VALUES (
           ${input.mapId}::uuid,
@@ -118,7 +119,7 @@ export const annotationsRouter = router({
         RETURNING ${ANNOTATION_COLS}
       `);
 
-      const row = (result.rows as unknown as RawAnnotationRow[])[0];
+      const row = rows[0];
       if (!row) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create annotation.' });
       }
@@ -149,7 +150,7 @@ export const annotationsRouter = router({
       // 2 — Update content only; anchor and author_name are immutable
       const contentJSON = JSON.stringify(input.content);
 
-      const result = await db.execute(sql`
+      const rows = await typedExecute<RawAnnotationRow>(sql`
         UPDATE annotations
         SET    content    = ${contentJSON}::jsonb,
                updated_at = NOW()
@@ -157,7 +158,7 @@ export const annotationsRouter = router({
         RETURNING ${ANNOTATION_COLS}
       `);
 
-      const row = (result.rows as unknown as RawAnnotationRow[])[0];
+      const row = rows[0];
       if (!row) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update annotation.' });
       }

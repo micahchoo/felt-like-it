@@ -1,10 +1,23 @@
 import { sql } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
+import type { Geometry } from '@felt-like-it/shared-types';
 import { db } from '../db/index.js';
+
+/**
+ * Execute raw SQL and return typed rows.
+ * Drizzle's db.execute() returns untyped rows for raw SQL.
+ * This wrapper centralizes the single unavoidable cast.
+ */
+// TYPE_DEBT: Drizzle's execute() returns { rows: unknown[] } for raw SQL — one cast here replaces many downstream
+export async function typedExecute<T>(query: SQL): Promise<T[]> {
+  const result = await db.execute(query);
+  return result.rows as unknown as T[];
+}
 
 export interface GeoJSONFeatureRow {
   id: string;
   layerId: string;
-  geometry: Record<string, unknown>;
+  geometry: Geometry;
   properties: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
@@ -15,7 +28,7 @@ export interface GeoJSONFeatureRow {
  * Uses ST_AsGeoJSON to convert PostGIS geometry to GeoJSON.
  */
 export async function getLayerFeatures(layerId: string): Promise<GeoJSONFeatureRow[]> {
-  const result = await db.execute(sql`
+  return typedExecute<GeoJSONFeatureRow>(sql`
     SELECT
       id,
       layer_id AS "layerId",
@@ -27,8 +40,6 @@ export async function getLayerFeatures(layerId: string): Promise<GeoJSONFeatureR
     WHERE layer_id = ${layerId}
     ORDER BY created_at ASC
   `);
-
-  return result.rows as unknown as GeoJSONFeatureRow[];
 }
 
 /**
@@ -39,7 +50,7 @@ export async function getLayerFeatures(layerId: string): Promise<GeoJSONFeatureR
 export async function insertFeatures(
   layerId: string,
   geoJsonFeatures: Array<{
-    geometry: Record<string, unknown>;
+    geometry: Geometry;
     properties: Record<string, unknown>;
   }>
 ): Promise<void> {
