@@ -49,6 +49,14 @@ COPY --from=builder /app/packages/geo-engine/src ./packages/geo-engine/src
 # Copy migration SQL for startup
 COPY apps/web/src/lib/server/db/migrations ./apps/web/migrations
 
+# Entrypoint: auto-migrate then start
+COPY docker/migrate.mjs /app/migrate.mjs
+COPY docker/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
+# pg_isready for health wait
+RUN apk add --no-cache postgresql-client
+
 # Create uploads directory
 RUN mkdir -p /uploads
 
@@ -62,6 +70,7 @@ EXPOSE 3000
 ENV NODE_ENV=production
 ENV UPLOAD_DIR=/uploads
 ENV PORT=3000
+ENV MIGRATIONS_DIR=/app/apps/web/migrations
 
-# Run migrations then start the server
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["node", "apps/web/build/index.js"]
