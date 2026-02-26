@@ -1,5 +1,3 @@
-name: felt-like-it-prod
-
 # Production overrides — use with:
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d
 #
@@ -24,6 +22,7 @@ services:
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?ACME_EMAIL must be set}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json"
+      - "--api.dashboard=false"
     ports:
       - "80:80"
       - "443:443"
@@ -38,10 +37,10 @@ services:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
       POSTGRES_USER: "${POSTGRES_USER:-felt}"
       POSTGRES_DB: "${POSTGRES_DB:-felt}"
-    ports: []
+    ports: !reset []
 
   web:
-    ports: []
+    ports: !reset []
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-felt}:${POSTGRES_PASSWORD:?required}@postgres:5432/${POSTGRES_DB:-felt}"
       REDIS_URL: "redis://:${REDIS_PASSWORD:?required}@redis:6379"
@@ -65,11 +64,20 @@ services:
       replicas: 2
 
   redis:
-    ports: []
+    ports: !reset []
     command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"
+    environment:
+      REDISCLI_AUTH: "${REDIS_PASSWORD:?required}"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   martin:
-    ports: []
+    ports: !reset []
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-felt}:${POSTGRES_PASSWORD:?required}@postgres:5432/${POSTGRES_DB:-felt}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.martin.rule=Host(`${DOMAIN}`) && PathPrefix(`/tiles`)"
