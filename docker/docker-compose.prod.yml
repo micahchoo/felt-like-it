@@ -2,27 +2,57 @@ name: felt-like-it-prod
 
 # Production overrides — use with:
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d
+#
+# Requires docker/.env (see docker/.env.example or run ./setup.sh)
 
 services:
+  # ── Traefik Reverse Proxy ───────────────────────────────────────────────────
+  traefik:
+    image: traefik:v3.3
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=felt-network"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # HTTP → HTTPS redirect
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Let's Encrypt
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?ACME_EMAIL must be set}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - acme_data:/acme
+    networks:
+      - felt-network
+
   postgres:
     environment:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
       POSTGRES_USER: "${POSTGRES_USER:-felt}"
       POSTGRES_DB: "${POSTGRES_DB:-felt}"
-    ports: []  # Don't expose DB port in production
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    ports: []
 
   web:
+    ports: []
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-felt}:${POSTGRES_PASSWORD:?required}@postgres:5432/${POSTGRES_DB:-felt}"
-      REDIS_URL: "redis://redis:6379"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?required}@redis:6379"
       ORIGIN: "${ORIGIN:?ORIGIN (e.g. https://maps.example.com) must be set}"
       SESSION_SECRET: "${SESSION_SECRET:?SESSION_SECRET must be set}"
+      PUBLIC_MARTIN_URL: "https://${DOMAIN:?required}/tiles"
       NODE_ENV: production
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.felt.rule=Host(`${DOMAIN:-maps.example.com}`)"
+      - "traefik.http.routers.felt.rule=Host(`${DOMAIN:?DOMAIN must be set}`)"
+      - "traefik.http.routers.felt.entrypoints=websecure"
       - "traefik.http.routers.felt.tls=true"
       - "traefik.http.routers.felt.tls.certresolver=letsencrypt"
       - "traefik.http.services.felt.loadbalancer.server.port=3000"
@@ -30,10 +60,25 @@ services:
   worker:
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-felt}:${POSTGRES_PASSWORD:?required}@postgres:5432/${POSTGRES_DB:-felt}"
-      REDIS_URL: "redis://redis:6379"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?required}@redis:6379"
     deploy:
-      replicas: 2  # Run 2 worker processes
+      replicas: 2
 
   redis:
-    ports: []  # Don't expose Redis in production
-    command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD:-}"
+    ports: []
+    command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"
+
+  martin:
+    ports: []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.martin.rule=Host(`${DOMAIN}`) && PathPrefix(`/tiles`)"
+      - "traefik.http.routers.martin.entrypoints=websecure"
+      - "traefik.http.routers.martin.tls=true"
+      - "traefik.http.routers.martin.tls.certresolver=letsencrypt"
+      - "traefik.http.middlewares.martin-strip.stripprefix.prefixes=/tiles"
+      - "traefik.http.routers.martin.middlewares=martin-strip"
+      - "traefik.http.services.martin.loadbalancer.server.port=3000"
+
+volumes:
+  acme_data:
