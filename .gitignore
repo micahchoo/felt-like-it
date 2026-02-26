@@ -9,6 +9,7 @@ dist
 .turbo
 .DS_Store
 uploads/
+backups/
 coverage/
 .nyc_output
 test-results/
@@ -17,3 +18,7 @@ playwright-report/
 # Claude Code
 .claude/settings.local.json
 .claude/.fuse_hidden*
+
+# Tags & cscope (auto-generated)
+tags
+cscope.*
