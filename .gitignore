@@ -19,6 +19,9 @@ playwright-report/
 .claude/settings.local.json
 .claude/.fuse_hidden*
 
+# Git worktrees
+.worktrees/
+
 # Tags & cscope (auto-generated)
 tags
 cscope.*
