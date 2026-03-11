@@ -30,9 +30,9 @@
 
 <!--
   Renders a single annotation's content based on its type.
-  All six variants (text / emoji / gif / image / link / iiif) are handled
+  All seven variants (text / emoji / gif / image / link / iiif / measurement) are handled
   exhaustively — no default branch needed because the discriminated union
-  ensures `body.type` is always one of the six literals.
+  ensures `body.type` is always one of the seven literals.
   Accepts both raw AnnotationContent (legacy) and the AnnotationObjectContent
   wrapper (single/slotted) — the latter is unwrapped before rendering.
 -->
@@ -137,6 +137,16 @@
           <p class="text-xs text-slate-500 italic">No NavPlace geographic footprint</p>
         {/if}
       </div>
+
+    {:else if body.type === 'measurement'}
+      <!-- Measurement annotation: prominent value + type + optional label -->
+      <div class="flex items-baseline gap-2">
+        <span class="text-lg font-semibold text-amber-400">{body.displayValue}</span>
+        <span class="text-xs text-slate-400 capitalize">{body.measurementType}</span>
+      </div>
+      {#if body.label}
+        <p class="text-xs text-slate-300 mt-1">{body.label}</p>
+      {/if}
     {/if}
   {/each}
 </div>
