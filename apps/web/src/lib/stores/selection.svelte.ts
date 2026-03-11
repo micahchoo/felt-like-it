@@ -6,24 +6,28 @@ let _selectedFeatureIds = $state<Set<string>>(new Set());
 let _selectedFeature = $state<GeoJSONFeature | null>(null);
 let _activeTool = $state<DrawTool>(null);
 let _popupCoords = $state<{ lng: number; lat: number } | null>(null);
+let _selectedLayerId = $state<string | null>(null);
 
 export const selectionStore = {
   get selectedFeatureIds() { return _selectedFeatureIds; },
   get selectedFeature() { return _selectedFeature; },
   get activeTool() { return _activeTool; },
   get popupCoords() { return _popupCoords; },
+  get selectedLayerId() { return _selectedLayerId; },
   get hasSelection() { return _selectedFeatureIds.size > 0; },
 
-  selectFeature(feature: GeoJSONFeature, coords?: { lng: number; lat: number }) {
+  selectFeature(feature: GeoJSONFeature, coords?: { lng: number; lat: number }, layerId?: string) {
     _selectedFeature = feature;
     _selectedFeatureIds = new Set([String(feature.id ?? '')]);
     _popupCoords = coords ?? null;
+    _selectedLayerId = layerId ?? null;
   },
 
   clearSelection() {
     _selectedFeature = null;
     _selectedFeatureIds = new Set();
     _popupCoords = null;
+    _selectedLayerId = null;
   },
 
   setActiveTool(tool: DrawTool) {
@@ -33,6 +37,7 @@ export const selectionStore = {
       _selectedFeature = null;
       _selectedFeatureIds = new Set();
       _popupCoords = null;
+      _selectedLayerId = null;
     }
   },
 

@@ -60,7 +60,7 @@
     readonly?: boolean;
     /** GeoJSON data per layer id */
     layerData: Record<string, { type: 'FeatureCollection'; features: GeoJSONFeature[] }>;
-    onfeaturedrawn?: (_layerId: string, _feature: Record<string, unknown>) => void;
+    onfeaturedrawn?: (_layerId: string, _feature: Record<string, unknown> & { id?: string | undefined }) => void;
     /**
      * Annotation pins rendered as a dedicated amber circle layer.
      * Omit (or pass undefined) to hide annotation pins — used in the share viewer.
@@ -310,12 +310,12 @@
     } as unknown as NonNullable<SymbolLayerSpecification['layout']>;
   }
 
-  function handleFeatureClick(feature: GeoJSONFeature, e: MapMouseEvent, layerStyle?: LayerStyle) {
+  function handleFeatureClick(feature: GeoJSONFeature, e: MapMouseEvent, layerStyle?: LayerStyle, layerId?: string) {
     // Block feature clicks during active drawing operations only
     const tool = selectionStore.activeTool;
     if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
     selectedLayerStyle = layerStyle;
-    selectionStore.selectFeature(feature, { lng: e.lngLat.lng, lat: e.lngLat.lat });
+    selectionStore.selectFeature(feature, { lng: e.lngLat.lng, lat: e.lngLat.lat }, layerId);
   }
 
   // ── Annotation pin popup ──────────────────────────────────────────────────
@@ -398,7 +398,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
               }}
             />
             <LineLayer
@@ -409,7 +409,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
               }}
             />
             <CircleLayer
@@ -420,7 +420,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
               }}
             />
             {#if labelAttr}
@@ -443,7 +443,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
               }}
             />
             <LineLayer
@@ -453,7 +453,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
               }}
             />
             <CircleLayer
@@ -463,7 +463,7 @@
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
               }}
             />
             {#if labelAttr}
