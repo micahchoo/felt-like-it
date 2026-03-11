@@ -9,11 +9,13 @@ import {
   uuid,
   index,
   uniqueIndex,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { customType } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { Viewport, LayerStyle } from '@felt-like-it/shared-types';
 import type { AnnotationContent } from '@felt-like-it/shared-types';
+import type { Anchor, AnnotationObjectContent } from '@felt-like-it/shared-types';
 
 // Custom PostGIS geometry type — mixed geometry (Point / LineString / Polygon / etc.)
 // Always read via ST_AsGeoJSON; always written via ST_GeomFromGeoJSON in raw SQL.
@@ -257,6 +259,59 @@ export const annotations = pgTable(
   ]
 );
 
+// ─── Annotation Objects (v2) ─────────────────────────────────────────────────
+// Penpot-inspired flat object store. Replaces `annotations` table after migration.
+
+export const annotationObjects = pgTable(
+  'annotation_objects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    mapId: uuid('map_id')
+      .notNull()
+      .references(() => maps.id, { onDelete: 'cascade' }),
+    parentId: uuid('parent_id').references((): AnyPgColumn => annotationObjects.id, {
+      onDelete: 'cascade',
+    }),
+    authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
+    authorName: text('author_name').notNull(),
+    anchor: jsonb('anchor').$type<Anchor>().notNull(),
+    content: jsonb('content').$type<AnnotationObjectContent>().notNull(),
+    templateId: uuid('template_id'),
+    ordinal: integer('ordinal').notNull().default(0),
+    version: integer('version').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('annotation_objects_map_created_idx').on(t.mapId, t.createdAt),
+    index('annotation_objects_thread_idx').on(t.mapId, t.parentId, t.ordinal),
+    index('annotation_objects_template_idx').on(t.templateId),
+  ]
+);
+
+export const annotationChangelog = pgTable(
+  'annotation_changelog',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    mapId: uuid('map_id')
+      .notNull()
+      .references(() => maps.id, { onDelete: 'cascade' }),
+    objectId: uuid('object_id').notNull(),
+    objectVersion: integer('object_version').notNull(),
+    authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
+    authorName: text('author_name').notNull(),
+    operation: text('operation').notNull(), // 'add' | 'mod' | 'del'
+    patch: jsonb('patch').notNull(),
+    inverse: jsonb('inverse').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('annotation_changelog_map_time_idx').on(t.mapId, t.createdAt),
+    index('annotation_changelog_object_idx').on(t.objectId, t.createdAt),
+    index('annotation_changelog_undo_idx').on(t.mapId, t.authorId, t.createdAt),
+  ]
+);
+
 // ─── Audit Log ────────────────────────────────────────────────────────────────
 export const auditLog = pgTable(
   'audit_log',
@@ -364,3 +419,6 @@ export type NewAnnotation = typeof annotations.$inferInsert;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 export type NewApiKey = typeof apiKeys.$inferInsert;
 export type AuditLogRow = typeof auditLog.$inferSelect;
+export type AnnotationObjectRow = typeof annotationObjects.$inferSelect;
+export type NewAnnotationObject = typeof annotationObjects.$inferInsert;
+export type AnnotationChangelogRow = typeof annotationChangelog.$inferSelect;
