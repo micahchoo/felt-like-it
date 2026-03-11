@@ -4,6 +4,8 @@
   interface Props {
     mapId: string;
     embedded?: boolean;
+    /** Increment to trigger a data re-fetch. */
+    refreshTrigger?: number;
     oncountchange?: (count: number) => void;
   }
 
@@ -17,13 +19,14 @@
     createdAt: Date;
   }
 
-  let { mapId, embedded, oncountchange }: Props = $props();
+  let { mapId, embedded, refreshTrigger, oncountchange }: Props = $props();
 
   let events = $state<EventEntry[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
 
   $effect(() => {
+    void refreshTrigger; // reactive dependency — increment triggers re-fetch
     loading = true;
     error = null;
     trpc.events.list
@@ -46,6 +49,9 @@
     'feature.drawn':  'M12.854.146a.5.5 0 00-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 000-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 01.5.5v.5h.5a.5.5 0 01.5.5v.5h.5a.5.5 0 01.5.5v.5h.5a.5.5 0 01.5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 016 13.5V13h-.5a.5.5 0 01-.5-.5V12h-.5a.5.5 0 01-.5-.5V11h-.5a.5.5 0 01-.5-.5V10h-.5a.499.499 0 01-.175-.032l-.179.178a.5.5 0 00-.11.168l-2 5a.5.5 0 00.65.65l5-2a.5.5 0 00.168-.11l.178-.178z',
     'viewport.saved': 'M13.854 3.646a.5.5 0 010 .708l-7 7a.5.5 0 01-.708 0l-3.5-3.5a.5.5 0 11.708-.708L6.5 10.293l6.646-6.647a.5.5 0 01.708 0z',
     'map.created':    'M8 1a.5.5 0 01.5.5v5H14a.5.5 0 010 1H8.5v5a.5.5 0 01-1 0v-5H2a.5.5 0 010-1h5.5v-5A.5.5 0 018 1z',
+    'geoprocessing.completed': 'M8 0a8 8 0 108 8A8 8 0 008 0zm3.5 7.5h-3v-3a.5.5 0 00-1 0v3h-3a.5.5 0 000 1h3v3a.5.5 0 001 0v-3h3a.5.5 0 000-1z',
+    'annotation.created': 'M14 1a1 1 0 011 1v8a1 1 0 01-1 1h-2.5a1 1 0 00-.8.4l-1.9 2.533a.25.25 0 01-.4-.033L7.9 11.4a1 1 0 00-.8-.4H2a1 1 0 01-1-1V2a1 1 0 011-1h12z',
+    'annotation.deleted': 'M14 1a1 1 0 011 1v8a1 1 0 01-1 1h-2.5a1 1 0 00-.8.4l-1.9 2.533a.25.25 0 01-.4-.033L7.9 11.4a1 1 0 00-.8-.4H2a1 1 0 01-1-1V2a1 1 0 011-1h12z',
   };
 
   const DEFAULT_ICON_PATH = 'M8 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z';
@@ -70,6 +76,15 @@
         return 'Saved the view';
       case 'map.created':
         return 'Created this map';
+      case 'geoprocessing.completed': {
+        const op = m?.['operation'] ? String(m['operation']) : 'operation';
+        const out = m?.['outputLayerName'] ? ` → "${String(m['outputLayerName'])}"` : '';
+        return `Ran ${op}${out}`;
+      }
+      case 'annotation.created':
+        return 'Added an annotation';
+      case 'annotation.deleted':
+        return 'Removed an annotation';
       default:
         return action;
     }
