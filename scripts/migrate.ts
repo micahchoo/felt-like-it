@@ -6,8 +6,8 @@
  *   or:  DATABASE_URL=postgresql://... tsx scripts/migrate.ts
  */
 
-import { readFileSync } from 'node:fs';
-import { resolve, dirname, basename } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
@@ -21,7 +21,11 @@ const MIGRATIONS_DIR = resolve(
   '../apps/web/src/lib/server/db/migrations'
 );
 
-const MIGRATION_FILES = ['0000_initial.sql', '0001_add_map_templates.sql', '0002_add_map_events.sql', '0003_add_comments.sql', '0004_add_collaborators.sql', '0005_add_annotations.sql', '0006_add_api_keys.sql', '0007_add_audit_log.sql', '0008_add_check_constraints.sql', '0009_add_admin_flag.sql', '0010_drop_is_archived.sql'];
+// Auto-discover migration files (same as docker/migrate.mjs) so new
+// migrations never require a manual list update.
+const MIGRATION_FILES = readdirSync(MIGRATIONS_DIR)
+  .filter((f) => f.endsWith('.sql'))
+  .sort();
 
 async function migrate(): Promise<void> {
   const client = new pg.Client({ connectionString: DATABASE_URL });

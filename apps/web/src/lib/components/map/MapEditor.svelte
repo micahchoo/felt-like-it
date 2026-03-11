@@ -4,6 +4,7 @@
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { mapStore } from '$lib/stores/map.svelte.js';
   import { filterStore } from '$lib/stores/filters.svelte.js';
+  import { selectionStore } from '$lib/stores/selection.svelte.js';
   import { undoStore } from '$lib/stores/undo.svelte.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import MapCanvas from './MapCanvas.svelte';
@@ -26,7 +27,7 @@
   import GeoprocessingPanel from '$lib/components/geoprocessing/GeoprocessingPanel.svelte';
   import AnnotationPanel from '$lib/components/annotations/AnnotationPanel.svelte';
   import MeasurementPanel from '$lib/components/map/MeasurementPanel.svelte';
-  import type { AnnotationPinCollection } from '$lib/components/map/MapCanvas.svelte';
+  import type { AnnotationPinCollection, AnnotationRegionCollection } from '$lib/components/map/MapCanvas.svelte';
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
 
   /**
@@ -90,11 +91,19 @@
   let measureResult = $state<MeasurementResult | null>(null);
   let savingViewport = $state(false);
 
+  // ── Annotation region drawing ─────────────────────────────────────────────
+  // When the user wants to create a region-anchored annotation, we intercept
+  // the next drawn polygon and pass its geometry to the AnnotationPanel instead
+  // of saving it as a layer feature.
+  let annotationRegionMode = $state(false);
+  let annotationRegionGeometry = $state<{ type: 'Polygon'; coordinates: number[][][] } | undefined>(undefined);
+
   // ── Annotation pin GeoJSON ──────────────────────────────────────────────────
   // Annotations are stored as tRPC records but rendered via MapCanvas as a
   // dedicated GeoJSON source. Content is embedded in feature properties so the
   // popup can render without a second fetch.
   let annotationPins = $state<AnnotationPinCollection>({ type: 'FeatureCollection', features: [] });
+  let annotationRegions = $state<AnnotationRegionCollection>({ type: 'FeatureCollection', features: [] });
 
   async function loadAnnotationPins() {
     try {
@@ -109,6 +118,24 @@
             geometry: a.anchor.type === 'point'
               ? { type: 'Point' as const, coordinates: a.anchor.geometry.coordinates.slice(0, 2) as [number, number] }
               : { type: 'Point' as const, coordinates: [0, 0] as [number, number] },
+            properties: {
+              authorName: a.authorName,
+              createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
+              contentJson: JSON.stringify(a.content),
+              anchorType: a.anchor.type,
+            },
+          })),
+      };
+      annotationRegions = {
+        type: 'FeatureCollection',
+        features: rows
+          .filter((a) => a.anchor.type === 'region')
+          .map((a) => ({
+            type: 'Feature' as const,
+            id: a.id,
+            geometry: a.anchor.type === 'region'
+              ? a.anchor.geometry
+              : { type: 'Polygon' as const, coordinates: [] },
             properties: {
               authorName: a.authorName,
               createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
@@ -416,7 +443,9 @@
         {layerData}
         onfeaturedrawn={handleFeatureDrawn}
         {annotationPins}
+        {annotationRegions}
         {...(showMeasure ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
+        {...(annotationRegionMode ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { annotationRegionGeometry = g; annotationRegionMode = false; } } : {})}
       />
 
       <!-- Measurement panel overlay -->
@@ -484,7 +513,9 @@
       <AnnotationPanel
         {mapId}
         {...(userId !== undefined ? { userId } : {})}
-        onannotationchange={loadAnnotationPins}
+        onannotationchange={() => { annotationRegionGeometry = undefined; loadAnnotationPins(); }}
+        onrequestregion={() => { annotationRegionMode = true; annotationRegionGeometry = undefined; selectionStore.setActiveTool('polygon'); }}
+        regionGeometry={annotationRegionGeometry}
       />
     </div>
   {/if}

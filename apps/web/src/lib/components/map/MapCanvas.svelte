@@ -28,6 +28,7 @@
     createdAt: string;
     /** JSON.stringify(AnnotationContent) — parsed on click. */
     contentJson: string;
+    anchorType?: string;
   }
 
   interface AnnotationPin {
@@ -41,6 +42,18 @@
   export interface AnnotationPinCollection {
     type: 'FeatureCollection';
     features: AnnotationPin[];
+  }
+
+  interface AnnotationRegion {
+    type: 'Feature';
+    id: string;
+    geometry: { type: 'Polygon'; coordinates: number[][][] };
+    properties: AnnotationPinProperties;
+  }
+
+  export interface AnnotationRegionCollection {
+    type: 'FeatureCollection';
+    features: AnnotationRegion[];
   }
 
   interface Props {
@@ -58,9 +71,17 @@
      * are NOT saved to any layer — instead the computed MeasurementResult is passed here.
      */
     onmeasured?: (_result: MeasurementResult) => void;
+    /**
+     * When provided, the next drawn polygon is captured as an annotation region.
+     */
+    onregiondrawn?: (_geometry: { type: 'Polygon'; coordinates: number[][][] }) => void;
+    /**
+     * Region-anchored annotation polygons rendered as a dedicated fill layer.
+     */
+    annotationRegions?: AnnotationRegionCollection;
   }
 
-  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured }: Props = $props();
+  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions }: Props = $props();
 
   let mapInstance = $state<MapLibreMap | undefined>(undefined);
 
@@ -519,6 +540,57 @@
       </GeoJSONSource>
     {/if}
 
+    <!-- Annotation region polygons — rendered below pins, above data layers -->
+    {#if annotationRegions && annotationRegions.features.length > 0}
+      <GeoJSONSource
+        id="source-annotation-regions"
+        data={annotationRegions as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}
+      >
+        <FillLayer
+          id="layer-annotation-regions-fill"
+          paint={{
+            'fill-color': '#3b82f6',
+            'fill-opacity': 0.15,
+          }}
+          onclick={(e) => {
+            const tool = selectionStore.activeTool;
+            if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
+
+            const f = e.features?.[0];
+            if (!f) return;
+
+            const props = f.properties as AnnotationPinProperties | null;
+            if (!props?.contentJson) return;
+
+            let parsed: AnnotationObjectContent;
+            try {
+              const raw: unknown = JSON.parse(props.contentJson);
+              const result = AnnotationObjectContentSchema.safeParse(raw);
+              if (!result.success) return;
+              parsed = result.data;
+            } catch {
+              return;
+            }
+
+            selectedAnnotation = {
+              content: parsed,
+              authorName: props.authorName,
+              createdAt: props.createdAt,
+              lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
+            };
+          }}
+        />
+        <LineLayer
+          id="layer-annotation-regions-outline"
+          paint={{
+            'line-color': '#3b82f6',
+            'line-width': 2,
+            'line-opacity': 0.6,
+          }}
+        />
+      </GeoJSONSource>
+    {/if}
+
     <!-- Annotation popup — shown on pin click; independent of selectionStore -->
     {#if selectedAnnotation}
       <Popup
@@ -543,6 +615,7 @@
       map={mapInstance}
       {...(onfeaturedrawn !== undefined ? { onfeaturedrawn } : {})}
       {...(onmeasured !== undefined ? { onmeasured } : {})}
+      {...(onregiondrawn !== undefined ? { onregiondrawn } : {})}
     />
   {/if}
 </div>

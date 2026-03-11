@@ -12,9 +12,13 @@
     userId?: string;
     /** Called after any mutation (create / delete) so the parent can refresh the map pins. */
     onannotationchange: () => void;
+    /** Called when the user wants to draw a region polygon on the map. */
+    onrequestregion?: () => void;
+    /** Polygon geometry drawn on the map, passed back by the parent. */
+    regionGeometry?: { type: 'Polygon'; coordinates: number[][][] } | undefined;
   }
 
-  let { mapId, userId, onannotationchange }: Props = $props();
+  let { mapId, userId, onannotationchange, onrequestregion, regionGeometry = undefined }: Props = $props();
 
   // ── Annotation list ────────────────────────────────────────────────────────
 
@@ -111,7 +115,7 @@
   let formLat = $state(0);
 
   // Anchor type selector
-  let formAnchorType = $state<'point' | 'viewport'>('point');
+  let formAnchorType = $state<'point' | 'region' | 'viewport'>('point');
 
   $effect.pre(() => {
     if (formLng === 0 && formLat === 0) {
@@ -263,9 +267,13 @@
 
       const content = buildContent();
 
+      // TYPE_DEBT: regionGeometry coordinates come from Terra Draw as number[][][] but
+      // the Anchor schema expects typed tuples — the runtime values are always valid pairs.
       const anchor: Anchor = formAnchorType === 'viewport'
         ? { type: 'viewport' }
-        : { type: 'point', geometry: { type: 'Point', coordinates: [formLng, formLat] } };
+        : formAnchorType === 'region' && regionGeometry
+          ? { type: 'region', geometry: regionGeometry as { type: 'Polygon'; coordinates: ([number, number] | [number, number, number])[][] } }
+          : { type: 'point', geometry: { type: 'Point', coordinates: [formLng, formLat] } };
 
       await trpc.annotations.create.mutate({
         mapId,
@@ -585,9 +593,35 @@
           class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           <option value="point">Pin (Point)</option>
+          <option value="region">Region (Polygon)</option>
           <option value="viewport">Map-level (No pin)</option>
         </select>
       </div>
+
+      <!-- Region drawing -->
+      {#if formAnchorType === 'region'}
+        <div class="flex flex-col gap-1">
+          {#if regionGeometry}
+            <p class="text-xs text-green-400 font-medium">Region drawn ({(regionGeometry?.coordinates[0]?.length ?? 1) - 1} vertices)</p>
+            <button
+              type="button"
+              onclick={() => onrequestregion?.()}
+              class="text-xs text-blue-400 hover:text-blue-300 underline text-left"
+            >
+              Redraw region
+            </button>
+          {:else}
+            <button
+              type="button"
+              onclick={() => onrequestregion?.()}
+              class="w-full rounded bg-blue-600 hover:bg-blue-500 px-2 py-1.5 text-xs text-white font-medium transition-colors"
+            >
+              Draw region on map
+            </button>
+            <p class="text-xs text-slate-500 italic">Click the map to draw a polygon boundary.</p>
+          {/if}
+        </div>
+      {/if}
 
       <!-- Anchor coordinates -->
       {#if formAnchorType === 'point'}
@@ -643,7 +677,8 @@
           || (formType === 'gif' && !formGifUrl.trim())
           || (formType === 'image' && !formImageUrl && !selectedImageFile)
           || (formType === 'link' && !formLinkUrl.trim())
-          || (formType === 'iiif' && !formManifestUrl.trim())}
+          || (formType === 'iiif' && !formManifestUrl.trim())
+          || (formAnchorType === 'region' && !regionGeometry)}
       >
         {#if uploading}Uploading…{:else}Save annotation{/if}
       </Button>
@@ -669,6 +704,8 @@
 
           {#if annotation.anchor.type === 'viewport'}
             <span class="text-[10px] bg-amber-100/10 text-amber-400 px-1.5 py-0.5 rounded">Map-level</span>
+          {:else if annotation.anchor.type === 'region'}
+            <span class="text-[10px] bg-blue-100/10 text-blue-400 px-1.5 py-0.5 rounded">Region</span>
           {/if}
 
           <!-- Thread controls -->

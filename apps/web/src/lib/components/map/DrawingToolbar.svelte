@@ -20,9 +20,15 @@
      * to this callback.  The caller is responsible for displaying the result.
      */
     onmeasured?: ((_result: MeasurementResult) => void) | undefined;
+    /**
+     * When provided, the next drawn polygon is captured as an annotation region
+     * instead of being saved to a layer. The callback receives the polygon geometry.
+     * Automatically clears after one polygon is captured.
+     */
+    onregiondrawn?: ((_geometry: { type: 'Polygon'; coordinates: number[][][] }) => void) | undefined;
   }
 
-  let { map, onfeaturedrawn, onmeasured }: Props = $props();
+  let { map, onfeaturedrawn, onmeasured, onregiondrawn }: Props = $props();
 
   // Lazy-load Terra Draw to avoid SSR issues
   let draw: import('terra-draw').TerraDraw | null = null;
@@ -55,7 +61,10 @@
       const f = draw.getSnapshotFeature(id);
 
       if (f) {
-        if (onmeasured) {
+        if (onregiondrawn && f.geometry.type === 'Polygon') {
+          // Annotation region mode — pass geometry to parent; do NOT persist to DB
+          onregiondrawn(f.geometry as { type: 'Polygon'; coordinates: number[][][] });
+        } else if (onmeasured) {
           // Measurement mode — compute result and notify parent; do NOT persist to DB
           measureFeature(f);
         } else {
@@ -166,6 +175,15 @@
       toastStore.error('Failed to save drawn feature.');
     }
   }
+
+  // Sync external activeTool changes (e.g. annotation region request) to Terra Draw
+  $effect(() => {
+    const tool = selectionStore.activeTool;
+    if (!draw || !drawReady) return;
+    const modeMap: Record<string, string> = { point: 'point', line: 'linestring', polygon: 'polygon', select: 'select' };
+    const mode = tool ? modeMap[tool] ?? 'select' : 'select';
+    try { draw.setMode(mode); } catch { /* mode already active */ }
+  });
 
   function setTool(tool: DrawTool) {
     selectionStore.setActiveTool(tool);
