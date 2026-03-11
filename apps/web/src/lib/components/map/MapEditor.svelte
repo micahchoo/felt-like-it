@@ -22,7 +22,6 @@
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import ActivityFeed from './ActivityFeed.svelte';
   import CommentPanel from './CommentPanel.svelte';
-  import CollaboratorsPanel from './CollaboratorsPanel.svelte';
   import ShareDialog from './ShareDialog.svelte';
   import GeoprocessingPanel from '$lib/components/geoprocessing/GeoprocessingPanel.svelte';
   import AnnotationPanel from '$lib/components/annotations/AnnotationPanel.svelte';
@@ -83,7 +82,6 @@
   let showExportDialog = $state(false);
   let showActivity = $state(false);
   let showComments = $state(false);
-  let showCollaborators = $state(false);
   let showGeoprocessing = $state(false);
   let showAnnotations = $state(false);
   let showMeasure = $state(false);
@@ -394,19 +392,6 @@
           </Button>
         </Tooltip>
 
-        <Tooltip content="Manage collaborators">
-          <Button
-            variant="ghost"
-            size="sm"
-            class={showCollaborators ? 'bg-slate-700 text-white' : ''}
-            onclick={() => (showCollaborators = !showCollaborators)}
-          >
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M15 14s1 0 1-1-1-4-5-4-5 3-5 4 1 1 1 1h8zm-7.978-1A.261.261 0 017 12.996c.001-.264.167-1.03.76-1.72C8.312 10.629 9.282 10 11 10c1.717 0 2.687.63 3.24 1.276.593.69.758 1.457.76 1.72l-.008.002-.014.002H7.022zM11 7a2 2 0 100-4 2 2 0 000 4zm3-2a3 3 0 11-6 0 3 3 0 016 0zM6.936 9.28a5.88 5.88 0 00-1.23-.247A7.35 7.35 0 005 9c-4 0-5 3-5 4 0 .667.333 1 1 1h4.216A2.238 2.238 0 015 13c0-1.01.377-2.042 1.09-2.904.243-.294.526-.569.846-.816zM4.92 10A5.493 5.493 0 004 13H1c0-.26.164-1.03.76-1.724.545-.636 1.492-1.256 3.16-1.275zM1.5 5.5a3 3 0 116 0 3 3 0 01-6 0zm3-2a2 2 0 100 4 2 2 0 000-4z"/>
-            </svg>
-          </Button>
-        </Tooltip>
-
         <Tooltip content="Share map">
           <Button
             variant="ghost"
@@ -500,13 +485,6 @@
     </div>
   {/if}
 
-  <!-- Collaborators panel (collapsible, right side) -->
-  {#if showCollaborators && !effectiveReadonly}
-    <div class="w-72 shrink-0 overflow-hidden flex flex-col">
-      <CollaboratorsPanel {mapId} {isOwner} />
-    </div>
-  {/if}
-
   <!-- Annotation panel (collapsible, right side) -->
   {#if showAnnotations && !effectiveReadonly}
     <div class="w-72 shrink-0 overflow-hidden flex flex-col">
@@ -565,4 +543,6 @@
   {mapId}
   bind:open={showShareDialog}
   onclose={() => (showShareDialog = false)}
+  {isOwner}
+  {...(userId !== undefined ? { userId } : {})}
 />
