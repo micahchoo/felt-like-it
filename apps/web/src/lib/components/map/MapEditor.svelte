@@ -134,6 +134,8 @@
     };
   } | null>(null);
 
+  let scrollToAnnotationFeatureId = $state<string | null>(null);
+
   let featurePickMode = $state(false);
   let pickedFeature = $state<{ featureId: string; layerId: string } | undefined>();
 
@@ -529,6 +531,10 @@
         {...(annotationRegionMode ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { annotationRegionGeometry = g; annotationRegionMode = false; } } : {})}
         annotatedFeatures={annotatedFeaturesIndex}
         measurementAnnotations={measurementAnnotationData}
+        onbadgeclick={(featureId) => {
+          activeSection = 'annotations';
+          scrollToAnnotationFeatureId = featureId;
+        }}
       />
 
       {#if featurePickMode}
@@ -619,6 +625,7 @@
       regionGeometry={annotationRegionGeometry}
       {pickedFeature}
       pendingMeasurement={pendingMeasurementAnnotation}
+      scrollToFeatureId={scrollToAnnotationFeatureId}
       oncountchange={(a, c) => { annotationCount = a; commentCount = c; }}
     />
   {/snippet}

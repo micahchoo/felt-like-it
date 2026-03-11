@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import exifr from 'exifr';
   import { trpc } from '$lib/utils/trpc.js';
   import Button from '$lib/components/ui/Button.svelte';
@@ -35,11 +36,13 @@
         displayValue: string;
       };
     } | null | undefined;
+    /** When set, scrolls to the first annotation anchored to this feature. */
+    scrollToFeatureId?: string | null | undefined;
     /** Called when annotation or comment counts change. */
     oncountchange?: (annotationCount: number, commentCount: number) => void;
   }
 
-  let { mapId, userId, onannotationchange, onrequestregion, onrequestfeaturepick, regionGeometry = undefined, pickedFeature, pendingMeasurement, embedded, oncountchange }: Props = $props();
+  let { mapId, userId, onannotationchange, onrequestregion, onrequestfeaturepick, regionGeometry = undefined, pickedFeature, pendingMeasurement, scrollToFeatureId, embedded, oncountchange }: Props = $props();
 
   // ── Annotation list ────────────────────────────────────────────────────────
 
@@ -435,6 +438,20 @@
       // Best-effort — don't block UI on NavPlace fetch failures
     }
   }
+
+  // ── Scroll-to-feature support ───────────────────────────────────────────────
+  $effect(() => {
+    if (!scrollToFeatureId) return;
+    const match = annotationList.find(
+      (a) => a.anchor.type === 'feature' && (a.anchor as { featureId: string }).featureId === scrollToFeatureId
+    );
+    if (match) {
+      expandedAnnotationId = match.id;
+      tick().then(() => {
+        document.getElementById(`annotation-${match.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
+  });
 
   // ── Thread / reply state ────────────────────────────────────────────────────
 
@@ -838,7 +855,7 @@
       </div>
     {:else}
       {#each annotationList as annotation (annotation.id)}
-        <div class="px-3 py-3 border-b border-white/10 space-y-2">
+        <div id="annotation-{annotation.id}" class="px-3 py-3 border-b border-white/10 space-y-2">
           <AnnotationContent
             content={annotation.content}
             authorName={annotation.authorName}
