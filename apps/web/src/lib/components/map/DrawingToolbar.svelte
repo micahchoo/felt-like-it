@@ -13,7 +13,7 @@
 
   interface Props {
     map: MapLibreMap;
-    onfeaturedrawn?: ((_layerId: string, _feature: Record<string, unknown>) => void) | undefined;
+    onfeaturedrawn?: ((_layerId: string, _feature: Record<string, unknown> & { id?: string | undefined }) => void) | undefined;
     /**
      * When provided, the drawing toolbar enters measurement mode: drawn features
      * are NOT saved to any layer — instead, the computed measurement is passed
@@ -170,7 +170,7 @@
 
       // Await the data reload so the GeoJSON source is updated BEFORE
       // removeFeatures() clears the Terra Draw overlay — no visual gap.
-      await onfeaturedrawn?.(activeLayer.id, { geometry, properties });
+      await onfeaturedrawn?.(activeLayer.id, { geometry, properties, id: upsertedIds[0] });
     } catch {
       toastStore.error('Failed to save drawn feature.');
     }
