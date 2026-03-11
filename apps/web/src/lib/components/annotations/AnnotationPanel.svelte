@@ -14,14 +14,18 @@
     onannotationchange: (action?: 'created' | 'deleted') => void;
     /** Called when the user wants to draw a region polygon on the map. */
     onrequestregion?: () => void;
+    /** Called when the user selects "Feature" anchor — parent enters pick mode. */
+    onrequestfeaturepick?: () => void;
     /** Polygon geometry drawn on the map, passed back by the parent. */
     regionGeometry?: { type: 'Polygon'; coordinates: number[][][] } | undefined;
+    /** Feature picked by the user on the map (set by parent in pick mode). */
+    pickedFeature?: { featureId: string; layerId: string } | undefined;
     embedded?: boolean;
     /** Called when annotation or comment counts change. */
     oncountchange?: (annotationCount: number, commentCount: number) => void;
   }
 
-  let { mapId, userId, onannotationchange, onrequestregion, regionGeometry = undefined, embedded, oncountchange }: Props = $props();
+  let { mapId, userId, onannotationchange, onrequestregion, onrequestfeaturepick, regionGeometry = undefined, pickedFeature, embedded, oncountchange }: Props = $props();
 
   // ── Annotation list ────────────────────────────────────────────────────────
 
@@ -180,7 +184,13 @@
   let formLat = $state(0);
 
   // Anchor type selector
-  let formAnchorType = $state<'point' | 'region' | 'viewport'>('point');
+  let formAnchorType = $state<'point' | 'region' | 'viewport' | 'feature'>('point');
+
+  $effect(() => {
+    if (formAnchorType === 'feature' && !pickedFeature) {
+      onrequestfeaturepick?.();
+    }
+  });
 
   $effect.pre(() => {
     if (formLng === 0 && formLat === 0) {
@@ -342,7 +352,9 @@
         ? { type: 'viewport' }
         : formAnchorType === 'region' && regionGeometry
           ? { type: 'region', geometry: regionGeometry as { type: 'Polygon'; coordinates: ([number, number] | [number, number, number])[][] } }
-          : { type: 'point', geometry: { type: 'Point', coordinates: [formLng, formLat] } };
+          : formAnchorType === 'feature' && pickedFeature
+            ? { type: 'feature', featureId: pickedFeature.featureId, layerId: pickedFeature.layerId }
+            : { type: 'point', geometry: { type: 'Point', coordinates: [formLng, formLat] } };
 
       await trpc.annotations.create.mutate({
         mapId,
@@ -677,6 +689,7 @@
           <option value="point">Pin (Point)</option>
           <option value="region">Region (Polygon)</option>
           <option value="viewport">Map-level (No pin)</option>
+          <option value="feature">Feature</option>
         </select>
       </div>
 
@@ -703,6 +716,17 @@
             <p class="text-xs text-slate-500 italic">Click the map to draw a polygon boundary.</p>
           {/if}
         </div>
+      {/if}
+
+      <!-- Feature anchor -->
+      {#if formAnchorType === 'feature'}
+        {#if pickedFeature}
+          <div class="text-xs text-slate-300 bg-slate-700 rounded px-2 py-1 mt-1">
+            Attached to feature <span class="font-mono text-amber-400">{pickedFeature.featureId.slice(0, 8)}…</span>
+          </div>
+        {:else}
+          <p class="text-xs text-slate-400 italic mt-1">Click a feature on the map to attach this annotation.</p>
+        {/if}
       {/if}
 
       <!-- Anchor coordinates -->
@@ -760,7 +784,8 @@
           || (formType === 'image' && !formImageUrl && !selectedImageFile)
           || (formType === 'link' && !formLinkUrl.trim())
           || (formType === 'iiif' && !formManifestUrl.trim())
-          || (formAnchorType === 'region' && !regionGeometry)}
+          || (formAnchorType === 'region' && !regionGeometry)
+          || (formAnchorType === 'feature' && !pickedFeature)}
       >
         {#if uploading}Uploading…{:else}Save annotation{/if}
       </Button>

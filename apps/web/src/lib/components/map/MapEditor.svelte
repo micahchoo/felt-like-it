@@ -114,6 +114,23 @@
   let annotationRegionMode = $state(false);
   let annotationRegionGeometry = $state<{ type: 'Polygon'; coordinates: number[][][] } | undefined>(undefined);
 
+  // ── Feature-pick mode ─────────────────────────────────────────────────────
+  // When the user selects "Feature" anchor in AnnotationPanel, we enter pick
+  // mode: the next feature click on the map is captured as the annotation target.
+  let featurePickMode = $state(false);
+  let pickedFeature = $state<{ featureId: string; layerId: string } | undefined>();
+
+  $effect(() => {
+    if (featurePickMode && selectionStore.selectedFeature && selectionStore.selectedLayerId) {
+      const feat = selectionStore.selectedFeature;
+      const fid = String(feat.id ?? '');
+      if (fid) {
+        pickedFeature = { featureId: fid, layerId: selectionStore.selectedLayerId };
+        featurePickMode = false;
+      }
+    }
+  });
+
   // ── Annotation pin GeoJSON ──────────────────────────────────────────────────
   // Annotations are stored as tRPC records but rendered via MapCanvas as a
   // dedicated GeoJSON source. Content is embedded in feature properties so the
@@ -258,6 +275,11 @@
 
   function handleKeydown(e: KeyboardEvent) {
     if (effectiveReadonly) return;
+
+    if (e.key === 'Escape' && featurePickMode) {
+      featurePickMode = false;
+      return;
+    }
 
     // Skip when focus is inside a text input
     const tag = (e.target as HTMLElement)?.tagName;
@@ -420,6 +442,13 @@
         {...(annotationRegionMode ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { annotationRegionGeometry = g; annotationRegionMode = false; } } : {})}
       />
 
+      {#if featurePickMode}
+        <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-amber-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
+          Click a feature to attach annotation ·
+          <button class="underline ml-1" onclick={() => { featurePickMode = false; }}>Cancel</button>
+        </div>
+      {/if}
+
       <!-- Map overlay controls — hidden in embed mode for a truly bare canvas -->
       {#if !embed}
       <div class="absolute bottom-6 left-3 flex gap-2">
@@ -465,13 +494,16 @@
       {...(userId !== undefined ? { userId } : {})}
       onannotationchange={(action) => {
         annotationRegionGeometry = undefined;
+        pickedFeature = undefined;
         loadAnnotationPins();
         if (action) {
           logActivity(`annotation.${action}`);
         }
       }}
       onrequestregion={() => { annotationRegionMode = true; annotationRegionGeometry = undefined; selectionStore.setActiveTool('polygon'); }}
+      onrequestfeaturepick={() => { featurePickMode = true; pickedFeature = undefined; }}
       regionGeometry={annotationRegionGeometry}
+      {pickedFeature}
       oncountchange={(a, c) => { annotationCount = a; commentCount = c; }}
     />
   {/snippet}
