@@ -99,6 +99,7 @@
   let annotationCount = $state(0);
   let commentCount = $state(0);
   let eventCount = $state(0);
+  let activityRefreshTrigger = $state(0);
 
   const measureActive = $derived(activeSection === 'analysis' && analysisTab === 'measure' && !designMode);
 
@@ -207,8 +208,20 @@
     }
   }
 
+  function logActivity(action: string, metadata?: Record<string, unknown>) {
+    trpc.events.log.mutate({ mapId, action, metadata }).catch(() => undefined);
+    activityRefreshTrigger++;
+  }
+
   async function handleFeatureDrawn(layerId: string, _feature: Record<string, unknown>) {
     await loadLayerData(layerId);
+    const layer = layersStore.all.find((l) => l.id === layerId);
+    const geom = _feature['geometry'] as Record<string, unknown> | undefined;
+    logActivity('feature.drawn', {
+      layerId,
+      layerName: layer?.name ?? '',
+      geometryType: geom?.['type'] ?? '',
+    });
   }
 
   async function saveViewport() {
@@ -450,7 +463,13 @@
       {mapId}
       embedded
       {...(userId !== undefined ? { userId } : {})}
-      onannotationchange={() => { annotationRegionGeometry = undefined; loadAnnotationPins(); }}
+      onannotationchange={(action) => {
+        annotationRegionGeometry = undefined;
+        loadAnnotationPins();
+        if (action) {
+          logActivity(`annotation.${action}`);
+        }
+      }}
       onrequestregion={() => { annotationRegionMode = true; annotationRegionGeometry = undefined; selectionStore.setActiveTool('polygon'); }}
       regionGeometry={annotationRegionGeometry}
       oncountchange={(a, c) => { annotationCount = a; commentCount = c; }}
@@ -545,6 +564,11 @@
             const newLayers = await trpc.layers.list.query({ mapId });
             layersStore.set(newLayers);
             await loadLayerData(layerId);
+            const newLayer = newLayers.find((l: { id: string }) => l.id === layerId);
+            logActivity('geoprocessing.completed', {
+              outputLayerId: layerId,
+              outputLayerName: newLayer?.name ?? '',
+            });
           }}
         />
       {/if}
@@ -552,7 +576,7 @@
   {/snippet}
 
   {#snippet activityContent()}
-    <ActivityFeed {mapId} embedded oncountchange={(n) => { eventCount = n; }} />
+    <ActivityFeed {mapId} embedded refreshTrigger={activityRefreshTrigger} oncountchange={(n) => { eventCount = n; }} />
   {/snippet}
 
   <!-- Right: Side panel (hidden in design mode and embed) -->

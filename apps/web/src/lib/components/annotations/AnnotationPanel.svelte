@@ -11,7 +11,7 @@
     /** Authenticated user id — used to gate edit / delete buttons. */
     userId?: string;
     /** Called after any mutation (create / delete) so the parent can refresh the map pins. */
-    onannotationchange: () => void;
+    onannotationchange: (action?: 'created' | 'deleted') => void;
     /** Called when the user wants to draw a region polygon on the map. */
     onrequestregion?: () => void;
     /** Polygon geometry drawn on the map, passed back by the parent. */
@@ -124,6 +124,7 @@
     image: 'Image',
     link:  'Link card',
     iiif:  'IIIF Manifest',
+    measurement: 'Measurement',
   };
 
   let showForm = $state(false);
@@ -290,6 +291,10 @@
           manifestUrl: formManifestUrl,
           ...(formIiifLabel.trim() ? { label: formIiifLabel.trim() } : {}),
         };
+      case 'measurement':
+        // Measurement content is pre-filled by the measurement-to-annotation flow;
+        // buildContent() should never be called with formType='measurement' directly.
+        return { type: 'measurement', measurementType: 'distance', value: 0, unit: 'm', displayValue: '0 m' };
     }
   }
 
@@ -348,7 +353,7 @@
       showForm = false;
       resetForm();
       await loadAnnotations();
-      onannotationchange();
+      onannotationchange('created');
     } catch (err: unknown) {
       createError = (err as { message?: string })?.message ?? 'Failed to create annotation.';
     } finally {
@@ -361,7 +366,7 @@
     try {
       await trpc.annotations.delete.mutate({ id });
       await loadAnnotations();
-      onannotationchange();
+      onannotationchange('deleted');
     } catch (err: unknown) {
       listError = (err as { message?: string })?.message ?? 'Failed to delete annotation.';
     }
@@ -409,7 +414,7 @@
       replyingTo = null;
       expandedAnnotationId = parentId; // keep thread open
       await loadAnnotations();
-      onannotationchange();
+      onannotationchange('created');
     } catch (err: unknown) {
       listError = (err as { message?: string })?.message ?? 'Failed to post reply.';
     }
