@@ -167,3 +167,74 @@ describe('annotationService.delete', () => {
     })).rejects.toThrow(/forbidden/i);
   });
 });
+
+// ─── tRPC adapter tests ──────────────────────────────────────────────────────
+
+import { annotationsRouter } from '../lib/server/trpc/routers/annotations.js';
+
+function makeCaller() {
+  return annotationsRouter.createCaller(mockContext({ userId: USER_ID }));
+}
+
+describe('annotationsRouter (tRPC adapter)', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('list calls service and returns results', async () => {
+    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+
+    const result = await makeCaller().list({ mapId: MAP_ID });
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe(OBJ_ID);
+  });
+});
+
+describe('annotationService adversarial cases', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('rejects create when map has 10,000 annotations', async () => {
+    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([{ cnt: '10000' }]));
+
+    await expect(annotationService.create({
+      userId: USER_ID,
+      userName: 'Test User',
+      mapId: MAP_ID,
+      anchor: { type: 'point', geometry: { type: 'Point', coordinates: [-122.4, 37.8] } },
+      content: { kind: 'single', body: { type: 'text', text: 'overflow' } },
+    })).rejects.toThrow(/maximum/i);
+  });
+
+  it('rejects update on non-existent annotation', async () => {
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([]));
+
+    await expect(annotationService.update({
+      userId: USER_ID,
+      userName: 'Test User',
+      id: OBJ_ID,
+      content: { kind: 'single', body: { type: 'text', text: 'ghost' } },
+      version: 1,
+    })).rejects.toThrow(/not found/i);
+  });
+
+  it('rejects delete on non-existent annotation', async () => {
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([]));
+
+    await expect(annotationService.delete({
+      userId: USER_ID,
+      userName: 'Test User',
+      id: OBJ_ID,
+    })).rejects.toThrow(/not found/i);
+  });
+
+  it('rejects getThread on a reply (not root)', async () => {
+    const replyRow = { ...MOCK_ROW, parent_id: 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa' };
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([replyRow]));
+    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP])); // access check in get
+
+    await expect(annotationService.getThread({
+      userId: USER_ID,
+      rootId: OBJ_ID,
+    })).rejects.toThrow(/not a root/i);
+  });
+});
