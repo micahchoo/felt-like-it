@@ -21,13 +21,14 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import ActivityFeed from './ActivityFeed.svelte';
-  import CommentPanel from './CommentPanel.svelte';
   import ShareDialog from './ShareDialog.svelte';
   import GeoprocessingPanel from '$lib/components/geoprocessing/GeoprocessingPanel.svelte';
   import AnnotationPanel from '$lib/components/annotations/AnnotationPanel.svelte';
-  import MeasurementPanel from '$lib/components/map/MeasurementPanel.svelte';
+  import SidePanel from './SidePanel.svelte';
+  import type { SectionId } from './SidePanel.svelte';
   import type { AnnotationPinCollection, AnnotationRegionCollection } from '$lib/components/map/MapCanvas.svelte';
-  import type { MeasurementResult } from '@felt-like-it/geo-engine';
+  import type { MeasurementResult, DistanceUnit, AreaUnit } from '@felt-like-it/geo-engine';
+  import { DISTANCE_UNITS, AREA_UNITS, formatDistance, formatArea } from '@felt-like-it/geo-engine';
 
   /**
    * TYPE_DEBT: features.list returns geometry as Record<string, unknown> from raw SQL;
@@ -49,7 +50,7 @@
     mapId: string;
     mapTitle: string;
     initialLayers: Layer[];
-    /** ID of the authenticated user — used by CommentPanel to gate delete/resolve buttons. */
+    /** ID of the authenticated user — used by AnnotationPanel to gate delete/resolve buttons. */
     userId?: string;
     readonly?: boolean;
     /**
@@ -80,14 +81,30 @@
   let showFilterPanel = $state(false);
   let showImportDialog = $state(false);
   let showExportDialog = $state(false);
-  let showActivity = $state(false);
-  let showComments = $state(false);
-  let showGeoprocessing = $state(false);
-  let showAnnotations = $state(false);
-  let showMeasure = $state(false);
   let showShareDialog = $state(false);
   let measureResult = $state<MeasurementResult | null>(null);
   let savingViewport = $state(false);
+
+  // ── Design mode + unified sidebar ──────────────────────────────────────────
+  let designMode = $state(false);
+  let activeSection = $state<SectionId | null>('annotations');
+  let analysisTab = $state<'measure' | 'process'>('process');
+
+  // Measurement state (moved from MeasurementPanel)
+  let distUnit = $state<DistanceUnit>('km');
+  let areaUnit = $state<AreaUnit>('km2');
+  let periUnit = $state<DistanceUnit>('km');
+
+  // Count tracking for sidebar badges
+  let annotationCount = $state(0);
+  let commentCount = $state(0);
+  let eventCount = $state(0);
+
+  const measureActive = $derived(activeSection === 'analysis' && analysisTab === 'measure' && !designMode);
+
+  $effect(() => {
+    if (!measureActive) measureResult = null;
+  });
 
   // ── Annotation region drawing ─────────────────────────────────────────────
   // When the user wants to create a region-anchored annotation, we intercept
@@ -234,6 +251,13 @@
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     if ((e.target as HTMLElement)?.isContentEditable) return;
 
+    // Ctrl+\ — toggle design mode
+    if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+      e.preventDefault();
+      designMode = !designMode;
+      return;
+    }
+
     const mod = e.metaKey || e.ctrlKey;
     if (!mod || e.key.toLowerCase() !== 'z') return;
 
@@ -250,7 +274,7 @@
 
 <div class="flex h-screen w-full overflow-hidden bg-slate-900">
   <!-- Left: Layer Panel -->
-  {#if !effectiveReadonly}
+  {#if !effectiveReadonly && !designMode}
     <div class="w-56 shrink-0 flex flex-col">
       <LayerPanel {mapId} onlayerchange={handleLayerChange} />
     </div>
@@ -264,159 +288,109 @@
       <span class="text-sm font-medium text-white truncate mr-auto">{mapTitle}</span>
 
       {#if !effectiveReadonly}
-        <Tooltip content="Import data">
-          <Button variant="ghost" size="sm" onclick={() => (showImportDialog = true)}>
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M.5 9.9a.5.5 0 01.5.5v2.5a1 1 0 001 1h12a1 1 0 001-1v-2.5a.5.5 0 011 0v2.5a2 2 0 01-2 2H2a2 2 0 01-2-2v-2.5a.5.5 0 01.5-.5z"/>
-              <path d="M7.646 1.146a.5.5 0 01.708 0l3 3a.5.5 0 01-.708.708L8.5 2.707V11.5a.5.5 0 01-1 0V2.707L5.354 4.854a.5.5 0 11-.708-.708l3-3z"/>
-            </svg>
-            Import
-          </Button>
-        </Tooltip>
-
-        <Tooltip content="Export data">
-          <Button variant="ghost" size="sm" onclick={() => (showExportDialog = true)}>
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M.5 9.9a.5.5 0 01.5.5v2.5a1 1 0 001 1h12a1 1 0 001-1v-2.5a.5.5 0 011 0v2.5a2 2 0 01-2 2H2a2 2 0 01-2-2v-2.5a.5.5 0 01.5-.5z"/>
-              <path d="M7.646 11.854a.5.5 0 00.708 0l3-3a.5.5 0 00-.708-.708L8.5 10.293V1.5a.5.5 0 00-1 0v8.793L5.354 8.146a.5.5 0 10-.708.708l3 3z"/>
-            </svg>
-            Export
-          </Button>
-        </Tooltip>
-
-        <Tooltip content="Show data table">
-          <Button variant="ghost" size="sm" class={showDataTable ? 'bg-slate-700 text-white' : ''} onclick={() => (showDataTable = !showDataTable)}>
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 001-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 001 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/>
-            </svg>
-            Table
-          </Button>
-        </Tooltip>
-
-        <Tooltip content="Filter features by attribute value">
+        <!-- Design mode toggle -->
+        <Tooltip content={designMode ? 'Switch to normal mode (Ctrl+\\)' : 'Switch to design mode (Ctrl+\\)'}>
           <Button
-            variant="ghost"
+            variant={designMode ? 'primary' : 'ghost'}
             size="sm"
-            onclick={() => { showDataTable = true; showFilterPanel = !showFilterPanel; }}
+            onclick={() => { designMode = !designMode; }}
           >
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M6 10.5a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z"/>
-            </svg>
-            {#if layersStore.active && filterStore.hasFilters(layersStore.active.id)}
-              <span class="rounded-full bg-blue-500 px-1 text-xs font-semibold leading-tight">
-                {filterStore.get(layersStore.active.id).length}
-              </span>
-            {/if}
-          </Button>
-        </Tooltip>
-
-        <Tooltip content="Save current viewport as default">
-          <Button variant="ghost" size="sm" onclick={saveViewport} loading={savingViewport}>
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H9.5a1 1 0 0 0-1 1v7.293l2.646-2.647a.5.5 0 0 1 .708.708l-3.5 3.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L7.5 9.293V2a2 2 0 0 1 2-2H14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h2.5a.5.5 0 0 1 0 1H2z"/>
+              <path d="M12.854.146a.5.5 0 00-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 000-.708l-3-3zM13.5 6.207L9.793 2.5 3.622 8.671a.5.5 0 00-.121.196l-1.458 4.374a.5.5 0 00.632.632l4.374-1.458a.5.5 0 00.196-.121L13.5 6.207z"/>
             </svg>
           </Button>
         </Tooltip>
 
-        <div class="mx-0.5 h-5 w-px bg-white/10"></div>
+        {#if !designMode}
+          <Tooltip content="Import data">
+            <Button variant="ghost" size="sm" onclick={() => (showImportDialog = true)}>
+              <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M.5 9.9a.5.5 0 01.5.5v2.5a1 1 0 001 1h12a1 1 0 001-1v-2.5a.5.5 0 011 0v2.5a2 2 0 01-2 2H2a2 2 0 01-2-2v-2.5a.5.5 0 01.5-.5z"/>
+                <path d="M7.646 1.146a.5.5 0 01.708 0l3 3a.5.5 0 01-.708.708L8.5 2.707V11.5a.5.5 0 01-1 0V2.707L5.354 4.854a.5.5 0 11-.708-.708l3-3z"/>
+              </svg>
+              Import
+            </Button>
+          </Tooltip>
 
-        <Tooltip content={undoStore.undoLabel ? `Undo: ${undoStore.undoLabel}` : 'Undo (Ctrl+Z)'}>
-          <Button variant="ghost" size="sm" onclick={() => undoStore.undo()} disabled={!undoStore.canUndo} aria-label="Undo">
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm0 1a6 6 0 100 12A6 6 0 008 2z"/>
-              <path d="M5.354 7.354a.5.5 0 010-.708l2-2a.5.5 0 01.708.708L6.707 6.7H10a2.5 2.5 0 010 5H8.5a.5.5 0 010-1H10a1.5 1.5 0 000-3H6.707l1.355 1.346a.5.5 0 11-.708.708l-2-2z"/>
-            </svg>
-          </Button>
-        </Tooltip>
+          <Tooltip content="Export data">
+            <Button variant="ghost" size="sm" onclick={() => (showExportDialog = true)}>
+              <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M.5 9.9a.5.5 0 01.5.5v2.5a1 1 0 001 1h12a1 1 0 001-1v-2.5a.5.5 0 011 0v2.5a2 2 0 01-2 2H2a2 2 0 01-2-2v-2.5a.5.5 0 01.5-.5z"/>
+                <path d="M7.646 11.854a.5.5 0 00.708 0l3-3a.5.5 0 00-.708-.708L8.5 10.293V1.5a.5.5 0 00-1 0v8.793L5.354 8.146a.5.5 0 10-.708.708l3 3z"/>
+              </svg>
+              Export
+            </Button>
+          </Tooltip>
 
-        <Tooltip content={undoStore.redoLabel ? `Redo: ${undoStore.redoLabel}` : 'Redo (Ctrl+Shift+Z)'}>
-          <Button variant="ghost" size="sm" onclick={() => undoStore.redo()} disabled={!undoStore.canRedo} aria-label="Redo">
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2z"/>
-              <path d="M10.646 7.354a.5.5 0 000-.708l-2-2a.5.5 0 00-.708.708L9.293 6.7H6a2.5 2.5 0 000 5h1.5a.5.5 0 000-1H6a1.5 1.5 0 010-3h3.293L7.938 9.054a.5.5 0 10.708.708l2-2z"/>
-            </svg>
-          </Button>
-        </Tooltip>
+          <Tooltip content="Show data table">
+            <Button variant="ghost" size="sm" class={showDataTable ? 'bg-slate-700 text-white' : ''} onclick={() => (showDataTable = !showDataTable)}>
+              <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 001-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 001 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/>
+              </svg>
+              Table
+            </Button>
+          </Tooltip>
 
-        <div class="mx-0.5 h-5 w-px bg-white/10"></div>
+          <Tooltip content="Filter features by attribute value">
+            <Button
+              variant="ghost"
+              size="sm"
+              onclick={() => { showDataTable = true; showFilterPanel = !showFilterPanel; }}
+            >
+              <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M6 10.5a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z"/>
+              </svg>
+              {#if layersStore.active && filterStore.hasFilters(layersStore.active.id)}
+                <span class="rounded-full bg-blue-500 px-1 text-xs font-semibold leading-tight">
+                  {filterStore.get(layersStore.active.id).length}
+                </span>
+              {/if}
+            </Button>
+          </Tooltip>
 
-        <Tooltip content="Comment threads">
-          <Button
-            variant="ghost"
-            size="sm"
-            class={showComments ? 'bg-slate-700 text-white' : ''}
-            onclick={() => (showComments = !showComments)}
-          >
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M14 1a1 1 0 011 1v8a1 1 0 01-1 1H4.414A2 2 0 003 11.586l-2 2V2a1 1 0 011-1h12zm-3 3.5a.5.5 0 000-1h-6a.5.5 0 000 1h6zm0 2.5a.5.5 0 000-1h-6a.5.5 0 000 1h6zm0 2.5a.5.5 0 000-1h-3a.5.5 0 000 1h3z"/>
-            </svg>
-          </Button>
-        </Tooltip>
+          <Tooltip content="Save current viewport as default">
+            <Button variant="ghost" size="sm" onclick={saveViewport} loading={savingViewport}>
+              <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H9.5a1 1 0 0 0-1 1v7.293l2.646-2.647a.5.5 0 0 1 .708.708l-3.5 3.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L7.5 9.293V2a2 2 0 0 1 2-2H14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h2.5a.5.5 0 0 1 0 1H2z"/>
+              </svg>
+            </Button>
+          </Tooltip>
 
-        <Tooltip content="Geographic annotations (text, emoji, GIF, image, link, IIIF)">
-          <Button
-            variant="ghost"
-            size="sm"
-            class={showAnnotations ? 'bg-slate-700 text-white' : ''}
-            onclick={() => (showAnnotations = !showAnnotations)}
-          >
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z"/>
-            </svg>
-          </Button>
-        </Tooltip>
+          <div class="mx-0.5 h-5 w-px bg-white/10"></div>
 
-        <Tooltip content="Measure distance or area">
-          <Button
-            variant="ghost"
-            size="sm"
-            class={showMeasure ? 'bg-slate-700 text-white' : ''}
-            onclick={() => { showMeasure = !showMeasure; if (!showMeasure) measureResult = null; }}
-          >
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M.5 14.5a.5.5 0 0 1-.354-.854l13-13a.5.5 0 0 1 .708.708l-13 13A.5.5 0 0 1 .5 14.5zM11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM8 3.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM5 .5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1A.5.5 0 0 1 5 .5zM.5 11.5a.5.5 0 0 1-.354-.854l1-1a.5.5 0 0 1 .708.708l-1 1a.5.5 0 0 1-.354.146zM3.5 8.5a.5.5 0 0 1-.354-.854l1-1a.5.5 0 0 1 .708.708l-1 1a.5.5 0 0 1-.354.146z"/>
-            </svg>
-          </Button>
-        </Tooltip>
+          <Tooltip content={undoStore.undoLabel ? `Undo: ${undoStore.undoLabel}` : 'Undo (Ctrl+Z)'}>
+            <Button variant="ghost" size="sm" onclick={() => undoStore.undo()} disabled={!undoStore.canUndo} aria-label="Undo">
+              <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm0 1a6 6 0 100 12A6 6 0 008 2z"/>
+                <path d="M5.354 7.354a.5.5 0 010-.708l2-2a.5.5 0 01.708.708L6.707 6.7H10a2.5 2.5 0 010 5H8.5a.5.5 0 010-1H10a1.5 1.5 0 000-3H6.707l1.355 1.346a.5.5 0 11-.708.708l-2-2z"/>
+              </svg>
+            </Button>
+          </Tooltip>
 
-        <Tooltip content="Spatial geoprocessing (buffer, clip, intersect…)">
-          <Button
-            variant="ghost"
-            size="sm"
-            class={showGeoprocessing ? 'bg-slate-700 text-white' : ''}
-            onclick={() => (showGeoprocessing = !showGeoprocessing)}
-          >
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.5 7.5a.5.5 0 010 1H5.707l2.147 2.146a.5.5 0 01-.708.708l-3-3a.5.5 0 010-.708l3-3a.5.5 0 11.708.708L5.707 7.5H11.5z"/>
-            </svg>
-          </Button>
-        </Tooltip>
+          <Tooltip content={undoStore.redoLabel ? `Redo: ${undoStore.redoLabel}` : 'Redo (Ctrl+Shift+Z)'}>
+            <Button variant="ghost" size="sm" onclick={() => undoStore.redo()} disabled={!undoStore.canRedo} aria-label="Redo">
+              <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2z"/>
+                <path d="M10.646 7.354a.5.5 0 000-.708l-2-2a.5.5 0 00-.708.708L9.293 6.7H6a2.5 2.5 0 000 5h1.5a.5.5 0 000-1H6a1.5 1.5 0 010-3h3.293L7.938 9.054a.5.5 0 10.708.708l2-2z"/>
+              </svg>
+            </Button>
+          </Tooltip>
 
-        <Tooltip content="Share map">
-          <Button
-            variant="ghost"
-            size="sm"
-            onclick={() => (showShareDialog = true)}
-          >
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M13.5 1a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM11 2.5a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zm-5.5 3a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM3 7a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zm9 4.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm-2.5 1.5a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0z"/>
-              <path d="M7.5 6.35l4-2.3.5.87-4 2.3-.5-.87zm0 4.3l4 2.3.5-.87-4-2.3-.5.87z"/>
-            </svg>
-          </Button>
-        </Tooltip>
+          <div class="flex-1"></div>
 
-        <Tooltip content="Map activity log">
-          <Button
-            variant="ghost"
-            size="sm"
-            class={showActivity ? 'bg-slate-700 text-white' : ''}
-            onclick={() => (showActivity = !showActivity)}
-          >
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm14.5 5.5h-13v1h13v-1zM2 4.5h12v1H2v-1zm0 4h8v1H2v-1z"/>
-            </svg>
-          </Button>
-        </Tooltip>
+          <Tooltip content="Share map">
+            <Button
+              variant="ghost"
+              size="sm"
+              onclick={() => (showShareDialog = true)}
+            >
+              <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M13.5 1a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM11 2.5a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zm-5.5 3a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM3 7a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zm9 4.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm-2.5 1.5a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0z"/>
+                <path d="M7.5 6.35l4-2.3.5.87-4 2.3-.5-.87zm0 4.3l4 2.3.5-.87-4-2.3-.5.87z"/>
+              </svg>
+            </Button>
+          </Tooltip>
+        {/if}
       {/if}
     </div>
     {/if}
@@ -429,17 +403,9 @@
         onfeaturedrawn={handleFeatureDrawn}
         {annotationPins}
         {annotationRegions}
-        {...(showMeasure ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
+        {...(measureActive ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
         {...(annotationRegionMode ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { annotationRegionGeometry = g; annotationRegionMode = false; } } : {})}
       />
-
-      <!-- Measurement panel overlay -->
-      {#if showMeasure && !effectiveReadonly}
-        <MeasurementPanel
-          result={measureResult}
-          onclear={() => { showMeasure = false; measureResult = null; }}
-        />
-      {/if}
 
       <!-- Map overlay controls — hidden in embed mode for a truly bare canvas -->
       {#if !embed}
@@ -478,48 +444,128 @@
       : []}
   />
 
-  <!-- Comment panel (collapsible, right side) -->
-  {#if showComments && !effectiveReadonly}
-    <div class="w-72 shrink-0 overflow-hidden flex flex-col">
-      <CommentPanel {mapId} readonly={effectiveReadonly} {...(userId !== undefined ? { userId } : {})} />
-    </div>
-  {/if}
+  <!-- Snippet definitions for SidePanel content -->
+  {#snippet annotationsContent()}
+    <AnnotationPanel
+      {mapId}
+      embedded
+      {...(userId !== undefined ? { userId } : {})}
+      onannotationchange={() => { annotationRegionGeometry = undefined; loadAnnotationPins(); }}
+      onrequestregion={() => { annotationRegionMode = true; annotationRegionGeometry = undefined; selectionStore.setActiveTool('polygon'); }}
+      regionGeometry={annotationRegionGeometry}
+      oncountchange={(a, c) => { annotationCount = a; commentCount = c; }}
+    />
+  {/snippet}
 
-  <!-- Annotation panel (collapsible, right side) -->
-  {#if showAnnotations && !effectiveReadonly}
-    <div class="w-72 shrink-0 overflow-hidden flex flex-col">
-      <AnnotationPanel
-        {mapId}
-        {...(userId !== undefined ? { userId } : {})}
-        onannotationchange={() => { annotationRegionGeometry = undefined; loadAnnotationPins(); }}
-        onrequestregion={() => { annotationRegionMode = true; annotationRegionGeometry = undefined; selectionStore.setActiveTool('polygon'); }}
-        regionGeometry={annotationRegionGeometry}
-      />
-    </div>
-  {/if}
+  {#snippet analysisContent()}
+    <div class="flex flex-col h-full">
+      <!-- Sub-tab switcher -->
+      <div class="flex border-b border-white/10 shrink-0">
+        <button
+          class="flex-1 py-2 text-xs font-medium text-center transition-colors
+                 {analysisTab === 'measure'
+                   ? 'text-blue-400 border-b-2 border-blue-400'
+                   : 'text-slate-400 hover:text-slate-200'}"
+          onclick={() => { analysisTab = 'measure'; }}
+        >
+          Measure
+        </button>
+        <button
+          class="flex-1 py-2 text-xs font-medium text-center transition-colors
+                 {analysisTab === 'process'
+                   ? 'text-blue-400 border-b-2 border-blue-400'
+                   : 'text-slate-400 hover:text-slate-200'}"
+          onclick={() => { analysisTab = 'process'; }}
+        >
+          Process
+        </button>
+      </div>
 
-  <!-- Geoprocessing panel (collapsible, right side) -->
-  {#if showGeoprocessing && !effectiveReadonly}
-    <div class="w-72 shrink-0 overflow-hidden flex flex-col">
-      <GeoprocessingPanel
-        {mapId}
-        layers={layersStore.all}
-        onlayercreated={async (layerId) => {
-          // Refresh layer list first so the GeoJSONSource is rendered before
-          // loadLayerData attempts map.getSource(). Order matters here.
-          const newLayers = await trpc.layers.list.query({ mapId });
-          layersStore.set(newLayers);
-          await loadLayerData(layerId);
-        }}
-      />
+      {#if analysisTab === 'measure'}
+        <div class="p-4 flex-1">
+          {#if measureResult === null}
+            <div class="flex flex-col items-center justify-center py-8 text-center">
+              <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M.5 14.5a.5.5 0 0 1-.354-.854l13-13a.5.5 0 0 1 .708.708l-13 13A.5.5 0 0 1 .5 14.5zM11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM8 3.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM5 .5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1A.5.5 0 0 1 5 .5z"/>
+              </svg>
+              <p class="text-sm text-slate-400">Draw a line to measure distance, or a polygon for area.</p>
+            </div>
+          {:else if measureResult.type === 'distance'}
+            <div class="space-y-2">
+              <span class="text-slate-400 text-xs uppercase tracking-wide">Distance</span>
+              <p class="text-2xl font-mono font-semibold text-cyan-300 tabular-nums">
+                {formatDistance(measureResult.distanceKm, distUnit)}
+              </p>
+              <div class="flex items-center gap-2">
+                <select bind:value={distUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white">
+                  {#each DISTANCE_UNITS as u (u.value)}
+                    <option value={u.value}>{u.label}</option>
+                  {/each}
+                </select>
+                <span class="text-xs text-slate-500">{measureResult.vertexCount} vertices</span>
+              </div>
+            </div>
+          {:else}
+            <div class="space-y-2">
+              <span class="text-slate-400 text-xs uppercase tracking-wide">Area</span>
+              <p class="text-2xl font-mono font-semibold text-cyan-300 tabular-nums">
+                {formatArea(measureResult.areaM2, areaUnit)}
+              </p>
+              <select bind:value={areaUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white">
+                {#each AREA_UNITS as u (u.value)}
+                  <option value={u.value}>{u.label}</option>
+                {/each}
+              </select>
+              <div class="mt-2">
+                <span class="text-slate-400 text-xs uppercase tracking-wide">Perimeter</span>
+                <p class="text-lg font-mono font-semibold text-emerald-300 tabular-nums">
+                  {formatDistance(measureResult.perimeterKm, periUnit)}
+                </p>
+                <select bind:value={periUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white">
+                  {#each DISTANCE_UNITS as u (u.value)}
+                    <option value={u.value}>{u.label}</option>
+                  {/each}
+                </select>
+              </div>
+              <span class="text-xs text-slate-500">{measureResult.vertexCount} vertices</span>
+            </div>
+          {/if}
+          {#if measureResult !== null}
+            <button onclick={() => { measureResult = null; }} class="text-xs text-slate-400 hover:text-white transition-colors mt-3">
+              Clear measurement
+            </button>
+          {/if}
+        </div>
+      {:else}
+        <GeoprocessingPanel
+          {mapId}
+          embedded
+          layers={layersStore.all}
+          onlayercreated={async (layerId) => {
+            const newLayers = await trpc.layers.list.query({ mapId });
+            layersStore.set(newLayers);
+            await loadLayerData(layerId);
+          }}
+        />
+      {/if}
     </div>
-  {/if}
+  {/snippet}
 
-  <!-- Activity feed panel (collapsible, right-most) -->
-  {#if showActivity && !effectiveReadonly}
-    <div class="w-56 shrink-0 overflow-hidden flex flex-col">
-      <ActivityFeed {mapId} />
-    </div>
+  {#snippet activityContent()}
+    <ActivityFeed {mapId} embedded oncountchange={(n) => { eventCount = n; }} />
+  {/snippet}
+
+  <!-- Right: Side panel (hidden in design mode and embed) -->
+  {#if !designMode && !embed && !effectiveReadonly}
+    <SidePanel
+      sections={[
+        { id: 'annotations', label: 'Annotations', icon: 'M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z', count: annotationCount + commentCount, content: annotationsContent },
+        { id: 'analysis', label: 'Analysis', icon: 'M.5 14.5a.5.5 0 0 1-.354-.854l13-13a.5.5 0 0 1 .708.708l-13 13A.5.5 0 0 1 .5 14.5zM11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM8 3.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM5 .5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1A.5.5 0 0 1 5 .5z', content: analysisContent },
+        { id: 'activity', label: 'Activity', icon: 'M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm14.5 5.5h-13v1h13v-1zM2 4.5h12v1H2v-1zm0 4h8v1H2v-1z', count: eventCount, content: activityContent },
+      ]}
+      {activeSection}
+      onchange={(s) => { activeSection = s; }}
+    />
   {/if}
 </div>
 
