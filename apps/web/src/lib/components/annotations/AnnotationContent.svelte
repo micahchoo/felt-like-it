@@ -46,7 +46,7 @@
     {/if}
   </div>
 
-  {#each getBodies(content) as body}
+  {#each getBodies(content) as body (body.type)}
     <!-- Content area — one branch per discriminated union variant -->
     {#if body.type === 'text'}
       <!-- Plain text note: whitespace preserved, no HTML interpretation -->

@@ -100,7 +100,7 @@ describe('annotationService.list', () => {
 
     const result = await annotationService.list({ userId: USER_ID, mapId: MAP_ID });
     expect(result).toHaveLength(1);
-    expect(result[0]!.id).toBe(OBJ_ID);
+    expect(result[0]?.id).toBe(OBJ_ID);
   });
 });
 
@@ -185,7 +185,7 @@ describe('annotationsRouter (tRPC adapter)', () => {
 
     const result = await makeCaller().list({ mapId: MAP_ID });
     expect(result).toHaveLength(1);
-    expect(result[0]!.id).toBe(OBJ_ID);
+    expect(result[0]?.id).toBe(OBJ_ID);
   });
 });
 
