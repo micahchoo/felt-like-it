@@ -58,6 +58,47 @@ describe('AnchorSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('validates a measurement anchor with LineString geometry', () => {
+    const result = AnchorSchema.safeParse({
+      type: 'measurement',
+      geometry: { type: 'LineString', coordinates: [[-122.4, 37.8], [-122.5, 37.9]] },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('validates a measurement anchor with Polygon geometry', () => {
+    const ring = [[-122, 37], [-122, 38], [-121, 38], [-121, 37], [-122, 37]];
+    const result = AnchorSchema.safeParse({
+      type: 'measurement',
+      geometry: { type: 'Polygon', coordinates: [ring] },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('validates a measurement anchor with Point geometry', () => {
+    const result = AnchorSchema.safeParse({
+      type: 'measurement',
+      geometry: { type: 'Point', coordinates: [-122.4, 37.8] },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a measurement anchor with invalid geometry type (MultiPoint)', () => {
+    const result = AnchorSchema.safeParse({
+      type: 'measurement',
+      geometry: { type: 'MultiPoint', coordinates: [[-122.4, 37.8], [-122.5, 37.9]] },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a LineString with fewer than 2 coordinates', () => {
+    const result = AnchorSchema.safeParse({
+      type: 'measurement',
+      geometry: { type: 'LineString', coordinates: [[-122.4, 37.8]] },
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('AnnotationObjectContentSchema', () => {

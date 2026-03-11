@@ -37,6 +37,12 @@ export const PolygonGeometrySchema = z.object({
   coordinates: z.array(LinearRingSchema).min(1),
 });
 
+/** GeoJSON LineString for measurement geometries. */
+export const LineStringGeometrySchema = z.object({
+  type: z.literal('LineString'),
+  coordinates: z.array(CoordinateSchema).min(2),
+});
+
 /** Bounding box: [sw_lng, sw_lat, ne_lng, ne_lat]. */
 const BoundsSchema = z.tuple([
   z.number().min(-180).max(180),
@@ -65,6 +71,10 @@ export const AnchorSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('viewport'),
     bounds: BoundsSchema.optional(),
+  }),
+  z.object({
+    type: z.literal('measurement'),
+    geometry: z.union([PointGeometrySchema, PolygonGeometrySchema, LineStringGeometrySchema]),
   }),
 ]);
 
