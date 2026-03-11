@@ -79,9 +79,15 @@
      * Region-anchored annotation polygons rendered as a dedicated fill layer.
      */
     annotationRegions?: AnnotationRegionCollection;
+    /** Feature IDs that have annotations — used for highlight sublayers and badge indicators. */
+    annotatedFeatures?: Map<string, { layerId: string; count: number }>;
+    /** Called when a feature annotation badge is clicked. */
+    onbadgeclick?: (_featureId: string) => void;
+    /** Measurement annotation geometries rendered as dashed lines/fills. */
+    measurementAnnotations?: { type: 'FeatureCollection'; features: { type: 'Feature'; geometry: unknown; properties: Record<string, unknown> }[] };
   }
 
-  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions }: Props = $props();
+  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions, annotatedFeatures, onbadgeclick, measurementAnnotations }: Props = $props();
 
   let mapInstance = $state<MapLibreMap | undefined>(undefined);
 
@@ -345,6 +351,42 @@
   // No explicit $type filter needed. This means drawn Points are always
   // visible regardless of a layer's declared type (e.g. a 'polygon' layer
   // that has had points drawn into it still shows circles).
+
+  // ── Annotated feature highlight + badge computations ────────────────────
+  import { centroid } from '@turf/turf';
+
+  // Group annotated feature IDs by layerId for highlight filters
+  const annotatedByLayer = $derived.by(() => {
+    const map = new Map<string, string[]>();
+    if (!annotatedFeatures?.size) return map;
+    for (const [featureId, info] of annotatedFeatures) {
+      const list = map.get(info.layerId) ?? [];
+      list.push(featureId);
+      map.set(info.layerId, list);
+    }
+    return map;
+  });
+
+  // Build badge indicator GeoJSON from annotated features + actual geometries
+  const badgeGeoJson = $derived.by(() => {
+    const features: GeoJSON.Feature[] = [];
+    if (!annotatedFeatures?.size) return { type: 'FeatureCollection' as const, features };
+    for (const [featureId, info] of annotatedFeatures) {
+      const ld = layerData[info.layerId];
+      if (!ld) continue;
+      const feat = ld.features.find((f) => String(f.id ?? '') === featureId);
+      if (!feat) continue;
+      try {
+        const c = centroid(feat as GeoJSON.Feature);
+        features.push({
+          type: 'Feature',
+          geometry: c.geometry,
+          properties: { count: info.count, featureId },
+        });
+      } catch { /* skip features centroid can't handle */ }
+    }
+    return { type: 'FeatureCollection' as const, features };
+  });
 </script>
 
 <div class="relative w-full h-full">
@@ -474,6 +516,18 @@
                 paint={getSymbolPaint(layer)}
               />
             {/if}
+            {@const highlightIds = annotatedByLayer.get(layer.id)}
+            {#if highlightIds?.length}
+              <LineLayer
+                id={`layer-${layer.id}-annotation-highlight`}
+                paint={{
+                  'line-color': '#f59e0b',
+                  'line-width': 3,
+                  'line-opacity': 0.6,
+                }}
+                filter={['in', ['to-string', ['id']], ['literal', highlightIds]]}
+              />
+            {/if}
           </GeoJSONSource>
         {/if}
       {/if}
@@ -586,6 +640,84 @@
             'line-color': '#3b82f6',
             'line-width': 2,
             'line-opacity': 0.6,
+          }}
+        />
+      </GeoJSONSource>
+    {/if}
+
+    <!-- Feature annotation badge indicators -->
+    {#if badgeGeoJson.features.length > 0}
+      <GeoJSONSource id="annotation-badges" data={badgeGeoJson}>
+        <CircleLayer
+          id="layer-annotation-badges"
+          paint={{
+            'circle-radius': 8,
+            'circle-color': '#f59e0b',
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff',
+          }}
+          onclick={(e) => {
+            const featureId = e.features?.[0]?.properties?.['featureId'];
+            if (featureId) onbadgeclick?.(String(featureId));
+          }}
+        />
+        <SymbolLayer
+          id="layer-annotation-badge-labels"
+          layout={{
+            'text-field': ['to-string', ['get', 'count']],
+            'text-size': 10,
+            'text-allow-overlap': true,
+          }}
+          paint={{
+            'text-color': '#ffffff',
+          }}
+        />
+      </GeoJSONSource>
+    {/if}
+
+    <!-- Measurement annotation geometries (dashed lines / semi-transparent fills) -->
+    {#if measurementAnnotations && measurementAnnotations.features.length > 0}
+      <GeoJSONSource id="measurement-annotations" data={measurementAnnotations as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}>
+        <LineLayer
+          id="measurement-annotations-line"
+          filter={['==', '$type', 'LineString']}
+          paint={{
+            'line-color': '#f59e0b',
+            'line-width': 2,
+            'line-dasharray': [4, 2],
+            'line-opacity': 0.8,
+          }}
+        />
+        <FillLayer
+          id="measurement-annotations-fill"
+          filter={['==', '$type', 'Polygon']}
+          paint={{
+            'fill-color': '#f59e0b',
+            'fill-opacity': 0.1,
+          }}
+        />
+        <LineLayer
+          id="measurement-annotations-outline"
+          filter={['==', '$type', 'Polygon']}
+          paint={{
+            'line-color': '#f59e0b',
+            'line-width': 2,
+            'line-dasharray': [4, 2],
+            'line-opacity': 0.8,
+          }}
+        />
+        <SymbolLayer
+          id="measurement-annotations-label"
+          layout={{
+            'text-field': ['get', 'label'],
+            'text-size': 12,
+            'text-offset': [0, -1.5],
+            'text-allow-overlap': false,
+          }}
+          paint={{
+            'text-color': '#f59e0b',
+            'text-halo-color': '#1e293b',
+            'text-halo-width': 1.5,
           }}
         />
       </GeoJSONSource>

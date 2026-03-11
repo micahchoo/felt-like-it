@@ -527,6 +527,8 @@
         {annotationRegions}
         {...(measureActive ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
         {...(annotationRegionMode ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { annotationRegionGeometry = g; annotationRegionMode = false; } } : {})}
+        annotatedFeatures={annotatedFeaturesIndex}
+        measurementAnnotations={measurementAnnotationData}
       />
 
       {#if featurePickMode}
