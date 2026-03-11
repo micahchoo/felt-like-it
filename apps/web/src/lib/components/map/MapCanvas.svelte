@@ -13,8 +13,8 @@
   import FeaturePopup from './FeaturePopup.svelte';
   import AnnotationContent from '$lib/components/annotations/AnnotationContent.svelte';
   import DeckGLOverlay from './DeckGLOverlay.svelte';
-  import { AnnotationContentSchema } from '@felt-like-it/shared-types';
-  import type { AnnotationContent as AnnotationContentType } from '@felt-like-it/shared-types';
+  import { AnnotationObjectContentSchema } from '@felt-like-it/shared-types';
+  import type { AnnotationObjectContent } from '@felt-like-it/shared-types';
   import type { HeatmapLayerDef } from './DeckGLOverlay.svelte';
   import type { LayerStyle } from '@felt-like-it/shared-types';
 
@@ -304,7 +304,7 @@
 
   /** State for the annotation popup — set when an annotation pin is clicked. */
   interface SelectedAnnotationPopup {
-    content: AnnotationContentType;
+    content: AnnotationObjectContent;
     authorName: string;
     createdAt: string;
     lngLat: { lng: number; lat: number };
@@ -495,10 +495,10 @@
             const props = f.properties as AnnotationPinProperties | null;
             if (!props?.contentJson) return;
 
-            let parsed: AnnotationContentType;
+            let parsed: AnnotationObjectContent;
             try {
               const raw: unknown = JSON.parse(props.contentJson);
-              const result = AnnotationContentSchema.safeParse(raw);
+              const result = AnnotationObjectContentSchema.safeParse(raw);
               // Malformed annotation content (schema mismatch or invalid JSON) silently
               // closes the popup — the pin is still visible but unclickable until refreshed.
               if (!result.success) return;
