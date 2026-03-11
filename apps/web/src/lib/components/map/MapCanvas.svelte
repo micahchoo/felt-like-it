@@ -354,6 +354,7 @@
 
   // ── Annotated feature highlight + badge computations ────────────────────
   import { centroid } from '@turf/turf';
+  import type { Feature, Point } from 'geojson';
 
   // Group annotated feature IDs by layerId for highlight filters
   const annotatedByLayer = $derived.by(() => {
@@ -369,7 +370,7 @@
 
   // Build badge indicator GeoJSON from annotated features + actual geometries
   const badgeGeoJson = $derived.by(() => {
-    const features: GeoJSON.Feature[] = [];
+    const features: Feature<Point>[] = [];
     if (!annotatedFeatures?.size) return { type: 'FeatureCollection' as const, features };
     for (const [featureId, info] of annotatedFeatures) {
       const ld = layerData[info.layerId];
@@ -377,7 +378,7 @@
       const feat = ld.features.find((f) => String(f.id ?? '') === featureId);
       if (!feat) continue;
       try {
-        const c = centroid(feat as GeoJSON.Feature);
+        const c = centroid(feat as Feature);
         features.push({
           type: 'Feature',
           geometry: c.geometry,
