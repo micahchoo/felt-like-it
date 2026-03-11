@@ -10,9 +10,10 @@
     layers: Layer[];
     /** Called with the new layer id after a successful operation. */
     onlayercreated: (_layerId: string) => void;
+    embedded?: boolean;
   }
 
-  let { mapId, layers, onlayercreated }: Props = $props();
+  let { mapId, layers, onlayercreated, embedded }: Props = $props();
 
   // Op type is constrained to the discriminated union keys — no stringly-typed widening
   type OpType = GeoprocessingOp['type'];
@@ -134,12 +135,22 @@
   }
 </script>
 
-<div class="flex flex-col h-full bg-slate-800 border-l border-white/10">
+<div class="flex flex-col h-full {embedded !== true ? 'bg-slate-800 border-l border-white/10' : ''}">
+  {#if embedded !== true}
   <!-- Header -->
   <div class="px-3 py-2 border-b border-white/10 shrink-0">
     <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Geoprocessing</span>
   </div>
+  {/if}
 
+  {#if layers.length === 0}
+    <div class="flex flex-col items-center justify-center py-12 px-4 text-center flex-1">
+      <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.5 7.5a.5.5 0 010 1H5.707l2.147 2.146a.5.5 0 01-.708.708l-3-3a.5.5 0 010-.708l3-3a.5.5 0 11.708.708L5.707 7.5H11.5z"/>
+      </svg>
+      <p class="text-sm text-slate-400">Add a layer with features first, then run spatial operations here.</p>
+    </div>
+  {:else}
   <!-- Form -->
   <form onsubmit={handleRun} class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
 
@@ -296,4 +307,5 @@
       Run
     </Button>
   </form>
+  {/if}
 </div>

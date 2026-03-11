@@ -67,6 +67,10 @@
     {/if}
   </div>
 
+  {#if activeFilters().length === 0}
+    <p class="text-xs text-slate-400 text-center py-3 px-4">Add filters to show only features matching specific attribute values.</p>
+  {/if}
+
   <!-- Active filter chips -->
   {#if activeFilters().length > 0}
     <ul class="flex flex-col gap-1">

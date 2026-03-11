@@ -3,6 +3,8 @@
 
   interface Props {
     mapId: string;
+    embedded?: boolean;
+    oncountchange?: (count: number) => void;
   }
 
   /** Shape returned by events.list — mirrors MapEventRow without a server import. */
@@ -15,7 +17,7 @@
     createdAt: Date;
   }
 
-  let { mapId }: Props = $props();
+  let { mapId, embedded, oncountchange }: Props = $props();
 
   let events = $state<EventEntry[]>([]);
   let loading = $state(true);
@@ -29,6 +31,7 @@
       .then((rows) => {
         events = rows as EventEntry[];
         loading = false;
+        oncountchange?.(rows.length);
       })
       .catch(() => {
         error = 'Could not load activity.';
@@ -81,10 +84,12 @@
   }
 </script>
 
-<div class="flex flex-col h-full bg-slate-800 border-l border-white/10">
+<div class="flex flex-col h-full {embedded !== true ? 'bg-slate-800 border-l border-white/10' : ''}">
+  {#if embedded !== true}
   <div class="px-3 py-2 border-b border-white/10 shrink-0">
     <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Activity</span>
   </div>
+  {/if}
 
   <div class="flex-1 overflow-y-auto">
     {#if loading}
@@ -92,7 +97,12 @@
     {:else if error}
       <div class="px-3 py-2 text-red-400 text-xs">{error}</div>
     {:else if events.length === 0}
-      <div class="flex items-center justify-center h-16 text-slate-500 text-xs">No activity yet.</div>
+      <div class="flex flex-col items-center justify-center py-12 px-4 text-center">
+        <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm14.5 5.5h-13v1h13v-1zM2 4.5h12v1H2v-1zm0 4h8v1H2v-1z"/>
+        </svg>
+        <p class="text-sm text-slate-400">Map activity will appear here as you and collaborators make changes.</p>
+      </div>
     {:else}
       <ul class="divide-y divide-white/5">
         {#each events as event (event.id)}

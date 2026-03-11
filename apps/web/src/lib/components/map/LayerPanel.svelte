@@ -93,9 +93,12 @@
   <!-- Layer list -->
   <div class="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-1" role="list">
     {#if layersStore.all.length === 0}
-      <p class="text-xs text-slate-400 text-center py-6 px-3">
-        No layers yet. Upload data or draw to create your first layer.
-      </p>
+      <div class="flex flex-col items-center justify-center py-12 px-4 text-center">
+        <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 1a.5.5 0 01.5.5v5H14a.5.5 0 010 1H8.5v5a.5.5 0 01-1 0v-5H2a.5.5 0 010-1h5.5v-5A.5.5 0 018 1z"/>
+        </svg>
+        <p class="text-sm text-slate-400">Create a layer to start adding features to your map.</p>
+      </div>
     {/if}
 
     {#each layersStore.all as layer, index (layer.id)}

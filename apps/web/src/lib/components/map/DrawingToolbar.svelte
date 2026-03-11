@@ -212,12 +212,13 @@
   aria-label="Drawing tools"
 >
   {#each tools as tool (tool.id)}
-    <Tooltip content={tool.label} position="right">
+    {@const noLayer = !layersStore.active && !onmeasured && !onregiondrawn}
+    <Tooltip content={noLayer ? 'Select a layer first to start drawing' : tool.label} position="right">
       <button
         onclick={() => setTool(tool.id)}
-        disabled={!drawReady}
+        disabled={!drawReady || noLayer}
         class="h-9 w-9 rounded-md flex items-center justify-center text-base transition-colors
-               {!drawReady
+               {!drawReady || noLayer
                  ? 'opacity-50 cursor-not-allowed text-slate-500'
                  : selectionStore.activeTool === tool.id
                    ? 'bg-blue-600 text-white'

@@ -16,9 +16,10 @@
     onrequestregion?: () => void;
     /** Polygon geometry drawn on the map, passed back by the parent. */
     regionGeometry?: { type: 'Polygon'; coordinates: number[][][] } | undefined;
+    embedded?: boolean;
   }
 
-  let { mapId, userId, onannotationchange, onrequestregion, regionGeometry = undefined }: Props = $props();
+  let { mapId, userId, onannotationchange, onrequestregion, regionGeometry = undefined, embedded }: Props = $props();
 
   // ── Annotation list ────────────────────────────────────────────────────────
 
@@ -352,7 +353,8 @@
   }
 </script>
 
-<div class="flex flex-col h-full bg-slate-800 border-l border-white/10">
+<div class="flex flex-col h-full {embedded !== true ? 'bg-slate-800 border-l border-white/10' : ''}">
+  {#if embedded !== true}
   <!-- Header -->
   <div class="px-3 py-2 border-b border-white/10 shrink-0 flex items-center justify-between">
     <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Annotations</span>
@@ -364,6 +366,18 @@
       {showForm ? 'Cancel' : '+ Add'}
     </Button>
   </div>
+  {:else}
+  <!-- Embedded: just the add button, right-aligned -->
+  <div class="px-3 py-1 shrink-0 flex justify-end">
+    <Button
+      variant="ghost"
+      size="sm"
+      onclick={() => { showForm = !showForm; createError = null; }}
+    >
+      {showForm ? 'Cancel' : '+ Add'}
+    </Button>
+  </div>
+  {/if}
 
   <!-- Create form (collapsible) -->
   {#if showForm}
