@@ -57,5 +57,10 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ['maplibre-gl'],
+    esbuildOptions: {
+      // Match build.target for dev mode — prevents __publicField polyfill helpers
+      // that are undefined when deck.gl/MapLibre code runs cross-chunk.
+      target: 'es2022',
+    },
   },
 });

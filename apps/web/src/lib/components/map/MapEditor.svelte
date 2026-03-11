@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { trpc } from '$lib/utils/trpc.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { mapStore } from '$lib/stores/map.svelte.js';
@@ -68,7 +69,10 @@
 
   // DOM element wrapping the map canvas + legend overlay — used for high-res PNG export
   let mapAreaEl = $state<HTMLDivElement | undefined>(undefined);
-  $effect(() => { mapStore.setMapContainerEl(mapAreaEl); });
+  $effect(() => {
+    mapStore.setMapContainerEl(mapAreaEl);
+    return () => { mapStore.setMapContainerEl(undefined); };
+  });
 
   // GeoJSON data cache per layer
   let layerData = $state<Record<string, { type: 'FeatureCollection'; features: GeoJSONFeature[] }>>({});
@@ -113,15 +117,18 @@
     }
   }
 
-  $effect(() => { loadAnnotationPins(); });
+  $effect(() => { untrack(() => loadAnnotationPins()); });
 
-  // Initialize layers
+  // Initialize layers — untrack the store write to prevent reading _activeLayerId
+  // inside set() from becoming a tracked dependency (causes effect_update_depth_exceeded).
   $effect(() => {
-    layersStore.set(initialLayers);
-    // Load GeoJSON for all initial layers
-    for (const layer of initialLayers) {
-      loadLayerData(layer.id);
-    }
+    const layers = initialLayers; // tracked: re-runs if prop changes (SPA nav)
+    untrack(() => {
+      layersStore.set(layers);
+      for (const layer of layers) {
+        loadLayerData(layer.id);
+      }
+    });
   });
 
   async function loadLayerData(layerId: string) {

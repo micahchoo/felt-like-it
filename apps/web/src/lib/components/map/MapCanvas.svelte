@@ -77,7 +77,12 @@
   let firstLabelLayerId = $state<string | undefined>(undefined);
   $effect(() => {
     if (!mapInstance) { firstLabelLayerId = undefined; return; }
-    firstLabelLayerId = mapInstance.getStyle()?.layers.find((l) => l.type === 'symbol')?.id;
+    function updateFirstLabel() {
+      firstLabelLayerId = mapInstance!.getStyle()?.layers.find((l) => l.type === 'symbol')?.id;
+    }
+    updateFirstLabel();
+    mapInstance.on('style.load', updateFirstLabel);
+    return () => { mapInstance!.off('style.load', updateFirstLabel); };
   });
 
   /**
@@ -162,10 +167,11 @@
     // Resolve FSL zoom interpolators (e.g. { linear: [[10,2],[16,8]] }) → MapLibre expressions
     const paint = resolvePaintInterpolators(rawPaint);
 
-    // Only return paint properties relevant to this layer type
+    // Only return paint properties relevant to this layer type — skip null/undefined
+    // values that can leak from JSONB storage and crash MapLibre ("Expected number, found null").
     const filtered: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(paint)) {
-      if (key.startsWith(paintType + '-')) {
+      if (key.startsWith(paintType + '-') && value !== null && value !== undefined) {
         filtered[key] = value;
       }
     }

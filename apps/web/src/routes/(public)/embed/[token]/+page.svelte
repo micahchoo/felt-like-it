@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { mapStore } from '$lib/stores/map.svelte.js';
   import MapEditor from '$lib/components/map/MapEditor.svelte';
   import type { PageData } from './$types';
@@ -6,7 +7,7 @@
 
   let { data }: { data: PageData } = $props();
 
-  $effect(() => {
+  onMount(() => {
     mapStore.loadViewport(data.map.viewport);
     mapStore.setBasemap(data.map.basemap as Parameters<typeof mapStore.setBasemap>[0]);
   });

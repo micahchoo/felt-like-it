@@ -590,7 +590,13 @@
         type="submit"
         size="sm"
         loading={creating || uploading}
-        disabled={creating || uploading}
+        disabled={creating || uploading
+          || (formType === 'text' && !formText.trim())
+          || (formType === 'emoji' && !formEmoji.trim())
+          || (formType === 'gif' && !formGifUrl.trim())
+          || (formType === 'image' && !formImageUrl && !selectedImageFile)
+          || (formType === 'link' && !formLinkUrl.trim())
+          || (formType === 'iiif' && !formManifestUrl.trim())}
       >
         {#if uploading}Uploading…{:else}Save annotation{/if}
       </Button>
