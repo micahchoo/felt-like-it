@@ -28,7 +28,9 @@
   import type { SectionId } from './SidePanel.svelte';
   import type { AnnotationPinCollection, AnnotationRegionCollection } from '$lib/components/map/MapCanvas.svelte';
   import type { MeasurementResult, DistanceUnit, AreaUnit } from '@felt-like-it/geo-engine';
-  import { DISTANCE_UNITS, AREA_UNITS, formatDistance, formatArea } from '@felt-like-it/geo-engine';
+  import { DISTANCE_UNITS, AREA_UNITS, formatDistance, formatArea, measureLine, measurePolygon } from '@felt-like-it/geo-engine';
+  import DrawActionRow from './DrawActionRow.svelte';
+  import type { Geometry } from 'geojson';
 
   /**
    * TYPE_DEBT: features.list returns geometry as Record<string, unknown> from raw SQL;
@@ -119,6 +121,35 @@
   // mode: the next feature click on the map is captured as the annotation target.
   let featurePickMode = $state(false);
   let pickedFeature = $state<{ featureId: string; layerId: string } | undefined>();
+
+  // ── Active feature (post-draw / selection action row) ─────────────────────
+  let activeFeature = $state<{
+    featureId: string;
+    layerId: string;
+    geometry: Geometry;
+  } | null>(null);
+
+  // Track selection → activeFeature
+  $effect(() => {
+    const feat = selectionStore.selectedFeature;
+    const lid = selectionStore.selectedLayerId;
+    if (feat && lid) {
+      const geom = feat.geometry as Geometry | undefined;
+      const fid = String(feat.id ?? '');
+      if (geom && fid) {
+        activeFeature = { featureId: fid, layerId: lid, geometry: geom };
+      }
+    } else {
+      activeFeature = null;
+    }
+  });
+
+  // Dismiss on drawing tool switch
+  $effect(() => {
+    if (selectionStore.activeTool && selectionStore.activeTool !== 'select') {
+      activeFeature = null;
+    }
+  });
 
   $effect(() => {
     if (featurePickMode && selectionStore.selectedFeature && selectionStore.selectedLayerId) {
@@ -230,14 +261,20 @@
     activityRefreshTrigger++;
   }
 
-  async function handleFeatureDrawn(layerId: string, _feature: Record<string, unknown>) {
+  async function handleFeatureDrawn(layerId: string, _feature: Record<string, unknown> & { id?: string | undefined }) {
     await loadLayerData(layerId);
+
+    const geom = _feature['geometry'] as Geometry | undefined;
+    const fid = _feature['id'] ?? '';
+    if (geom && fid) {
+      activeFeature = { featureId: String(fid), layerId, geometry: geom };
+    }
+
     const layer = layersStore.all.find((l) => l.id === layerId);
-    const geom = _feature['geometry'] as Record<string, unknown> | undefined;
     logActivity('feature.drawn', {
       layerId,
       layerName: layer?.name ?? '',
-      geometryType: geom?.['type'] ?? '',
+      geometryType: geom?.type ?? '',
     });
   }
 
@@ -446,6 +483,31 @@
         <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-amber-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
           Click a feature to attach annotation ·
           <button class="underline ml-1" onclick={() => { featurePickMode = false; }}>Cancel</button>
+        </div>
+      {/if}
+
+      {#if activeFeature && !annotationRegionMode && !measureActive}
+        <div class="absolute bottom-16 left-1/2 -translate-x-1/2 z-40">
+          <DrawActionRow
+            onannotate={() => {
+              activeSection = 'annotations';
+              pickedFeature = activeFeature !== null ? { featureId: activeFeature.featureId, layerId: activeFeature.layerId } : undefined;
+              activeFeature = null;
+            }}
+            onmeasure={() => {
+              if (!activeFeature) return;
+              const geom = activeFeature.geometry;
+              if (geom.type === 'LineString') {
+                measureResult = measureLine(geom.coordinates as [number, number][]);
+              } else if (geom.type === 'Polygon') {
+                measureResult = measurePolygon(geom.coordinates as [number, number][][]);
+              }
+              activeSection = 'analysis';
+              analysisTab = 'measure';
+              activeFeature = null;
+            }}
+            ondismiss={() => { activeFeature = null; }}
+          />
         </div>
       {/if}
 
