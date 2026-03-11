@@ -4,8 +4,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import AnnotationContent from './AnnotationContent.svelte';
   import { mapStore } from '$lib/stores/map.svelte.js';
-  import type { Annotation, AnnotationContent as AC } from '@felt-like-it/shared-types';
-  import { AnnotationContentSchema } from '@felt-like-it/shared-types';
+  import type { AnnotationObject, AnnotationContent as AC, Anchor } from '@felt-like-it/shared-types';
 
   interface Props {
     mapId: string;
@@ -19,7 +18,7 @@
 
   // ── Annotation list ────────────────────────────────────────────────────────
 
-  let annotationList = $state<Annotation[]>([]);
+  let annotationList = $state<AnnotationObject[]>([]);
   let listLoading = $state(false);
   let listError = $state<string | null>(null);
 
@@ -110,6 +109,9 @@
   // user can adjust the numeric inputs to place the pin exactly.
   let formLng = $state(0);
   let formLat = $state(0);
+
+  // Anchor type selector
+  let formAnchorType = $state<'point' | 'viewport'>('point');
 
   $effect.pre(() => {
     if (formLng === 0 && formLat === 0) {
@@ -248,8 +250,8 @@
     createError = null;
 
     try {
-      // Image upload (if a file was selected) — happens before Zod parse so
-      // the URL is present and valid when AnnotationContentSchema.parse runs.
+      // Image upload (if a file was selected) — happens before buildContent()
+      // so the URL is present when the content object is assembled.
       if (formType === 'image' && selectedImageFile) {
         uploading = true;
         try {
@@ -259,14 +261,16 @@
         }
       }
 
-      // Client-side validation before the tRPC round-trip
       const content = buildContent();
-      AnnotationContentSchema.parse(content);
+
+      const anchor: Anchor = formAnchorType === 'viewport'
+        ? { type: 'viewport' }
+        : { type: 'point', geometry: { type: 'Point', coordinates: [formLng, formLat] } };
 
       await trpc.annotations.create.mutate({
         mapId,
-        anchor: { type: 'Point', coordinates: [formLng, formLat] },
-        content,
+        anchor,
+        content: { kind: 'single', body: content },
       });
 
       showForm = false;
@@ -292,22 +296,50 @@
   }
 
   /** Fetch the IIIF manifest NavPlace and persist it to the annotation. */
-  async function handleFetchNavPlace(annotation: Annotation) {
-    if (annotation.content.type !== 'iiif') return;
+  async function handleFetchNavPlace(annotation: AnnotationObject) {
+    if (annotation.content.kind !== 'single' || annotation.content.body.type !== 'iiif') return;
     try {
       const navPlace = await trpc.annotations.fetchIiifNavPlace.query({
-        manifestUrl: annotation.content.manifestUrl,
+        manifestUrl: annotation.content.body.manifestUrl,
       });
       if (navPlace) {
         await trpc.annotations.update.mutate({
           id: annotation.id,
-          content: { ...annotation.content, navPlace },
+          content: { kind: 'single', body: { ...annotation.content.body, navPlace } },
+          version: annotation.version,
         });
         await loadAnnotations();
         onannotationchange();
       }
     } catch {
       // Best-effort — don't block UI on NavPlace fetch failures
+    }
+  }
+
+  // ── Thread / reply state ────────────────────────────────────────────────────
+
+  let expandedAnnotationId = $state<string | null>(null);
+  let replyingTo = $state<string | null>(null);
+  let replyText = $state('');
+
+  async function handleReply(parentId: string) {
+    if (!replyText.trim()) return;
+    try {
+      const parentAnnotation = annotationList.find(a => a.id === parentId);
+      if (!parentAnnotation) return;
+      await trpc.annotations.create.mutate({
+        mapId,
+        parentId,
+        anchor: parentAnnotation.anchor,
+        content: { kind: 'single', body: { type: 'text', text: replyText.trim() } },
+      });
+      replyText = '';
+      replyingTo = null;
+      expandedAnnotationId = parentId; // keep thread open
+      await loadAnnotations();
+      onannotationchange();
+    } catch (err: unknown) {
+      listError = (err as { message?: string })?.message ?? 'Failed to post reply.';
     }
   }
 </script>
@@ -544,7 +576,21 @@
         <p class="text-xs text-slate-500 italic">NavPlace will be fetched automatically after saving.</p>
       {/if}
 
+      <!-- Anchor type selector -->
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-slate-400" for="ann-anchor-type">Anchor</label>
+        <select
+          id="ann-anchor-type"
+          bind:value={formAnchorType}
+          class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="point">Pin (Point)</option>
+          <option value="viewport">Map-level (No pin)</option>
+        </select>
+      </div>
+
       <!-- Anchor coordinates -->
+      {#if formAnchorType === 'point'}
       <div class="flex gap-2 items-end">
         <div class="flex flex-col gap-1 flex-1">
           <label class="text-xs text-slate-400 flex items-center gap-1" for="ann-lng">
@@ -581,6 +627,7 @@
           />
         </div>
       </div>
+      {/if}
 
       {#if createError}
         <p class="text-xs text-red-400">{createError}</p>
@@ -620,9 +667,80 @@
             createdAt={annotation.createdAt}
           />
 
+          {#if annotation.anchor.type === 'viewport'}
+            <span class="text-[10px] bg-amber-100/10 text-amber-400 px-1.5 py-0.5 rounded">Map-level</span>
+          {/if}
+
+          <!-- Thread controls -->
+          <div class="flex gap-2 text-xs">
+            <button
+              onclick={() => { expandedAnnotationId = expandedAnnotationId === annotation.id ? null : annotation.id; }}
+              class="text-slate-400 hover:text-slate-300"
+            >
+              {expandedAnnotationId === annotation.id ? 'Collapse' : 'Replies'}
+            </button>
+            {#if annotation.authorId === userId || userId}
+              <button
+                onclick={() => { replyingTo = replyingTo === annotation.id ? null : annotation.id; replyText = ''; }}
+                class="text-blue-400 hover:text-blue-300"
+              >
+                Reply
+              </button>
+            {/if}
+          </div>
+
+          <!-- Thread replies -->
+          {#if expandedAnnotationId === annotation.id}
+            {#await trpc.annotations.getThread.query({ rootId: annotation.id })}
+              <p class="text-xs text-slate-500 ml-3">Loading replies...</p>
+            {:then thread}
+              {#each thread.replies as reply (reply.id)}
+                <div class="ml-4 border-l-2 border-amber-200/30 pl-2 mt-1">
+                  <AnnotationContent
+                    content={reply.content}
+                    authorName={reply.authorName}
+                    createdAt={reply.createdAt}
+                  />
+                  {#if reply.authorId === userId}
+                    <button
+                      onclick={() => handleDelete(reply.id)}
+                      class="text-xs text-red-400 hover:text-red-300 mt-0.5"
+                    >
+                      Delete
+                    </button>
+                  {/if}
+                </div>
+              {/each}
+              {#if thread.replies.length === 0}
+                <p class="text-xs text-slate-500 ml-4 italic">No replies yet.</p>
+              {/if}
+            {:catch}
+              <p class="text-xs text-red-400 ml-3">Failed to load replies.</p>
+            {/await}
+          {/if}
+
+          <!-- Reply form -->
+          {#if replyingTo === annotation.id}
+            <div class="ml-4 mt-1 flex gap-1">
+              <textarea
+                bind:value={replyText}
+                placeholder="Write a reply..."
+                rows={2}
+                class="flex-1 rounded bg-slate-700 border border-white/10 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+              ></textarea>
+              <Button
+                size="sm"
+                disabled={!replyText.trim()}
+                onclick={() => handleReply(annotation.id)}
+              >
+                Send
+              </Button>
+            </div>
+          {/if}
+
           <!-- Per-annotation actions -->
           <div class="flex gap-2">
-            {#if annotation.content.type === 'iiif' && !annotation.content.navPlace && annotation.userId === userId}
+            {#if annotation.content.kind === 'single' && annotation.content.body.type === 'iiif' && !annotation.content.body.navPlace && annotation.authorId === userId}
               <button
                 onclick={() => handleFetchNavPlace(annotation)}
                 class="text-xs text-amber-400 hover:text-amber-300 underline"
@@ -630,7 +748,7 @@
                 Fetch NavPlace
               </button>
             {/if}
-            {#if annotation.userId === userId}
+            {#if annotation.authorId === userId}
               <button
                 onclick={() => handleDelete(annotation.id)}
                 class="text-xs text-red-400 hover:text-red-300 ml-auto"
