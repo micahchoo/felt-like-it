@@ -42,6 +42,8 @@ export interface DistanceMeasurement {
   readonly distanceKm: number;
   /** Number of vertices (including start/end). */
   readonly vertexCount: number;
+  /** Source geometry — coordinates of the measured line. */
+  readonly coordinates: readonly [number, number][];
 }
 
 export interface AreaMeasurement {
@@ -52,6 +54,8 @@ export interface AreaMeasurement {
   readonly perimeterKm: number;
   /** Number of vertices in the outer ring (excluding the closing duplicate). */
   readonly vertexCount: number;
+  /** Source geometry — polygon rings of the measured area. */
+  readonly coordinates: readonly [number, number][][];
 }
 
 export type MeasurementResult = DistanceMeasurement | AreaMeasurement;
@@ -64,11 +68,11 @@ export type MeasurementResult = DistanceMeasurement | AreaMeasurement;
  */
 export function measureLine(coordinates: [number, number][]): DistanceMeasurement {
   if (coordinates.length < 2) {
-    return { type: 'distance', distanceKm: 0, vertexCount: coordinates.length };
+    return { type: 'distance', distanceKm: 0, vertexCount: coordinates.length, coordinates };
   }
   const line = turfLineString(coordinates);
   const distanceKm = turfLength(line, { units: 'kilometers' });
-  return { type: 'distance', distanceKm, vertexCount: coordinates.length };
+  return { type: 'distance', distanceKm, vertexCount: coordinates.length, coordinates };
 }
 
 /**
@@ -80,7 +84,7 @@ export function measurePolygon(coordinates: [number, number][][]): AreaMeasureme
   const outerRing = coordinates[0] ?? [];
   if (outerRing.length < 4) {
     // Degenerate — not a valid polygon
-    return { type: 'area', areaM2: 0, perimeterKm: 0, vertexCount: Math.max(0, outerRing.length - 1) };
+    return { type: 'area', areaM2: 0, perimeterKm: 0, vertexCount: Math.max(0, outerRing.length - 1), coordinates };
   }
 
   const poly = turfPolygon(coordinates);
@@ -93,7 +97,7 @@ export function measurePolygon(coordinates: [number, number][][]): AreaMeasureme
   // Vertex count: exclude the closing duplicate that GeoJSON outer rings carry
   const vertexCount = outerRing.length - 1;
 
-  return { type: 'area', areaM2, perimeterKm, vertexCount };
+  return { type: 'area', areaM2, perimeterKm, vertexCount, coordinates };
 }
 
 // ── Format ───────────────────────────────────────────────────────────────────
