@@ -17,9 +17,11 @@
     /** Polygon geometry drawn on the map, passed back by the parent. */
     regionGeometry?: { type: 'Polygon'; coordinates: number[][][] } | undefined;
     embedded?: boolean;
+    /** Called when annotation or comment counts change. */
+    oncountchange?: (annotationCount: number, commentCount: number) => void;
   }
 
-  let { mapId, userId, onannotationchange, onrequestregion, regionGeometry = undefined, embedded }: Props = $props();
+  let { mapId, userId, onannotationchange, onrequestregion, regionGeometry = undefined, embedded, oncountchange }: Props = $props();
 
   // ── Annotation list ────────────────────────────────────────────────────────
 
@@ -32,6 +34,7 @@
     listError = null;
     try {
       annotationList = await trpc.annotations.list.query({ mapId });
+      oncountchange?.(annotationList.length, comments.length);
     } catch (err: unknown) {
       listError = (err as { message?: string })?.message ?? 'Failed to load annotations.';
     } finally {
@@ -39,7 +42,67 @@
     }
   }
 
-  $effect(() => { loadAnnotations(); });
+  // ── Comment integration ───────────────────────────────────────────────
+  interface CommentEntry {
+    id: string;
+    mapId: string;
+    userId: string | null;
+    authorName: string;
+    body: string;
+    resolved: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  }
+
+  let comments = $state<CommentEntry[]>([]);
+  let commentBody = $state('');
+  let submittingComment = $state(false);
+
+  async function loadComments() {
+    try {
+      const rows = await trpc.comments.list.query({ mapId });
+      comments = rows as CommentEntry[];
+      oncountchange?.(annotationList.length, comments.length);
+    } catch {
+      // Non-critical — silently degrade
+    }
+  }
+
+  async function handleCommentSubmit() {
+    const body = commentBody.trim();
+    if (!body) return;
+    submittingComment = true;
+    try {
+      await trpc.comments.create.mutate({ mapId, body });
+      commentBody = '';
+      await loadComments();
+    } catch {
+      // Non-critical
+    } finally {
+      submittingComment = false;
+    }
+  }
+
+  async function handleCommentDelete(id: string) {
+    try {
+      await trpc.comments.delete.mutate({ id });
+      comments = comments.filter((c) => c.id !== id);
+      oncountchange?.(annotationList.length, comments.length);
+    } catch {
+      // Non-critical
+    }
+  }
+
+  async function handleCommentResolve(id: string) {
+    try {
+      const updated = await trpc.comments.resolve.mutate({ id });
+      comments = comments.map((c) => (c.id === id ? (updated as CommentEntry) : c));
+    } catch {
+      // Non-critical
+    }
+  }
+
+  $effect(() => { loadAnnotations(); loadComments(); });
 
   // Cleanup blob URL on component unmount to prevent memory leaks
   $effect(() => {
@@ -705,8 +768,13 @@
       <p class="text-xs text-slate-500 text-center py-6">Loading…</p>
     {:else if listError}
       <p class="text-xs text-red-400 px-3 py-4">{listError}</p>
-    {:else if annotationList.length === 0}
-      <p class="text-xs text-slate-500 text-center py-6">No annotations yet.</p>
+    {:else if annotationList.length === 0 && comments.length === 0}
+      <div class="flex flex-col items-center justify-center py-12 px-4 text-center">
+        <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z"/>
+        </svg>
+        <p class="text-sm text-slate-400">Pin notes, images, and links to locations on your map, or leave a comment.</p>
+      </div>
     {:else}
       {#each annotationList as annotation (annotation.id)}
         <div class="px-3 py-3 border-b border-white/10 space-y-2">
@@ -811,5 +879,70 @@
         </div>
       {/each}
     {/if}
+
+    <!-- Comments sub-section -->
+    <div class="border-t border-white/10 mt-2">
+      <div class="px-3 py-2 flex items-center gap-2">
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide flex-1">Comments</span>
+        {#if comments.length > 0}
+          <span class="text-xs text-slate-500">{comments.length}</span>
+        {/if}
+      </div>
+
+      {#if comments.length === 0}
+        <p class="text-xs text-slate-400 text-center py-3 px-4">No comments yet.</p>
+      {:else}
+        <ul class="divide-y divide-white/5">
+          {#each comments as comment (comment.id)}
+            <li class="px-3 py-2 {comment.resolved ? 'opacity-50' : ''}">
+              <div class="flex items-center gap-1 mb-1">
+                <span class="text-xs font-medium text-slate-300 truncate flex-1">{comment.authorName}</span>
+                {#if comment.resolved}
+                  <span class="text-xs text-green-500 shrink-0">resolved</span>
+                {/if}
+              </div>
+              <p class="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap break-words">{comment.body}</p>
+              {#if userId}
+                <div class="flex gap-2 mt-1">
+                  <button
+                    class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                    onclick={() => handleCommentResolve(comment.id)}
+                  >
+                    {comment.resolved ? 'Unresolve' : 'Resolve'}
+                  </button>
+                  {#if comment.userId === userId}
+                    <button
+                      class="text-xs text-slate-500 hover:text-red-400 transition-colors"
+                      onclick={() => handleCommentDelete(comment.id)}
+                    >
+                      Delete
+                    </button>
+                  {/if}
+                </div>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      <!-- Quick comment form -->
+      <form
+        onsubmit={(e) => { e.preventDefault(); handleCommentSubmit(); }}
+        class="p-3 flex gap-2"
+      >
+        <input
+          bind:value={commentBody}
+          placeholder="Leave a comment..."
+          class="flex-1 rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+        <button
+          type="submit"
+          disabled={!commentBody.trim() || submittingComment}
+          class="text-xs text-blue-400 hover:text-blue-300 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors px-2"
+        >
+          Post
+        </button>
+      </form>
+    </div>
   </div>
 </div>
