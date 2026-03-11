@@ -862,3 +862,75 @@ describe('UpdateAnnotationSchema', () => {
     expect(result.content.type).toBe('emoji');
   });
 });
+
+// ─── AnnotationContentSchema — measurement ────────────────────────────────────
+
+describe('AnnotationContentSchema — measurement', () => {
+  it('validates a distance measurement', () => {
+    const result = AnnotationContentSchema.parse({
+      type: 'measurement',
+      measurementType: 'distance',
+      value: 1240,
+      unit: 'km',
+      displayValue: '1.24 km',
+    });
+    expect(result.type).toBe('measurement');
+    if (result.type === 'measurement') {
+      expect(result.measurementType).toBe('distance');
+      expect(result.value).toBe(1240);
+      expect(result.unit).toBe('km');
+      expect(result.displayValue).toBe('1.24 km');
+      expect(result.label).toBeUndefined();
+    }
+  });
+
+  it('validates a measurement with optional label', () => {
+    const result = AnnotationContentSchema.parse({
+      type: 'measurement',
+      measurementType: 'area',
+      value: 5000000,
+      unit: 'ha',
+      displayValue: '500 ha',
+      label: 'Central Park estimate',
+    });
+    expect(result.type).toBe('measurement');
+    if (result.type === 'measurement') {
+      expect(result.measurementType).toBe('area');
+      expect(result.label).toBe('Central Park estimate');
+    }
+  });
+
+  it('rejects measurement with invalid measurementType', () => {
+    expect(() =>
+      AnnotationContentSchema.parse({
+        type: 'measurement',
+        measurementType: 'volume',
+        value: 100,
+        unit: 'm3',
+        displayValue: '100 m3',
+      })
+    ).toThrow();
+  });
+
+  it('rejects measurement missing required fields', () => {
+    expect(() =>
+      AnnotationContentSchema.parse({
+        type: 'measurement',
+        measurementType: 'distance',
+        // missing value, unit, displayValue
+      })
+    ).toThrow();
+  });
+
+  it('rejects measurement with empty unit string', () => {
+    expect(() =>
+      AnnotationContentSchema.parse({
+        type: 'measurement',
+        measurementType: 'distance',
+        value: 100,
+        unit: '',
+        displayValue: '100 m',
+      })
+    ).toThrow();
+  });
+});

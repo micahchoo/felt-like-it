@@ -90,6 +90,20 @@ const IiifContentSchema = z.object({
   navPlace: GeoJSONFeatureCollectionSchema.optional(),
 });
 
+const MeasurementContentSchema = z.object({
+  type: z.literal('measurement'),
+  /** Whether this measures distance or area. */
+  measurementType: z.enum(['distance', 'area']),
+  /** Raw value in meters (distance) or square meters (area). */
+  value: z.number(),
+  /** Display unit used at save time (e.g. 'km', 'ha', 'mi'). */
+  unit: z.string().min(1).max(20),
+  /** Formatted string for display (e.g. '1.24 km'). */
+  displayValue: z.string().min(1).max(100),
+  /** Optional user-provided note about this measurement. */
+  label: z.string().max(500).optional(),
+});
+
 // ─── Discriminated union ──────────────────────────────────────────────────────
 
 /**
@@ -106,6 +120,7 @@ export const AnnotationContentSchema = z.discriminatedUnion('type', [
   ImageContentSchema,
   LinkContentSchema,
   IiifContentSchema,
+  MeasurementContentSchema,
 ]);
 
 export type AnnotationContent = z.infer<typeof AnnotationContentSchema>;
