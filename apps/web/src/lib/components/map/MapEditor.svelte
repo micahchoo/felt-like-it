@@ -98,19 +98,24 @@
 
   async function loadAnnotationPins() {
     try {
-      const rows = await trpc.annotations.list.query({ mapId });
+      const rows = await trpc.annotations.list.query({ mapId, rootsOnly: true });
       annotationPins = {
         type: 'FeatureCollection',
-        features: rows.map((a) => ({
-          type: 'Feature' as const,
-          id: a.id,
-          geometry: a.anchor,
-          properties: {
-            authorName: a.authorName,
-            createdAt: a.createdAt.toISOString(),
-            contentJson: JSON.stringify(a.content),
-          },
-        })),
+        features: rows
+          .filter((a) => a.anchor.type === 'point')
+          .map((a) => ({
+            type: 'Feature' as const,
+            id: a.id,
+            geometry: a.anchor.type === 'point'
+              ? { type: 'Point' as const, coordinates: a.anchor.geometry.coordinates.slice(0, 2) as [number, number] }
+              : { type: 'Point' as const, coordinates: [0, 0] as [number, number] },
+            properties: {
+              authorName: a.authorName,
+              createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
+              contentJson: JSON.stringify(a.content),
+              anchorType: a.anchor.type,
+            },
+          })),
       };
     } catch {
       // Best-effort — annotation pins are non-critical; silently degrade
