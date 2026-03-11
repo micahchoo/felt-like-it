@@ -119,6 +119,21 @@
   // ── Feature-pick mode ─────────────────────────────────────────────────────
   // When the user selects "Feature" anchor in AnnotationPanel, we enter pick
   // mode: the next feature click on the map is captured as the annotation target.
+  // ── Pending measurement annotation ─────────────────────────────────────────
+  let pendingMeasurementAnnotation = $state<{
+    anchor: {
+      type: 'measurement';
+      geometry: { type: 'LineString'; coordinates: [number, number][] } | { type: 'Polygon'; coordinates: [number, number][][] };
+    };
+    content: {
+      type: 'measurement';
+      measurementType: 'distance' | 'area';
+      value: number;
+      unit: string;
+      displayValue: string;
+    };
+  } | null>(null);
+
   let featurePickMode = $state(false);
   let pickedFeature = $state<{ featureId: string; layerId: string } | undefined>();
 
@@ -566,6 +581,7 @@
       onrequestfeaturepick={() => { featurePickMode = true; pickedFeature = undefined; }}
       regionGeometry={annotationRegionGeometry}
       {pickedFeature}
+      pendingMeasurement={pendingMeasurementAnnotation}
       oncountchange={(a, c) => { annotationCount = a; commentCount = c; }}
     />
   {/snippet}
@@ -644,9 +660,51 @@
             </div>
           {/if}
           {#if measureResult !== null}
-            <button onclick={() => { measureResult = null; }} class="text-xs text-slate-400 hover:text-white transition-colors mt-3">
-              Clear measurement
-            </button>
+            <div class="flex items-center gap-3 mt-3">
+              <button onclick={() => { measureResult = null; }} class="text-xs text-slate-400 hover:text-white transition-colors">
+                Clear measurement
+              </button>
+              <button
+                type="button"
+                class="text-xs px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white"
+                onclick={() => {
+                  if (!measureResult) return;
+                  const mr = measureResult;
+                  if (mr.type === 'distance') {
+                    pendingMeasurementAnnotation = {
+                      anchor: {
+                        type: 'measurement',
+                        geometry: { type: 'LineString', coordinates: mr.coordinates as [number, number][] },
+                      },
+                      content: {
+                        type: 'measurement',
+                        measurementType: 'distance',
+                        value: mr.distanceKm * 1000,
+                        unit: distUnit,
+                        displayValue: formatDistance(mr.distanceKm, distUnit),
+                      },
+                    };
+                  } else {
+                    pendingMeasurementAnnotation = {
+                      anchor: {
+                        type: 'measurement',
+                        geometry: { type: 'Polygon', coordinates: mr.coordinates as [number, number][][] },
+                      },
+                      content: {
+                        type: 'measurement',
+                        measurementType: 'area',
+                        value: mr.areaM2,
+                        unit: areaUnit,
+                        displayValue: formatArea(mr.areaM2, areaUnit),
+                      },
+                    };
+                  }
+                  activeSection = 'annotations';
+                }}
+              >
+                Save as annotation
+              </button>
+            </div>
           {/if}
         </div>
       {:else}

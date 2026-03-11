@@ -21,11 +21,25 @@
     /** Feature picked by the user on the map (set by parent in pick mode). */
     pickedFeature?: { featureId: string; layerId: string } | undefined;
     embedded?: boolean;
+    /** Pre-filled measurement data from the measure panel's "Save as annotation" button. */
+    pendingMeasurement?: {
+      anchor: {
+        type: 'measurement';
+        geometry: { type: 'LineString'; coordinates: [number, number][] } | { type: 'Polygon'; coordinates: [number, number][][] };
+      };
+      content: {
+        type: 'measurement';
+        measurementType: 'distance' | 'area';
+        value: number;
+        unit: string;
+        displayValue: string;
+      };
+    } | null | undefined;
     /** Called when annotation or comment counts change. */
     oncountchange?: (annotationCount: number, commentCount: number) => void;
   }
 
-  let { mapId, userId, onannotationchange, onrequestregion, onrequestfeaturepick, regionGeometry = undefined, pickedFeature, embedded, oncountchange }: Props = $props();
+  let { mapId, userId, onannotationchange, onrequestregion, onrequestfeaturepick, regionGeometry = undefined, pickedFeature, pendingMeasurement, embedded, oncountchange }: Props = $props();
 
   // ── Annotation list ────────────────────────────────────────────────────────
 
@@ -192,6 +206,18 @@
     }
   });
 
+  // Track pending measurement data for the create flow
+  let pendingMeasurementData = $state<typeof pendingMeasurement>(null);
+
+  $effect(() => {
+    if (pendingMeasurement) {
+      pendingMeasurementData = pendingMeasurement;
+      formType = 'measurement';
+      formAnchorType = 'viewport'; // measurement anchor bypasses the selector
+      showForm = true;
+    }
+  });
+
   $effect.pre(() => {
     if (formLng === 0 && formLat === 0) {
       const [lng, lat] = mapStore.center;
@@ -325,6 +351,7 @@
     if (imagePreviewUrl) { URL.revokeObjectURL(imagePreviewUrl); imagePreviewUrl = null; }
     selectedImageFile = null;
     gpsExtracted = false;
+    pendingMeasurementData = null;
   }
 
   async function handleCreate(e: Event) {
@@ -344,17 +371,21 @@
         }
       }
 
-      const content = buildContent();
+      // Measurement annotations use pre-filled content + anchor from the measure panel
+      const pm = formType === 'measurement' ? pendingMeasurementData : null;
+      const content = pm != null ? pm.content : buildContent();
 
       // TYPE_DEBT: regionGeometry coordinates come from Terra Draw as number[][][] but
       // the Anchor schema expects typed tuples — the runtime values are always valid pairs.
-      const anchor: Anchor = formAnchorType === 'viewport'
-        ? { type: 'viewport' }
-        : formAnchorType === 'region' && regionGeometry
-          ? { type: 'region', geometry: regionGeometry as { type: 'Polygon'; coordinates: ([number, number] | [number, number, number])[][] } }
-          : formAnchorType === 'feature' && pickedFeature
-            ? { type: 'feature', featureId: pickedFeature.featureId, layerId: pickedFeature.layerId }
-            : { type: 'point', geometry: { type: 'Point', coordinates: [formLng, formLat] } };
+      const anchor: Anchor = pm != null
+        ? pm.anchor
+        : formAnchorType === 'viewport'
+          ? { type: 'viewport' }
+          : formAnchorType === 'region' && regionGeometry
+            ? { type: 'region', geometry: regionGeometry as { type: 'Polygon'; coordinates: ([number, number] | [number, number, number])[][] } }
+            : formAnchorType === 'feature' && pickedFeature
+              ? { type: 'feature', featureId: pickedFeature.featureId, layerId: pickedFeature.layerId }
+              : { type: 'point', geometry: { type: 'Point', coordinates: [formLng, formLat] } };
 
       await trpc.annotations.create.mutate({
         mapId,
