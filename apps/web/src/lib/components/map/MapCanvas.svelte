@@ -13,8 +13,8 @@
   import FeaturePopup from './FeaturePopup.svelte';
   import AnnotationContent from '$lib/components/annotations/AnnotationContent.svelte';
   import DeckGLOverlay from './DeckGLOverlay.svelte';
-  import { AnnotationContentSchema } from '@felt-like-it/shared-types';
-  import type { AnnotationContent as AnnotationContentType } from '@felt-like-it/shared-types';
+  import { AnnotationObjectContentSchema } from '@felt-like-it/shared-types';
+  import type { AnnotationObjectContent } from '@felt-like-it/shared-types';
   import type { HeatmapLayerDef } from './DeckGLOverlay.svelte';
   import type { LayerStyle } from '@felt-like-it/shared-types';
 
@@ -28,6 +28,7 @@
     createdAt: string;
     /** JSON.stringify(AnnotationContent) — parsed on click. */
     contentJson: string;
+    anchorType?: string;
   }
 
   interface AnnotationPin {
@@ -41,6 +42,18 @@
   export interface AnnotationPinCollection {
     type: 'FeatureCollection';
     features: AnnotationPin[];
+  }
+
+  interface AnnotationRegion {
+    type: 'Feature';
+    id: string;
+    geometry: { type: 'Polygon'; coordinates: number[][][] };
+    properties: AnnotationPinProperties;
+  }
+
+  export interface AnnotationRegionCollection {
+    type: 'FeatureCollection';
+    features: AnnotationRegion[];
   }
 
   interface Props {
@@ -58,9 +71,17 @@
      * are NOT saved to any layer — instead the computed MeasurementResult is passed here.
      */
     onmeasured?: (_result: MeasurementResult) => void;
+    /**
+     * When provided, the next drawn polygon is captured as an annotation region.
+     */
+    onregiondrawn?: (_geometry: { type: 'Polygon'; coordinates: number[][][] }) => void;
+    /**
+     * Region-anchored annotation polygons rendered as a dedicated fill layer.
+     */
+    annotationRegions?: AnnotationRegionCollection;
   }
 
-  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured }: Props = $props();
+  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions }: Props = $props();
 
   let mapInstance = $state<MapLibreMap | undefined>(undefined);
 
@@ -77,7 +98,12 @@
   let firstLabelLayerId = $state<string | undefined>(undefined);
   $effect(() => {
     if (!mapInstance) { firstLabelLayerId = undefined; return; }
-    firstLabelLayerId = mapInstance.getStyle()?.layers.find((l) => l.type === 'symbol')?.id;
+    function updateFirstLabel() {
+      firstLabelLayerId = mapInstance!.getStyle()?.layers.find((l) => l.type === 'symbol')?.id;
+    }
+    updateFirstLabel();
+    mapInstance.on('style.load', updateFirstLabel);
+    return () => { mapInstance!.off('style.load', updateFirstLabel); };
   });
 
   /**
@@ -162,10 +188,11 @@
     // Resolve FSL zoom interpolators (e.g. { linear: [[10,2],[16,8]] }) → MapLibre expressions
     const paint = resolvePaintInterpolators(rawPaint);
 
-    // Only return paint properties relevant to this layer type
+    // Only return paint properties relevant to this layer type — skip null/undefined
+    // values that can leak from JSONB storage and crash MapLibre ("Expected number, found null").
     const filtered: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(paint)) {
-      if (key.startsWith(paintType + '-')) {
+      if (key.startsWith(paintType + '-') && value !== null && value !== undefined) {
         filtered[key] = value;
       }
     }
@@ -298,7 +325,7 @@
 
   /** State for the annotation popup — set when an annotation pin is clicked. */
   interface SelectedAnnotationPopup {
-    content: AnnotationContentType;
+    content: AnnotationObjectContent;
     authorName: string;
     createdAt: string;
     lngLat: { lng: number; lat: number };
@@ -489,10 +516,10 @@
             const props = f.properties as AnnotationPinProperties | null;
             if (!props?.contentJson) return;
 
-            let parsed: AnnotationContentType;
+            let parsed: AnnotationObjectContent;
             try {
               const raw: unknown = JSON.parse(props.contentJson);
-              const result = AnnotationContentSchema.safeParse(raw);
+              const result = AnnotationObjectContentSchema.safeParse(raw);
               // Malformed annotation content (schema mismatch or invalid JSON) silently
               // closes the popup — the pin is still visible but unclickable until refreshed.
               if (!result.success) return;
@@ -508,6 +535,57 @@
               createdAt: props.createdAt,
               lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
             };
+          }}
+        />
+      </GeoJSONSource>
+    {/if}
+
+    <!-- Annotation region polygons — rendered below pins, above data layers -->
+    {#if annotationRegions && annotationRegions.features.length > 0}
+      <GeoJSONSource
+        id="source-annotation-regions"
+        data={annotationRegions as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}
+      >
+        <FillLayer
+          id="layer-annotation-regions-fill"
+          paint={{
+            'fill-color': '#3b82f6',
+            'fill-opacity': 0.15,
+          }}
+          onclick={(e) => {
+            const tool = selectionStore.activeTool;
+            if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
+
+            const f = e.features?.[0];
+            if (!f) return;
+
+            const props = f.properties as AnnotationPinProperties | null;
+            if (!props?.contentJson) return;
+
+            let parsed: AnnotationObjectContent;
+            try {
+              const raw: unknown = JSON.parse(props.contentJson);
+              const result = AnnotationObjectContentSchema.safeParse(raw);
+              if (!result.success) return;
+              parsed = result.data;
+            } catch {
+              return;
+            }
+
+            selectedAnnotation = {
+              content: parsed,
+              authorName: props.authorName,
+              createdAt: props.createdAt,
+              lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
+            };
+          }}
+        />
+        <LineLayer
+          id="layer-annotation-regions-outline"
+          paint={{
+            'line-color': '#3b82f6',
+            'line-width': 2,
+            'line-opacity': 0.6,
           }}
         />
       </GeoJSONSource>
@@ -537,6 +615,7 @@
       map={mapInstance}
       {...(onfeaturedrawn !== undefined ? { onfeaturedrawn } : {})}
       {...(onmeasured !== undefined ? { onmeasured } : {})}
+      {...(onregiondrawn !== undefined ? { onregiondrawn } : {})}
     />
   {/if}
 </div>

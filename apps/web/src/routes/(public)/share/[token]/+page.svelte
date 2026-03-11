@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { mapStore } from '$lib/stores/map.svelte.js';
   import MapEditor from '$lib/components/map/MapEditor.svelte';
   import GuestCommentPanel from '$lib/components/map/GuestCommentPanel.svelte';
@@ -10,7 +11,7 @@
   let showComments = $state(false);
   let embedCopied = $state(false);
 
-  $effect(() => {
+  onMount(() => {
     mapStore.loadViewport(data.map.viewport);
     mapStore.setBasemap(data.map.basemap as Parameters<typeof mapStore.setBasemap>[0]);
   });

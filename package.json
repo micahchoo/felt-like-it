@@ -6,6 +6,7 @@
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
+    "dev:up": "bash scripts/dev-up.sh",
     "lint": "turbo lint",
     "test": "turbo test",
     "check": "turbo check",

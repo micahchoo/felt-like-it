@@ -1,7 +1,7 @@
 # Felt Like It — Documentation State
 
 Tracks what's documented, what's accurate, and what's missing.
-Last synced: 2026-02-24 (Phase 5 complete, hardening round).
+Last synced: 2026-03-11 (documentation overhaul).
 
 ---
 
@@ -9,11 +9,36 @@ Last synced: 2026-02-24 (Phase 5 complete, hardening round).
 
 | Doc | Scope | Status |
 |---|---|---|
-| `docs/ARCHITECTURE.md` | Built system: schema, request flow, auth, tRPC, styles, import, geoprocessing, testing, docker, env vars | Current |
+| `README.md` | Project overview, features, quickstart, doc index | Current |
+| `docs/ARCHITECTURE.md` | Built system: schema, request flow, auth, tRPC, styles, import, geoprocessing, testing | Current |
 | `docs/ROADMAP.md` | Phase checklist (1-7) with feature status | Current |
 | `STATE.md` | Build state: test counts, delta log, known gaps, phase checklists | Current |
 | `docs/DOCSTATE.md` | This file — doc coverage tracker | Current |
 | `docs/OriginalVision.md` | Original design doc — static reference, not updated | Static |
+
+## Getting Started
+
+| Doc | Audience | Scope | Status |
+|---|---|---|---|
+| `docs/getting-started/development.md` | Contributors | One-command onboarding, project structure, tests | Current |
+| `docs/getting-started/self-hosting.md` | Deployers | Production Docker, reverse proxy, backups | Current |
+
+## Reference Docs
+
+| Doc | Audience | Scope | Status |
+|---|---|---|---|
+| `docs/reference/environment-variables.md` | Deployers | All config options by service | Current |
+| `docs/reference/database-schema.md` | Developers | Tables, relationships, migrations | Current |
+| `docs/reference/api.md` | Developers | tRPC procedures, auth levels | Current |
+
+## User Guides
+
+| Doc | Audience | Scope | Status |
+|---|---|---|---|
+| `docs/guides/maps-and-layers.md` | Users | Create, import, draw, geoprocess, export | Current |
+| `docs/guides/styling.md` | Users | Color, categorical, choropleth, heatmap | Current |
+| `docs/guides/annotations.md` | Users | Pins, regions, content types, threads | Current |
+| `docs/guides/collaboration.md` | Users | Roles, comments, sharing, activity | Current |
 
 ## Decision Records
 
@@ -28,42 +53,47 @@ Last synced: 2026-02-24 (Phase 5 complete, hardening round).
 
 ## Coverage — User-Facing Features vs Docs
 
-Every feature a user can interact with should be discoverable from ARCHITECTURE.md or ROADMAP.md.
+Every feature should be documented in its authoritative doc. Guides may reference features documented in reference docs.
 
-| Feature | Documented in | Accurate? |
+| Feature | Authoritative doc | Accurate? |
 |---|---|---|
 | Auth (email/password) | ARCHITECTURE.md Auth section | Yes |
-| Auth (API keys) | ARCHITECTURE.md Auth section | Yes |
-| Map dashboard (CRUD, clone, templates) | ROADMAP.md Phase 1-2, ARCHITECTURE.md tRPC table | Yes |
-| MapLibre editor + drawing tools | ARCHITECTURE.md Drawing Tools section | Yes |
-| Layer panel (reorder, toggle, style, delete) | ARCHITECTURE.md Style System + tRPC table | Yes |
-| Import pipeline (6 formats) | ARCHITECTURE.md Import Pipeline section | Yes |
-| Geoprocessing (7 PostGIS ops) | ARCHITECTURE.md Geoprocessing section | Yes |
-| Spatial joins + aggregation | ROADMAP.md Phase 4 | Yes |
-| Measurement tools | ROADMAP.md Phase 4 | Yes |
-| Choropleth + heatmap | ARCHITECTURE.md Style System, ROADMAP.md Phase 4 | Yes |
-| Annotations (6 content types) | ROADMAP.md Phase 4 | Yes |
-| Share links + embeds | ARCHITECTURE.md tRPC table + Embed route section | Yes |
-| Collaborators (3 roles) | ARCHITECTURE.md Collaboration section | Yes |
-| Comments (incl. guest) | ARCHITECTURE.md Comment Threads section | Yes |
-| Activity feed | ARCHITECTURE.md Activity Feed section | Yes |
-| Audit log | ROADMAP.md Phase 5, ARCHITECTURE.md Current State | Yes |
-| Martin vector tiles | ARCHITECTURE.md Docker Compose section | Yes |
-| Rate limiting (auth) | ARCHITECTURE.md Current State, ROADMAP.md Phase 5b | Yes |
+| Auth (API keys) | collaboration.md API Keys section | Yes |
+| Map dashboard (CRUD, clone, templates) | maps-and-layers.md Creating Maps | Yes |
+| MapLibre editor + drawing tools | maps-and-layers.md Drawing Features | Yes |
+| Layer panel (reorder, toggle, style, delete) | styling.md | Yes |
+| Import pipeline (6 formats) | maps-and-layers.md Importing Data | Yes |
+| Geoprocessing (10 ops) | maps-and-layers.md Geoprocessing | Yes |
+| Spatial joins + aggregation | maps-and-layers.md Geoprocessing | Yes |
+| Measurement tools | maps-and-layers.md Measurement | Yes |
+| Choropleth + heatmap | styling.md | Yes |
+| Annotations (6 content types) | annotations.md | Yes |
+| Share links + embeds | collaboration.md Share Links / Embedding | Yes |
+| Collaborators (3 roles) | collaboration.md | Yes |
+| Comments (incl. guest) | collaboration.md Comments | Yes |
+| Activity feed | collaboration.md Activity Feed | Yes |
+| Audit log | ARCHITECTURE.md Current State | Yes |
+| Martin vector tiles | self-hosting.md | Yes |
+| Rate limiting (auth) | ARCHITECTURE.md Current State | Yes |
 | CI pipeline | ROADMAP.md Phase 5b | Yes |
+| Export (5 formats) | maps-and-layers.md Exporting Data | Yes |
+| Data table + filters | maps-and-layers.md Data Table / Attribute Filters | Yes |
+| Docker Compose (5 services) | self-hosting.md | Yes |
+| Environment variables | environment-variables.md | Yes |
+| Database schema | database-schema.md | Yes |
+| tRPC API procedures | api.md | Yes |
 
 ## Gaps
 
 | Gap | Severity | Notes |
 |---|---|---|
-| No user-facing quickstart / getting-started doc | Low | README or ARCHITECTURE.md Docker section covers `docker compose up` but no step-by-step walkthrough |
-| No API reference for tRPC procedures (input/output schemas) | Low | Procedure names listed in ARCHITECTURE.md tRPC table; full schemas in code only |
-| No self-hosting guide (env vars, reverse proxy, HTTPS) | Medium | Env var table exists in ARCHITECTURE.md; no nginx/caddy/traefik examples |
+| _(none)_ | — | All three prior gaps (quickstart, API reference, self-hosting) are now addressed |
 
 ## Sync Rules
 
-- If a feature changes in code, ARCHITECTURE.md and/or ROADMAP.md update in the same round.
+- If a feature changes in code, its authoritative doc updates in the same round.
 - STATE.md is overwritten every round (delta log + test counts + gaps).
 - DOCSTATE.md is overwritten every round (coverage + gaps).
-- One task per doc. No doc covers two tasks. No two docs cover the same task.
+- One doc owns the authoritative description of each feature ("task coverage").
+- Guides may reference features documented in reference docs ("feature mention").
 - Test counts in STATE.md and ARCHITECTURE.md must match (single source: `pnpm test` output).

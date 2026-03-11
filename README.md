@@ -1,104 +1,54 @@
 # Felt Like It
 
-Self-hostable collaborative GIS platform. Docker Compose deployment with PostGIS spatial analysis, multi-format data import, and team collaboration.
+Self-hostable collaborative GIS platform. Create maps, import spatial data, style layers, annotate, and collaborate — all from Docker Compose.
 
----
+## Features
+
+- **Maps** — create, clone from templates, save viewports, switch basemaps (OSM / satellite)
+- **Import** — GeoJSON, CSV (lat/lng or address geocoding), Shapefile, KML, GPX, GeoPackage
+- **Draw** — points, lines, polygons with undo/redo
+- **Style** — simple color, categorical, choropleth, heatmap
+- **Analyze** — buffer, clip, intersect, union, dissolve, convex hull, centroid, point-in-polygon, nearest neighbor, aggregate
+- **Annotate** — pin, region, or map-level annotations with text, emoji, GIF, image, link, or IIIF content
+- **Collaborate** — viewer/commenter/editor roles, comment threads, guest links, activity feed
+- **Export** — GeoJSON, Shapefile, GeoPackage, PDF, PNG screenshot
+- **Measure** — distance, area, perimeter with unit switching
+- **Share** — public links, iframe embeds, API keys
 
 ## Quickstart
 
-**Prerequisites:** Docker, Docker Compose, and Node.js 20+ with pnpm.
+**Development** (requires Docker, Node 20+, pnpm):
 
 ```bash
-git clone <repo-url> felt-like-it
-cd felt-like-it
-
-# 1. Start all services
-cd docker && docker compose up --build -d && cd ..
-
-# 2. Install dependencies (needed for migration + seed scripts)
+git clone <repo-url> felt-like-it && cd felt-like-it
 pnpm install
-
-# 3. Apply database migrations
-DATABASE_URL=postgresql://felt:felt@localhost:5432/felt pnpm migrate
-
-# 4. Seed demo account and example map
-DATABASE_URL=postgresql://felt:felt@localhost:5432/felt pnpm seed
+pnpm dev:up
 ```
 
-Open **http://localhost:3000** and sign in:
+Open http://localhost:5173. Sign in: `demo@felt-like-it.local` / `demo`.
 
-| Field | Value |
-|---|---|
-| Email | `demo@felt-like-it.local` |
-| Password | `demo` |
-
----
-
-## What you can do
-
-- **Create and share maps** — OSM or satellite basemap, clone from templates, share read-only links
-- **Import data** — GeoJSON, CSV (lat/lng columns or address geocoding), Shapefile, KML, GPX, GeoPackage
-- **Draw features** — points, lines, polygons directly on the map
-- **Style layers** — simple color, categorical (color by attribute), or numeric (graduated)
-- **Filter and explore** — attribute data table, text search, click-to-zoom, feature popups
-- **Geoprocess** — Buffer, Clip, Intersect, Union, Dissolve, Convex Hull, Centroid via PostGIS
-- **Collaborate** — invite editors, leave comment threads, share links for guests to comment
-- **Export** — GeoJSON per layer, high-res PNG screenshot
-
----
-
-## Configuration
-
-Before going to production, edit the environment variables in `docker/docker-compose.yml`:
-
-| Variable | Default | Notes |
-|---|---|---|
-| `SESSION_SECRET` | `change-me-…` | **Change this.** Generate: `openssl rand -hex 32` |
-| `POSTGRES_PASSWORD` | `felt` | **Change this** and update `DATABASE_URL` to match |
-| `ORIGIN` | `http://localhost:3000` | Set to your public URL. Required for CSRF. |
-| `PUBLIC_MARTIN_URL` | `http://localhost:3001` | Browser-facing Martin URL. Set to `""` to disable vector tiles and always use GeoJSON. |
-| `NOMINATIM_URL` | _(unset — uses OSM Nominatim)_ | Self-hosted Nominatim for CSV address geocoding. OSM Nominatim: max 1 req/s, no bulk use. |
-| `GEOCODING_USER_AGENT` | _(unset)_ | Required alongside `NOMINATIM_URL`. |
-
----
-
-## Development
+**Production** (requires Docker):
 
 ```bash
-# 1. Start the backing services
-cd docker && docker compose up postgres redis martin -d && cd ..
-
-# 2. Install dependencies
-pnpm install
-
-# 3. Apply migrations and seed demo data
-DATABASE_URL=postgresql://felt:felt@localhost:5432/felt pnpm migrate
-DATABASE_URL=postgresql://felt:felt@localhost:5432/felt pnpm seed
-
-# 4. Start the dev server (SvelteKit on http://localhost:5173)
-pnpm dev
-
-# 5. Start the background worker (separate terminal)
-pnpm --filter @felt-like-it/worker dev
+git clone <repo-url> felt-like-it && cd felt-like-it
+./setup.sh
 ```
 
-### Tests
+See [Self-Hosting Guide](docs/getting-started/self-hosting.md) for reverse proxy, TLS, and backup configuration.
 
-```bash
-pnpm test           # run all packages
-```
+## Documentation
 
-### Type-check and lint
-
-```bash
-pnpm --filter web svelte-check   # expect: 0 errors, 0 warnings
-pnpm --filter web lint           # expect: 0 errors, 0 warnings
-```
-
----
-
-## Docs
-
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system design, DB schema, request flow
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — feature status by phase
-- [`docs/adr/`](docs/adr/) — key architecture decisions
+| Section | Audience | Description |
+|---------|----------|-------------|
+| [Development Setup](docs/getting-started/development.md) | Contributors | One-command onboarding, project structure, tests |
+| [Self-Hosting](docs/getting-started/self-hosting.md) | Deployers | Production Docker, reverse proxy, backups |
+| [Maps & Layers](docs/guides/maps-and-layers.md) | Users | Create, import, draw, geoprocess, export |
+| [Styling](docs/guides/styling.md) | Users | Color, categorical, choropleth, heatmap |
+| [Annotations](docs/guides/annotations.md) | Users | Pins, regions, content types, threads |
+| [Collaboration](docs/guides/collaboration.md) | Users | Roles, comments, sharing, activity |
+| [API Reference](docs/reference/api.md) | Developers | tRPC procedures, auth levels |
+| [Database Schema](docs/reference/database-schema.md) | Developers | Tables, relationships, migrations |
+| [Environment Variables](docs/reference/environment-variables.md) | Deployers | All config options by service |
+| [Architecture](docs/ARCHITECTURE.md) | Developers | System design, request flow, module boundaries |
+| [Roadmap](docs/ROADMAP.md) | Everyone | Feature status by phase |
+| [ADRs](docs/adr/) | Developers | Key architecture decisions |

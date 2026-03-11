@@ -130,6 +130,8 @@ SELECT $newLayerId, geometry, properties FROM features WHERE layer_id = $oldLaye
 | apiKeys | list, create, revoke | protected |
 | auditLog | list, verify | protected |
 
+Full procedure details in [API Reference](reference/api.md).
+
 **Embed route** (`/embed/[token]`): same token lookup as `/share/[token]` but renders `MapEditor` with `embed={true}` — no toolbar, no layer panel, no basemap picker, no side panels. Sets `Content-Security-Policy: frame-ancestors *` via `setHeaders` so the page can be framed from any origin. The share viewer (`/share/[token]`) provides a "Embed" button that copies the `<iframe src="/embed/[token]" ...>` snippet to the clipboard.
 
 **`maps.clone`** deep-copies map + all layers + all features:
@@ -353,33 +355,13 @@ The `geoprocessing.run` mutation:
 
 ## Docker Compose
 
-```
-web      → SvelteKit (port 3000), adapter-node
-worker   → standalone BullMQ process (pnpm --filter worker deploy)
-postgres → postgis/postgis:16-3.4-alpine  (volume: postgres_data)
-redis    → redis:7-alpine                 (volume: redis_data)
-martin   → ghcr.io/maplibre/martin (port 3001 external, 3000 internal)
-```
-
-Martin auto-discovers PostGIS geometry tables and serves vector tiles. Layers with >10,000 features switch from `GeoJSONSource` to `VectorTileSource` automatically. Set `PUBLIC_MARTIN_URL=""` to disable and always use GeoJSON.
-
-Volumes: `postgres_data`, `redis_data`, `uploads`.
-All services on `felt-network`. Health-check: `wget -qO- http://127.0.0.1:3000/` (Alpine resolves `localhost` to `::1` — use `127.0.0.1`).
+See [Self-Hosting Guide](getting-started/self-hosting.md) for Docker Compose service details.
 
 ---
 
 ## Environment Variables
 
-| Variable | Default (compose) | Description |
-|---|---|---|
-| `DATABASE_URL` | `postgresql://felt:felt@postgres:5432/felt` | PostgreSQL connection |
-| `REDIS_URL` | `redis://redis:6379` | Redis (BullMQ) |
-| `UPLOAD_DIR` | `/uploads` | File upload directory |
-| `ORIGIN` | `http://localhost:3000` | SvelteKit CSRF origin |
-| `SESSION_SECRET` | _(must set)_ | 32-byte hex secret for session signing. `openssl rand -hex 32` |
-| `PUBLIC_MARTIN_URL` | `http://localhost:3001` | Browser-facing Martin vector tile URL. Set to `""` to disable. |
-| `NOMINATIM_URL` | _(unset)_ | Self-hosted Nominatim for address geocoding. Defaults to OSM Nominatim. |
-| `GEOCODING_USER_AGENT` | _(unset)_ | User-agent string sent with Nominatim requests. Required when geocoding is used. |
+See [Environment Variables Reference](reference/environment-variables.md) for the full list.
 
 ---
 
