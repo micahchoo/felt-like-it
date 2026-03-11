@@ -183,6 +183,8 @@
   // popup can render without a second fetch.
   let annotationPins = $state<AnnotationPinCollection>({ type: 'FeatureCollection', features: [] });
   let annotationRegions = $state<AnnotationRegionCollection>({ type: 'FeatureCollection', features: [] });
+  let annotatedFeaturesIndex = $state<Map<string, { layerId: string; count: number }>>(new Map());
+  let measurementAnnotationData = $state<{ type: 'FeatureCollection'; features: { type: 'Feature'; geometry: unknown; properties: Record<string, unknown> }[] }>({ type: 'FeatureCollection', features: [] });
 
   async function loadAnnotationPins() {
     try {
@@ -223,6 +225,39 @@
             },
           })),
       };
+
+      // Build annotated features index for highlight/badge rendering
+      const featureAnchored = rows.filter(
+        (a: { anchor: { type: string } }) => a.anchor.type === 'feature'
+      );
+      const featureMap = new Map<string, { layerId: string; count: number }>();
+      for (const ann of featureAnchored) {
+        const anchor = ann.anchor as { type: 'feature'; featureId: string; layerId: string };
+        const key = anchor.featureId;
+        const existing = featureMap.get(key);
+        if (existing) {
+          existing.count++;
+        } else {
+          featureMap.set(key, { layerId: anchor.layerId, count: 1 });
+        }
+      }
+      annotatedFeaturesIndex = featureMap;
+
+      // Build measurement annotation GeoJSON for map rendering
+      const measurementAnchored = rows.filter(
+        (a: { anchor: { type: string } }) => a.anchor.type === 'measurement'
+      );
+      const measurementFeatures = measurementAnchored.map((ann) => {
+        const anchor = ann.anchor as { type: 'measurement'; geometry: { type: string; coordinates: unknown } };
+        const body = ann.content.kind === 'single' ? ann.content.body : null;
+        const label = body?.type === 'measurement' ? (body as { displayValue: string }).displayValue : '';
+        return {
+          type: 'Feature' as const,
+          geometry: anchor.geometry,
+          properties: { id: ann.id, label, annotationId: ann.id },
+        };
+      });
+      measurementAnnotationData = { type: 'FeatureCollection', features: measurementFeatures };
     } catch {
       // Best-effort — annotation pins are non-critical; silently degrade
     }
