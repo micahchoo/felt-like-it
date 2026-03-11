@@ -7,4 +7,5 @@ export * from './schemas/share.js';
 export * from './schemas/job.js';
 export * from './schemas/geoprocessing.js';
 export * from './schemas/annotation.js';
+export * from './schemas/annotation-object.js';
 export * from './types.js';
