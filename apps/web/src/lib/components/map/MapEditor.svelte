@@ -497,12 +497,12 @@
                 {formatDistance(measureResult.distanceKm, distUnit)}
               </p>
               <div class="flex items-center gap-2">
-                <select bind:value={distUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white">
+                <select bind:value={distUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white" aria-label="Distance unit">
                   {#each DISTANCE_UNITS as u (u.value)}
                     <option value={u.value}>{u.label}</option>
                   {/each}
                 </select>
-                <span class="text-xs text-slate-500">{measureResult.vertexCount} vertices</span>
+                <span class="text-xs text-slate-500">{measureResult.vertexCount} {measureResult.vertexCount === 1 ? 'vertex' : 'vertices'}</span>
               </div>
             </div>
           {:else}
@@ -511,7 +511,7 @@
               <p class="text-2xl font-mono font-semibold text-cyan-300 tabular-nums">
                 {formatArea(measureResult.areaM2, areaUnit)}
               </p>
-              <select bind:value={areaUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white">
+              <select bind:value={areaUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white" aria-label="Area unit">
                 {#each AREA_UNITS as u (u.value)}
                   <option value={u.value}>{u.label}</option>
                 {/each}
@@ -521,13 +521,13 @@
                 <p class="text-lg font-mono font-semibold text-emerald-300 tabular-nums">
                   {formatDistance(measureResult.perimeterKm, periUnit)}
                 </p>
-                <select bind:value={periUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white">
+                <select bind:value={periUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white" aria-label="Perimeter unit">
                   {#each DISTANCE_UNITS as u (u.value)}
                     <option value={u.value}>{u.label}</option>
                   {/each}
                 </select>
               </div>
-              <span class="text-xs text-slate-500">{measureResult.vertexCount} vertices</span>
+              <span class="text-xs text-slate-500">{measureResult.vertexCount} {measureResult.vertexCount === 1 ? 'vertex' : 'vertices'}</span>
             </div>
           {/if}
           {#if measureResult !== null}
