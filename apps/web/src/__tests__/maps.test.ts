@@ -216,7 +216,11 @@ describe('maps.listTemplates', () => {
 describe('maps.createFromTemplate', () => {
   const NEW_MAP_ID = 'ffffffff-0000-0000-0000-ffffffffffff';
 
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // Wire transaction to call through with db as tx so method-level mocks apply inside transactions.
+    vi.mocked(db.transaction).mockImplementation((cb) => cb(db as unknown as Parameters<typeof cb>[0]));
+  });
 
   it('creates a user-owned map from a template and returns it', async () => {
     const newMap = { ...MOCK_TEMPLATE, id: NEW_MAP_ID, userId: USER_ID, isTemplate: false };
@@ -287,7 +291,11 @@ describe('maps.clone', () => {
     createdAt: new Date(), updatedAt: new Date(),
   };
 
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // Wire transaction to call through with db as tx so method-level mocks apply inside transactions.
+    vi.mocked(db.transaction).mockImplementation((cb) => cb(db as unknown as Parameters<typeof cb>[0]));
+  });
 
   it('clones a map with its layers and returns the new map', async () => {
     const clonedMap = { ...MOCK_MAP, id: CLONED_MAP_ID, title: 'Copy of Test Map' };
@@ -339,6 +347,96 @@ describe('maps.clone', () => {
     await expect(makeCaller().clone({ id: MAP_ID })).rejects.toMatchObject({
       code: 'INTERNAL_SERVER_ERROR',
     });
+  });
+});
+
+describe('maps.clone — transaction guarantees', () => {
+  const CLONED_MAP_ID = 'eeeeeeee-0000-0000-0000-eeeeeeeeeeee';
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(db.transaction).mockImplementation((cb) => cb(db as unknown as Parameters<typeof cb>[0]));
+  });
+
+  it('wraps clone work in a single db.transaction call', async () => {
+    const clonedMap = { ...MOCK_MAP, id: CLONED_MAP_ID, title: 'Copy of Test Map' };
+
+    vi.mocked(db.select)
+      .mockReturnValueOnce(drizzleChain([MOCK_MAP]))   // ownership check (outside tx)
+      .mockReturnValueOnce(drizzleChain([]));           // layers query (inside tx)
+    vi.mocked(db.insert).mockReturnValueOnce(drizzleChain([clonedMap]));
+
+    await makeCaller().clone({ id: MAP_ID });
+
+    expect(db.transaction).toHaveBeenCalledOnce();
+  });
+
+  it('does not call appendAuditLog when the transaction throws', async () => {
+    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP])); // ownership check passes
+    vi.mocked(db.transaction).mockRejectedValueOnce(new Error('DB connection lost'));
+
+    await expect(makeCaller().clone({ id: MAP_ID })).rejects.toThrow('DB connection lost');
+    expect(appendAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('calls appendAuditLog with map.clone only after the transaction commits', async () => {
+    const clonedMap = { ...MOCK_MAP, id: CLONED_MAP_ID, title: 'Copy of Test Map' };
+
+    vi.mocked(db.select)
+      .mockReturnValueOnce(drizzleChain([MOCK_MAP]))
+      .mockReturnValueOnce(drizzleChain([]));
+    vi.mocked(db.insert).mockReturnValueOnce(drizzleChain([clonedMap]));
+
+    await makeCaller().clone({ id: MAP_ID });
+
+    expect(appendAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'map.clone', entityId: CLONED_MAP_ID }),
+    );
+  });
+});
+
+describe('maps.createFromTemplate — transaction guarantees', () => {
+  const NEW_MAP_ID = 'ffffffff-0000-0000-0000-ffffffffffff';
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(db.transaction).mockImplementation((cb) => cb(db as unknown as Parameters<typeof cb>[0]));
+  });
+
+  it('wraps template copy work in a single db.transaction call', async () => {
+    const newMap = { ...MOCK_TEMPLATE, id: NEW_MAP_ID, userId: USER_ID, isTemplate: false };
+
+    vi.mocked(db.select)
+      .mockReturnValueOnce(drizzleChain([MOCK_TEMPLATE]))  // template lookup (outside tx)
+      .mockReturnValueOnce(drizzleChain([]));               // layers query (inside tx)
+    vi.mocked(db.insert).mockReturnValueOnce(drizzleChain([newMap]));
+
+    await makeCaller().createFromTemplate({ id: TEMPLATE_MAP_ID });
+
+    expect(db.transaction).toHaveBeenCalledOnce();
+  });
+
+  it('does not call appendAuditLog when the transaction throws', async () => {
+    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_TEMPLATE])); // template found
+    vi.mocked(db.transaction).mockRejectedValueOnce(new Error('Constraint violation'));
+
+    await expect(makeCaller().createFromTemplate({ id: TEMPLATE_MAP_ID })).rejects.toThrow('Constraint violation');
+    expect(appendAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('calls appendAuditLog with map.createFromTemplate only after the transaction commits', async () => {
+    const newMap = { ...MOCK_TEMPLATE, id: NEW_MAP_ID, userId: USER_ID, isTemplate: false };
+
+    vi.mocked(db.select)
+      .mockReturnValueOnce(drizzleChain([MOCK_TEMPLATE]))
+      .mockReturnValueOnce(drizzleChain([]));
+    vi.mocked(db.insert).mockReturnValueOnce(drizzleChain([newMap]));
+
+    await makeCaller().createFromTemplate({ id: TEMPLATE_MAP_ID });
+
+    expect(appendAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'map.createFromTemplate', entityId: NEW_MAP_ID }),
+    );
   });
 });
 

@@ -84,42 +84,33 @@ export async function cloneMap(
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
   }
 
-  const [newMap] = await db
-    .insert(maps)
-    .values({
-      userId,
-      title: `Copy of ${existing.title}`,
-      description: existing.description ?? null,
-      viewport: existing.viewport,
-      basemap: existing.basemap,
-    })
-    .returning();
+  const newMap = await db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(maps)
+      .values({
+        userId,
+        title: `Copy of ${existing.title}`,
+        description: existing.description ?? null,
+        viewport: existing.viewport,
+        basemap: existing.basemap,
+      })
+      .returning();
 
-  if (!newMap) {
-    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to clone map.' });
-  }
+    if (!inserted) {
+      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to clone map.' });
+    }
 
-  void appendAuditLog({
-    userId,
-    action: 'map.clone',
-    entityType: 'map',
-    entityId: newMap.id,
-    mapId: newMap.id,
-    metadata: { sourceMapId: mapId, title: newMap.title },
-  });
+    const origLayers = await tx
+      .select()
+      .from(layers)
+      .where(eq(layers.mapId, mapId))
+      .orderBy(asc(layers.zIndex));
 
-  const origLayers = await db
-    .select()
-    .from(layers)
-    .where(eq(layers.mapId, mapId))
-    .orderBy(asc(layers.zIndex));
-
-  await Promise.all(
-    origLayers.map(async (layer) => {
-      const [newLayer] = await db
+    for (const layer of origLayers) {
+      const [newLayer] = await tx
         .insert(layers)
         .values({
-          mapId: newMap.id,
+          mapId: inserted.id,
           name: layer.name,
           type: layer.type,
           style: layer.style,
@@ -129,16 +120,27 @@ export async function cloneMap(
         })
         .returning();
 
-      if (!newLayer) return;
+      if (!newLayer) continue;
 
-      await db.execute(sql`
+      await tx.execute(sql`
         INSERT INTO features (layer_id, geometry, properties)
         SELECT ${newLayer.id}, geometry, properties
         FROM features
         WHERE layer_id = ${layer.id}
       `);
-    })
-  );
+    }
+
+    return inserted;
+  });
+
+  void appendAuditLog({
+    userId,
+    action: 'map.clone',
+    entityType: 'map',
+    entityId: newMap.id,
+    mapId: newMap.id,
+    metadata: { sourceMapId: mapId, title: newMap.title },
+  });
 
   return newMap;
 }
@@ -156,21 +158,43 @@ export async function createFromTemplate(
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Template not found.' });
   }
 
-  const [newMap] = await db
-    .insert(maps)
-    .values({
-      userId,
-      title: template.title,
-      description: template.description ?? null,
-      viewport: template.viewport,
-      basemap: template.basemap,
-      isTemplate: false,
-    })
-    .returning();
+  const newMap = await db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(maps)
+      .values({
+        userId,
+        title: template.title,
+        description: template.description ?? null,
+        viewport: template.viewport,
+        basemap: template.basemap,
+        isTemplate: false,
+      })
+      .returning();
 
-  if (!newMap) {
-    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create map from template.' });
-  }
+    if (!inserted) {
+      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create map from template.' });
+    }
+
+    const templateLayers = await tx
+      .select()
+      .from(layers)
+      .where(eq(layers.mapId, templateId))
+      .orderBy(asc(layers.zIndex));
+
+    for (const layer of templateLayers) {
+      await tx.insert(layers).values({
+        mapId: inserted.id,
+        name: layer.name,
+        type: layer.type,
+        style: layer.style,
+        visible: layer.visible,
+        zIndex: layer.zIndex,
+        sourceFileName: null,
+      });
+    }
+
+    return inserted;
+  });
 
   void appendAuditLog({
     userId,
@@ -180,26 +204,6 @@ export async function createFromTemplate(
     mapId: newMap.id,
     metadata: { templateId, title: newMap.title },
   });
-
-  const templateLayers = await db
-    .select()
-    .from(layers)
-    .where(eq(layers.mapId, templateId))
-    .orderBy(asc(layers.zIndex));
-
-  await Promise.all(
-    templateLayers.map((layer) =>
-      db.insert(layers).values({
-        mapId: newMap.id,
-        name: layer.name,
-        type: layer.type,
-        style: layer.style,
-        visible: layer.visible,
-        zIndex: layer.zIndex,
-        sourceFileName: null,
-      })
-    )
-  );
 
   return newMap;
 }
