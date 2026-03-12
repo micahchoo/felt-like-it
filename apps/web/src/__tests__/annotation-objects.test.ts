@@ -16,6 +16,10 @@ vi.mock('$lib/server/db/index.js', () => ({
   mapCollaborators: { mapId: {}, userId: {}, role: {} },
 }));
 
+vi.mock('$lib/server/geo/access.js', () => ({
+  requireMapAccess: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('$lib/server/annotations/changelog.js', () => ({
   buildAddPatch: vi.fn(() => ({ patch: { op: 'add' }, inverse: { op: 'del' } })),
   buildModPatch: vi.fn(() => ({ patch: { op: 'mod' }, inverse: { op: 'mod' } })),
@@ -26,12 +30,11 @@ vi.mock('$lib/server/annotations/changelog.js', () => ({
 import { db } from '$lib/server/db/index.js';
 import { drizzleChain, mockContext, mockExecuteResult } from './test-utils.js';
 import { insertChangelog } from '$lib/server/annotations/changelog.js';
+import { requireMapAccess } from '$lib/server/geo/access.js';
 
 const USER_ID = 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
 const MAP_ID = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
 const OBJ_ID = 'cccccccc-0000-0000-0000-cccccccccccc';
-const MOCK_MAP = { id: MAP_ID, userId: USER_ID };
-
 const MOCK_ROW = {
   id: OBJ_ID,
   map_id: MAP_ID,
@@ -54,7 +57,6 @@ describe('annotationService.create', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('inserts annotation and changelog entry', async () => {
-    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP])); // access check
     vi.mocked(db.execute)
       .mockResolvedValueOnce(mockExecuteResult([{ cnt: '0' }])) // count check
       .mockResolvedValueOnce(mockExecuteResult([MOCK_ROW])); // insert
@@ -74,11 +76,10 @@ describe('annotationService.create', () => {
 
   it('rejects replies to non-root annotations', async () => {
     vi.mocked(db.select)
-      .mockReturnValueOnce(drizzleChain([MOCK_MAP])) // access check
       .mockReturnValueOnce(drizzleChain([{ parentId: 'some-parent' }])); // parent lookup — not root
 
     vi.mocked(db.execute)
-      .mockResolvedValueOnce(mockExecuteResult([])); // count check
+      .mockResolvedValueOnce(mockExecuteResult([{ cnt: '0' }])); // count check
 
     await expect(annotationService.create({
       userId: USER_ID,
@@ -95,12 +96,29 @@ describe('annotationService.list', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('returns annotations for a map', async () => {
-    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
     vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
 
     const result = await annotationService.list({ userId: USER_ID, mapId: MAP_ID });
     expect(result).toHaveLength(1);
     expect(result[0]?.id).toBe(OBJ_ID);
+  });
+
+  it('filters to roots only when rootsOnly is true', async () => {
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+
+    const result = await annotationService.list({ userId: USER_ID, mapId: MAP_ID, rootsOnly: true });
+    expect(result).toHaveLength(1);
+    // Verify that requireMapAccess was called with 'viewer'
+    expect(requireMapAccess).toHaveBeenCalledWith(USER_ID, MAP_ID, 'viewer');
+  });
+
+  it('does not filter to roots when rootsOnly is undefined', async () => {
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+
+    const result = await annotationService.list({ userId: USER_ID, mapId: MAP_ID });
+    expect(result).toHaveLength(1);
+    // The default (undefined) should NOT filter for roots only
+    expect(requireMapAccess).toHaveBeenCalledWith(USER_ID, MAP_ID, 'viewer');
   });
 });
 
@@ -123,6 +141,7 @@ describe('annotationService.update', () => {
 
     expect(result.version).toBe(2);
     expect(insertChangelog).toHaveBeenCalledOnce();
+    expect(requireMapAccess).toHaveBeenCalledWith(USER_ID, MAP_ID, 'commenter');
   });
 
   it('rejects update with stale version', async () => {
@@ -143,8 +162,9 @@ describe('annotationService.delete', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('deletes annotation and records changelog', async () => {
-    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW])); // fetch
-    vi.mocked(db.delete).mockReturnValueOnce(drizzleChain([])); // delete
+    vi.mocked(db.execute)
+      .mockResolvedValueOnce(mockExecuteResult([MOCK_ROW])) // fetch
+      .mockResolvedValueOnce(mockExecuteResult([{ id: OBJ_ID }])); // atomic delete
 
     const result = await annotationService.delete({
       userId: USER_ID,
@@ -154,6 +174,7 @@ describe('annotationService.delete', () => {
 
     expect(result.deleted).toBe(true);
     expect(insertChangelog).toHaveBeenCalledOnce();
+    expect(requireMapAccess).toHaveBeenCalledWith(USER_ID, MAP_ID, 'commenter');
   });
 
   it('rejects delete by non-author', async () => {
@@ -180,7 +201,6 @@ describe('annotationsRouter (tRPC adapter)', () => {
   beforeEach(() => vi.resetAllMocks());
 
   it('list calls service and returns results', async () => {
-    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
     vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
 
     const result = await makeCaller().list({ mapId: MAP_ID });
@@ -193,7 +213,6 @@ describe('annotationService adversarial cases', () => {
   beforeEach(() => vi.resetAllMocks());
 
   it('rejects create when map has 10,000 annotations', async () => {
-    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
     vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([{ cnt: '10000' }]));
 
     await expect(annotationService.create({
@@ -230,7 +249,6 @@ describe('annotationService adversarial cases', () => {
   it('rejects getThread on a reply (not root)', async () => {
     const replyRow = { ...MOCK_ROW, parent_id: 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa' };
     vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([replyRow]));
-    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP])); // access check in get
 
     await expect(annotationService.getThread({
       userId: USER_ID,

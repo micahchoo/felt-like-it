@@ -1,5 +1,4 @@
-import { sql } from 'drizzle-orm';
-import { eq } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { db, annotationObjects } from '../db/index.js';
 import { requireMapAccess } from '../geo/access.js';
@@ -157,7 +156,7 @@ export const annotationService = {
   }): Promise<AnnotationObject[]> {
     await requireMapAccess(params.userId, params.mapId, 'viewer');
 
-    const whereClause = params.rootsOnly !== false
+    const whereClause = params.rootsOnly === true
       ? sql`WHERE map_id = ${params.mapId}::uuid AND parent_id IS NULL`
       : sql`WHERE map_id = ${params.mapId}::uuid`;
 
@@ -222,12 +221,15 @@ export const annotationService = {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only edit your own annotations.' });
     }
 
-    // 3. Optimistic concurrency
+    // 3. Access check
+    await requireMapAccess(params.userId, current.map_id, 'commenter');
+
+    // 4. Optimistic concurrency
     if (current.version !== params.version) {
       throw new TRPCError({ code: 'CONFLICT', message: 'Version conflict — annotation was modified by another user.' });
     }
 
-    // 4. Update
+    // 5. Update with version guard
     const contentJson = JSON.stringify(params.content);
     const newVersion = current.version + 1;
 
@@ -236,12 +238,12 @@ export const annotationService = {
       SET content = ${contentJson}::jsonb,
           version = ${newVersion},
           updated_at = NOW()
-      WHERE id = ${params.id}::uuid
+      WHERE id = ${params.id}::uuid AND version = ${params.version}
       RETURNING ${OBJECT_COLS}
     `);
 
     const row = rows[0];
-    if (!row) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Update failed.' });
+    if (!row) throw new TRPCError({ code: 'CONFLICT', message: 'Version conflict — annotation was modified concurrently.' });
 
     const obj = rowToObject(row);
 
@@ -280,6 +282,8 @@ export const annotationService = {
       throw new TRPCError({ code: 'FORBIDDEN', message: 'Forbidden: you can only delete your own annotations.' });
     }
 
+    await requireMapAccess(params.userId, current.map_id, 'commenter');
+
     const obj = rowToObject(current);
 
     // 2. Changelog BEFORE delete (so snapshot is preserved)
@@ -295,8 +299,16 @@ export const annotationService = {
       inverse,
     });
 
-    // 3. Delete (cascades to children via FK)
-    await db.delete(annotationObjects).where(eq(annotationObjects.id, params.id));
+    // 3. Atomic delete with authorship check (cascades to children via FK)
+    const deleted = await typedExecute<{ id: string }>(sql`
+      DELETE FROM annotation_objects
+      WHERE id = ${params.id}::uuid AND author_id = ${params.userId}::uuid
+      RETURNING id
+    `);
+
+    if (!deleted[0]) {
+      throw new TRPCError({ code: 'CONFLICT', message: 'Annotation was modified or deleted concurrently.' });
+    }
 
     return { deleted: true };
   },
