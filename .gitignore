@@ -1,27 +1,29 @@
 node_modules
-.svelte-kit
 build
 dist
+.turbo
+
+# Framework
+.svelte-kit
+
+# Environment
 .env
 .env.local
 .env.*.local
+
+# Logs
 *.log
-.turbo
+
+# OS
 .DS_Store
-uploads/
-backups/
+
+# Test & coverage
 coverage/
-.nyc_output
 test-results/
 playwright-report/
 
-# Claude Code
-.claude/settings.local.json
-.claude/.fuse_hidden*
+# Data
+uploads/
 
-# Git worktrees
+# Worktrees
 .worktrees/
-
-# Tags & cscope (auto-generated)
-tags
-cscope.*
