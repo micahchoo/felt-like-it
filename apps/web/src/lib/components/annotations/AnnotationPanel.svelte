@@ -5,6 +5,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import AnnotationContent from './AnnotationContent.svelte';
   import { mapStore } from '$lib/stores/map.svelte.js';
+  import { toastStore } from '$lib/components/ui/Toast.svelte';
   import type { AnnotationObject, AnnotationContent as AC, Anchor } from '@felt-like-it/shared-types';
 
   interface Props {
@@ -98,7 +99,7 @@
       commentBody = '';
       await loadComments();
     } catch {
-      // Non-critical
+      toastStore.error('Failed to post comment.');
     } finally {
       submittingComment = false;
     }
@@ -110,7 +111,7 @@
       comments = comments.filter((c) => c.id !== id);
       oncountchange?.(annotationList.length, comments.length);
     } catch {
-      // Non-critical
+      toastStore.error('Failed to delete comment.');
     }
   }
 
@@ -119,7 +120,7 @@
       const updated = await trpc.comments.resolve.mutate({ id });
       comments = comments.map((c) => (c.id === id ? (updated as CommentEntry) : c));
     } catch {
-      // Non-critical
+      toastStore.error('Failed to resolve comment.');
     }
   }
 
