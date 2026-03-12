@@ -51,6 +51,7 @@ export function mockContext(overrides?: {
 	userId?: string;
 	userName?: string;
 	userEmail?: string;
+	isAdmin?: boolean;
 }) {
 	const userId = overrides?.userId ?? 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
 	return {
@@ -58,6 +59,7 @@ export function mockContext(overrides?: {
 			id: userId,
 			name: overrides?.userName ?? 'Test User',
 			email: overrides?.userEmail ?? 'test@test.local',
+			isAdmin: overrides?.isAdmin ?? false,
 		} as User,
 		session: {
 			id: 'sess',

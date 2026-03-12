@@ -27,7 +27,11 @@ const MAP_ID   = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
 const MOCK_MAP = { id: MAP_ID };
 
 function makeCaller() {
-  return auditLogRouter.createCaller(mockContext({ userId: OWNER_ID, userName: 'Owner', userEmail: 'owner@test.com' }));
+  return auditLogRouter.createCaller(mockContext({ userId: OWNER_ID, userName: 'Owner', userEmail: 'owner@test.com', isAdmin: true }));
+}
+
+function makeNonAdminCaller() {
+  return auditLogRouter.createCaller(mockContext({ userId: OWNER_ID, userName: 'Owner', userEmail: 'owner@test.com', isAdmin: false }));
 }
 
 // --- Tests ---
@@ -115,6 +119,19 @@ describe('auditLog.verify', () => {
 
     expect(result.valid).toBe(false);
     expect(result.firstInvalidSeq).toBe(1);
+  });
+
+  it('rejects non-admin users with FORBIDDEN', async () => {
+    await expect(makeNonAdminCaller().verify()).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      message: 'Admin access required.',
+    });
+  });
+
+  it('allows admin users and verifies the chain', async () => {
+    (db.select as ReturnType<typeof vi.fn>).mockReturnValue(drizzleChain([]));
+    const result = await makeCaller().verify();
+    expect(result).toEqual({ valid: true, entryCount: 0, firstInvalidSeq: null });
   });
 
   it('returns valid=false when prev_hash does not match the preceding chain_hash', async () => {

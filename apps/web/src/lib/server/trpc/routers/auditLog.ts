@@ -46,7 +46,10 @@ export const auditLogRouter = router({
    * NOTE: reads all rows in order — expensive on very large logs. Intended for
    * scheduled integrity checks, not real-time use.
    */
-  verify: protectedProcedure.query(async () => {
+  verify: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.user.isAdmin) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required.' });
+    }
     const entries = await db
       .select()
       .from(auditLog)
