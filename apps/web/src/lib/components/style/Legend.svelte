@@ -4,7 +4,7 @@
   import type { LayerStyle, LegendEntry } from '@felt-like-it/shared-types';
 
   // Build legend entries from all visible layers
-  const legendItems = $derived(() => {
+  const legendItems = $derived.by(() => {
     const items: Array<{ layerId: string; layerName: string; entries: LegendEntry[]; color: string }> = [];
 
     for (const layer of layersStore.all) {
@@ -31,7 +31,7 @@
   });
 </script>
 
-{#if styleStore.showLegend && legendItems().length > 0}
+{#if styleStore.showLegend && legendItems.length > 0}
   <div
     class="absolute bottom-14 right-3 z-10 bg-slate-800/90 backdrop-blur-sm rounded-lg shadow-xl ring-1 ring-white/10 p-3 max-w-48"
     aria-label="Map legend"
@@ -50,7 +50,7 @@
     </div>
 
     <div class="space-y-3">
-      {#each legendItems() as item (item.layerId)}
+      {#each legendItems as item (item.layerId)}
         <div>
           <p class="text-xs text-slate-400 font-medium truncate mb-1">{item.layerName}</p>
 

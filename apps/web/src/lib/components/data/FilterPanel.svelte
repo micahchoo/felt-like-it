@@ -11,7 +11,7 @@
   let { layerId, features }: Props = $props();
 
   // Derive available column names from the first 100 features
-  const availableFields = $derived(() => {
+  const availableFields = $derived.by(() => {
     const keys = new Set<string>();
     for (const f of features.slice(0, 100)) {
       for (const k of Object.keys(f.properties ?? {})) {
@@ -30,13 +30,13 @@
 
   // Keep newField in sync when availableFields changes
   $effect(() => {
-    const fields = availableFields();
+    const fields = availableFields;
     if (!newField && fields.length > 0) {
       newField = fields[0] ?? '';
     }
   });
 
-  const activeFilters = $derived(() => filterStore.get(layerId));
+  const activeFilters = $derived.by(() => filterStore.get(layerId));
 
   function addFilter() {
     if (!newField || !newValue.trim()) return;
@@ -56,7 +56,7 @@
 <div class="flex flex-col gap-2 p-3 bg-slate-800 border-b border-white/10 text-xs text-white">
   <div class="flex items-center justify-between">
     <span class="font-medium text-slate-300">Filters</span>
-    {#if activeFilters().length > 0}
+    {#if activeFilters.length > 0}
       <button
         type="button"
         class="text-slate-400 hover:text-white transition-colors"
@@ -67,14 +67,14 @@
     {/if}
   </div>
 
-  {#if activeFilters().length === 0}
+  {#if activeFilters.length === 0}
     <p class="text-xs text-slate-400 text-center py-3 px-4">Add filters to show only features matching specific attribute values.</p>
   {/if}
 
   <!-- Active filter chips -->
-  {#if activeFilters().length > 0}
+  {#if activeFilters.length > 0}
     <ul class="flex flex-col gap-1">
-      {#each activeFilters() as filter, i (i)}
+      {#each activeFilters as filter, i (i)}
         <li class="flex items-center gap-2 bg-slate-700 rounded px-2 py-1">
           <span class="font-mono text-blue-300">{filter.field}</span>
           <span class="text-slate-400">{FILTER_OPERATOR_LABELS[filter.operator]}</span>
@@ -93,14 +93,14 @@
   {/if}
 
   <!-- Add filter row -->
-  {#if availableFields().length > 0}
+  {#if availableFields.length > 0}
     <div class="flex items-center gap-1">
       <!-- Field selector -->
       <select
         bind:value={newField}
         class="flex-1 min-w-0 rounded bg-slate-700 border border-slate-600 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
       >
-        {#each availableFields() as field (field)}
+        {#each availableFields as field (field)}
           <option value={field}>{field}</option>
         {/each}
       </select>

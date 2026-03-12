@@ -18,7 +18,7 @@
   let filterText = $state('');
 
   // Derive column headers from features
-  const columns = $derived(() => {
+  const columns = $derived.by(() => {
     const keys = new Set<string>();
     for (const f of features.slice(0, 100)) {
       for (const k of Object.keys(f.properties ?? {})) {
@@ -28,7 +28,7 @@
     return Array.from(keys).slice(0, 20); // max 20 columns
   });
 
-  const filteredFeatures = $derived(() => {
+  const filteredFeatures = $derived.by(() => {
     let result = features;
     if (filterText.trim()) {
       const q = filterText.toLowerCase();
@@ -97,7 +97,7 @@
   <!-- Table toolbar -->
   <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10 shrink-0">
     <span class="text-xs font-medium text-slate-300">
-      {filteredFeatures().length} of {features.length} features
+      {filteredFeatures.length} of {features.length} features
     </span>
     <input
       type="search"
@@ -112,7 +112,7 @@
     <table class="w-full text-xs border-collapse">
       <thead class="sticky top-0 bg-slate-800 z-10">
         <tr>
-          {#each columns() as col (col)}
+          {#each columns as col (col)}
             <th
               class="px-3 py-2 text-left text-slate-300 font-medium border-b border-white/10 whitespace-nowrap cursor-pointer hover:text-white select-none"
               onclick={() => toggleSort(col)}
@@ -127,7 +127,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each filteredFeatures() as feature (feature.id)}
+        {#each filteredFeatures as feature (feature.id)}
           <tr
             class="border-b border-white/5 cursor-pointer transition-colors
                    {selectionStore.selectedFeature?.id === feature.id
@@ -137,7 +137,7 @@
             onkeydown={(e) => e.key === 'Enter' && handleRowClick(feature)}
             tabindex="0"
           >
-            {#each columns() as col (col)}
+            {#each columns as col (col)}
               <td class="px-3 py-1.5 text-slate-200 max-w-40 truncate whitespace-nowrap">
                 {formatCell(col, feature.properties?.[col])}
               </td>
@@ -147,7 +147,7 @@
       </tbody>
     </table>
 
-    {#if filteredFeatures().length === 0}
+    {#if filteredFeatures.length === 0}
       <p class="text-center text-slate-400 py-8 text-xs">
         {filterText ? 'No features match your filter.' : 'No features in this layer.'}
       </p>

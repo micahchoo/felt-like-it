@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import exifr from 'exifr';
   import { trpc } from '$lib/utils/trpc.js';
   import Button from '$lib/components/ui/Button.svelte';
@@ -123,7 +123,14 @@
     }
   }
 
-  $effect(() => { loadAnnotations(); loadComments(); });
+  $effect(() => {
+    // Read mapId to establish reactive dependency
+    const _mapId = mapId;
+    untrack(() => {
+      loadAnnotations();
+      loadComments();
+    });
+  });
 
   // Cleanup blob URL on component unmount to prevent memory leaks
   $effect(() => {
