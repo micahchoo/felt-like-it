@@ -4,11 +4,11 @@ import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { sanitizeFilename } from '$lib/server/import/sanitize.js';
 import { env } from '$env/dynamic/private';
-import { db, importJobs, maps } from '$lib/server/db/index.js';
-import { mapCollaborators } from '$lib/server/db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { db, importJobs } from '$lib/server/db/index.js';
 import { enqueueImportJob } from '$lib/server/jobs/queues.js';
 import { randomUUID } from 'crypto';
+import { requireMapAccess } from '$lib/server/geo/access.js';
+import { TRPCError } from '@trpc/server';
 
 const UPLOAD_DIR = env.UPLOAD_DIR ?? '/tmp/felt-uploads';
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
@@ -31,28 +31,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     error(413, `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024} MB`);
   }
 
-  // Verify map access (owner or editor collaborator)
-  const [map] = await db
-    .select({ id: maps.id, userId: maps.userId })
-    .from(maps)
-    .where(eq(maps.id, mapId));
-
-  if (!map) {
-    error(404, 'Map not found');
-  }
-
-  if (map.userId !== locals.user.id) {
-    const [collab] = await db
-      .select({ role: mapCollaborators.role })
-      .from(mapCollaborators)
-      .where(and(
-        eq(mapCollaborators.mapId, mapId),
-        eq(mapCollaborators.userId, locals.user.id),
-      ));
-
-    if (!collab || collab.role === 'viewer' || collab.role === 'commenter') {
-      error(404, 'Map not found');
+  // Verify map access — reuse the canonical access helper
+  try {
+    await requireMapAccess(locals.user.id, mapId, 'editor');
+  } catch (err) {
+    if (err instanceof TRPCError) {
+      // Map TRPCError codes to SvelteKit error codes
+      const status = err.code === 'NOT_FOUND' ? 404 : err.code === 'FORBIDDEN' ? 403 : 500;
+      error(status, err.message);
     }
+    throw err;
   }
 
   // Create job ID and save file to disk

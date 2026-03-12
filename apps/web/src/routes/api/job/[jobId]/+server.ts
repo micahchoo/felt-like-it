@@ -1,7 +1,9 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db, importJobs, maps } from '$lib/server/db/index.js';
-import { eq, and } from 'drizzle-orm';
+import { db, importJobs } from '$lib/server/db/index.js';
+import { eq } from 'drizzle-orm';
+import { requireMapAccess } from '$lib/server/geo/access.js';
+import { TRPCError } from '@trpc/server';
 
 export const GET: RequestHandler = async ({ params, locals }) => {
   if (!locals.user) {
@@ -17,14 +19,15 @@ export const GET: RequestHandler = async ({ params, locals }) => {
     error(404, 'Job not found');
   }
 
-  // Verify ownership via map
-  const [map] = await db
-    .select()
-    .from(maps)
-    .where(and(eq(maps.id, job.mapId), eq(maps.userId, locals.user.id)));
-
-  if (!map) {
-    error(403, 'Access denied');
+  // Verify access — owner or editor+ collaborator
+  try {
+    await requireMapAccess(locals.user.id, job.mapId, 'editor');
+  } catch (err) {
+    if (err instanceof TRPCError) {
+      const status = err.code === 'NOT_FOUND' ? 404 : err.code === 'FORBIDDEN' ? 403 : 500;
+      error(status, err.message);
+    }
+    throw err;
   }
 
   return json({
