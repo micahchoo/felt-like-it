@@ -118,6 +118,11 @@ export const mapsRouter = router({
         entityType: 'map',
         entityId: id,
         mapId: id,
+        metadata: {
+          changedFields: Object.keys(data).filter(
+            (k) => data[k as keyof typeof data] !== undefined,
+          ),
+        },
       });
 
       return updated;

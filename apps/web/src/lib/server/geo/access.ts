@@ -49,6 +49,8 @@ export async function requireMapAccess(
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
   }
 
+  // TYPE_DEBT: Drizzle infers `role` as `string`, not the enum union. Cast is safe
+  // because unknown roles fall back to -1 via nullish coalescing.
   const userLevel = ROLE_LEVEL[collab.role as CollabRole] ?? -1;
   const minLevel  = ROLE_LEVEL[minRole];
 
