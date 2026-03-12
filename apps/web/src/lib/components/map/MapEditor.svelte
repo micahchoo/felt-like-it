@@ -776,7 +776,7 @@
   {/snippet}
 
   <!-- Right: Side panel (hidden in design mode and embed) -->
-  {#if !designMode && !embed && !effectiveReadonly}
+  {#if !designMode && !embed}
     <SidePanel
       sections={[
         { id: 'annotations', label: 'Annotations', icon: 'M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z', count: annotationCount + commentCount, content: annotationsContent },

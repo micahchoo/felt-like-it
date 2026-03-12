@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { tick } from 'svelte';
 
   interface Props {
     open: boolean;
@@ -13,8 +14,41 @@
 
   let { open = $bindable(), title, dismissible = true, onclose, children, footer }: Props = $props();
 
+  let dialogEl: HTMLDivElement | undefined;
+
+  // Focus the first focusable element when the modal opens
+  $effect(() => {
+    if (open && dialogEl) {
+      tick().then(() => {
+        const focusable = dialogEl?.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        focusable?.[0]?.focus();
+      });
+    }
+  });
+
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && dismissible) close();
+    if (e.key === 'Escape' && dismissible) {
+      close();
+      return;
+    }
+    // Trap Tab within modal
+    if (e.key === 'Tab' && dialogEl) {
+      const focusable = dialogEl.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first?.focus();
+      }
+    }
   }
 
   function close() {
@@ -44,6 +78,7 @@
 
     <!-- Modal content -->
     <div
+      bind:this={dialogEl}
       class="relative z-10 w-full max-w-lg rounded-xl bg-slate-800 shadow-2xl ring-1 ring-white/10"
     >
       {#if title}
