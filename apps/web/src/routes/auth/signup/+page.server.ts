@@ -32,6 +32,10 @@ export const actions: Actions = {
       return fail(400, { field: 'password', message: 'Password must be at least 8 characters.' });
     }
 
+    if (password.length > 256) {
+      return fail(400, { field: 'password', message: 'Password is too long.' });
+    }
+
     // Check for duplicate email
     const [existing] = await db.select().from(users).where(eq(users.email, email));
     if (existing) {

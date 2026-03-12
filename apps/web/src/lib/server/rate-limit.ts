@@ -10,6 +10,16 @@ const AUTH_MAX_REQUESTS = 10;
 
 const windows = new Map<string, number[]>();
 
+// Prune stale entries every 5 minutes to prevent unbounded memory growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, timestamps] of windows) {
+    if (timestamps.length === 0 || now - timestamps[timestamps.length - 1]! > AUTH_WINDOW_MS) {
+      windows.delete(ip);
+    }
+  }
+}, 5 * 60_000).unref(); // unref() so it doesn't keep the process alive
+
 /** Returns true if the request is allowed, false if rate-limited. */
 export function checkRateLimit(ip: string): boolean {
   const now = Date.now();

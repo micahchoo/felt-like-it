@@ -34,6 +34,10 @@ export const actions: Actions = {
       return fail(400, { field: '',message: 'Email and password are required.' });
     }
 
+    if (password.length > 256) {
+      return fail(400, { field: 'password', message: 'Password is too long.' });
+    }
+
     const [user] = await db.select().from(users).where(eq(users.email, email));
 
     if (!user) {
