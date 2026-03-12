@@ -154,6 +154,9 @@ describe('maps.update', () => {
       entityType: 'map',
       entityId: MAP_ID,
       mapId: MAP_ID,
+      metadata: {
+        changedFields: ['title'],
+      },
     });
   });
 
