@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { sanitizeFilename } from '$lib/server/import/sanitize.js';
 import { env } from '$env/dynamic/private';
 import { db, importJobs, maps } from '$lib/server/db/index.js';
 import { mapCollaborators } from '$lib/server/db/schema.js';
@@ -59,7 +60,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   const jobDir = join(UPLOAD_DIR, jobId);
   await mkdir(jobDir, { recursive: true });
 
-  const filePath = join(jobDir, file.name);
+  const safeName = sanitizeFilename(file.name);
+  const filePath = join(jobDir, safeName);
+  // Verify resolved path is within jobDir (defense in depth)
+  if (!filePath.startsWith(jobDir)) {
+    error(400, 'Invalid filename');
+  }
   const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(filePath, buffer);
 
