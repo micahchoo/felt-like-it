@@ -695,7 +695,14 @@
       {@const rawFeatures = layerData[activeLayer.id]?.features ?? []}
       {@const filteredFeatures = filterStore.applyToFeatures(activeLayer.id, rawFeatures)}
       <div class="border-t border-white/10 shrink-0 flex flex-col overflow-hidden" style="height: {showFilterPanel && !isLargeLayer(activeLayer) ? '22rem' : '16rem'}">
-        {#if showFilterPanel && !isLargeLayer(activeLayer)}
+        {#if isLargeLayer(activeLayer)}
+          <div class="px-3 py-1.5 bg-blue-900/30 border-b border-blue-500/20 text-xs text-blue-300 flex items-center gap-2 shrink-0">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Large layer ({(activeLayer.featureCount ?? 0).toLocaleString()} features) — rendered via vector tiles. {viewportLoading ? 'Loading…' : 'Use the table to inspect features in the current viewport.'}</span>
+          </div>
+        {:else if showFilterPanel}
           <FilterPanel layerId={activeLayer.id} features={rawFeatures} />
         {/if}
         <div class="flex-1 min-h-0 overflow-hidden">
