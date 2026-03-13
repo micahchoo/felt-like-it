@@ -31,6 +31,12 @@
   import { DISTANCE_UNITS, AREA_UNITS, formatDistance, formatArea, measureLine, measurePolygon } from '@felt-like-it/geo-engine';
   import DrawActionRow from './DrawActionRow.svelte';
   import type { Geometry } from 'geojson';
+  import { PUBLIC_MARTIN_URL } from '$env/static/public';
+  import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
+
+  function isLargeLayer(layer: Layer): boolean {
+    return PUBLIC_MARTIN_URL.length > 0 && (layer.featureCount ?? 0) > VECTOR_TILE_THRESHOLD;
+  }
 
   /**
    * TYPE_DEBT: features.list returns geometry as Record<string, unknown> from raw SQL;
@@ -274,7 +280,9 @@
     untrack(() => {
       layersStore.set(layers);
       for (const layer of layers) {
-        loadLayerData(layer.id);
+        if (!isLargeLayer(layer)) {
+          loadLayerData(layer.id);
+        }
       }
     });
   });
@@ -301,9 +309,10 @@
   }
 
   async function handleLayerChange() {
-    // Reload data for the active layer
     const activeLayer = layersStore.active;
-    if (activeLayer) {
+    if (!activeLayer) return;
+    if (isLargeLayer(activeLayer)) return; // vector tiles handle rendering
+    if (!layerData[activeLayer.id]) {
       await loadLayerData(activeLayer.id);
     }
   }
@@ -314,7 +323,10 @@
   }
 
   async function handleFeatureDrawn(layerId: string, _feature: Record<string, unknown> & { id?: string | undefined }) {
-    await loadLayerData(layerId);
+    const layer = layersStore.all.find((l) => l.id === layerId);
+    if (!layer || !isLargeLayer(layer)) {
+      await loadLayerData(layerId);
+    }
 
     const geom = _feature['geometry'] as Geometry | undefined;
     const fid = _feature['id'] ?? '';
@@ -351,11 +363,13 @@
   function handleImportComplete(layerId: string) {
     showImportDialog = false;
     layersStore.setActive(layerId);
-    loadLayerData(layerId);
-    // Refresh layers list, then log the activity event with the layer name
+    // Re-fetch layers to get updated featureCount, then load data if not large
     trpc.layers.list.query({ mapId }).then((newLayers) => {
       layersStore.set(newLayers);
       const imported = newLayers.find((l) => l.id === layerId);
+      if (imported && !isLargeLayer(imported)) {
+        loadLayerData(layerId);
+      }
       trpc.events.log
         .mutate({ mapId, action: 'layer.imported', metadata: { name: imported?.name ?? '' } })
         .catch(() => undefined);

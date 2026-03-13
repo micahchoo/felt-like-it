@@ -6,6 +6,7 @@
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { selectionStore } from '$lib/stores/selection.svelte.js';
   import type { Layer, GeoJSONFeature } from '@felt-like-it/shared-types';
+  import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
   import { fslFiltersToMapLibre, resolvePaintInterpolators } from '@felt-like-it/geo-engine';
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
   import { filterStore } from '$lib/stores/filters.svelte.js';
@@ -139,13 +140,6 @@
         };
       })
   );
-
-  /**
-   * Feature count threshold above which a layer switches from GeoJSON source to
-   * Martin vector tiles. 10K is a safe browser limit for smooth GeoJSON rendering.
-   * Requires PUBLIC_MARTIN_URL to be set (non-empty string).
-   */
-  const VECTOR_TILE_THRESHOLD = 10_000;
 
   /** Martin tile source layer name — Martin uses `{schema}.{table}` by default. */
   const MARTIN_SOURCE_LAYER = 'public.features';
