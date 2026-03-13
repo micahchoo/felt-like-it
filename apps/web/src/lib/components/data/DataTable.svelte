@@ -16,9 +16,9 @@
     serverTotal?: number;
     serverPage?: number;
     serverPageSize?: number;
-    onPageChange?: (page: number) => void;
-    onPageSizeChange?: (size: number) => void;
-    onSortChange?: (sortBy: string, sortDir: 'asc' | 'desc') => void;
+    onPageChange?: (_page: number) => void;
+    onPageSizeChange?: (_size: number) => void;
+    onSortChange?: (_sortBy: string, _sortDir: 'asc' | 'desc') => void;
   }
 
   let {
@@ -77,20 +77,20 @@
     return result;
   });
 
-  // Rows used by the table — switches between client and server data
-  const displayRows = $derived(
+  // Rows used by the table — switches between client and server data.
+  // Server rows have no geometry; cast to GeoJSONFeature for uniform iteration.
+  const displayRows = $derived<GeoJSONFeature[]>(
     mode === 'server'
       ? serverRows.map((r) => ({
           type: 'Feature' as const,
           id: r.id,
-          geometry: {} as Record<string, unknown>,
+          geometry: { type: 'Point', coordinates: [0, 0] },
           properties: { ...r.properties, _id: r.id },
-        }))
+        }) as GeoJSONFeature)
       : filteredFeatures
   );
 
   const totalCount = $derived(mode === 'server' ? serverTotal : features.length);
-  const displayCount = $derived(mode === 'server' ? serverRows.length : filteredFeatures.length);
 
   function handleRowClick(feature: GeoJSONFeature) {
     selectionStore.selectFeature(feature);

@@ -419,8 +419,8 @@
   }
 
   async function handleFeatureDrawn(layerId: string, _feature: Record<string, unknown> & { id?: string | undefined }) {
-    const layer = layersStore.all.find((l) => l.id === layerId);
-    if (!layer || !isLargeLayer(layer)) {
+    const drawnLayer = layersStore.all.find((l) => l.id === layerId);
+    if (!drawnLayer || !isLargeLayer(drawnLayer)) {
       await loadLayerData(layerId);
     }
 
@@ -430,10 +430,9 @@
       activeFeature = { featureId: String(fid), layerId, geometry: geom };
     }
 
-    const layer = layersStore.all.find((l) => l.id === layerId);
     logActivity('feature.drawn', {
       layerId,
-      layerName: layer?.name ?? '',
+      layerName: drawnLayer?.name ?? '',
       geometryType: geom?.type ?? '',
     });
   }
