@@ -25,13 +25,23 @@ UPLOADS_VOLUME="${PROJECT_NAME}_uploads"
 
 mkdir -p "$BACKUP_DIR"
 
+# Read credentials from .env if present, fall back to defaults
+DB_USER="${POSTGRES_USER:-felt}"
+DB_NAME="${POSTGRES_DB:-felt}"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  # shellcheck disable=SC1091
+  . "$SCRIPT_DIR/.env"
+  DB_USER="${POSTGRES_USER:-$DB_USER}"
+  DB_NAME="${POSTGRES_DB:-$DB_NAME}"
+fi
+
 echo "Backing up felt-like-it ($TIMESTAMP)..."
 
 # ── Database dump ──────────────────────────────────────────────────────────────
 DB_FILE="$BACKUP_DIR/db-$TIMESTAMP.sql.gz"
 echo "  Dumping database..."
 $COMPOSE_CMD exec -T postgres \
-  pg_dump -U felt -d felt --no-owner --no-privileges \
+  pg_dump -U "$DB_USER" -d "$DB_NAME" --no-owner --no-privileges \
   | gzip > "$DB_FILE"
 echo "  → $DB_FILE ($(du -h "$DB_FILE" | cut -f1))"
 

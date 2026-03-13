@@ -26,7 +26,7 @@ postgres:
       geometry_type: GEOMETRY
       # Include layer_id so MapLibre can filter per-layer
       properties:
-        layer_id: text
+        layer_id: uuid
         properties: jsonb
       minzoom: 0
       maxzoom: 22

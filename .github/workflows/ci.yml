@@ -114,3 +114,45 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 14
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [ci, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image tag
+        id: tag
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.web
+          push: true
+          tags: |
+            ghcr.io/micahchoo/felt-like-it/web:${{ steps.tag.outputs.sha }}
+            ghcr.io/micahchoo/felt-like-it/web:latest
+
+      - name: Build and push worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.worker
+          push: true
+          tags: |
+            ghcr.io/micahchoo/felt-like-it/worker:${{ steps.tag.outputs.sha }}
+            ghcr.io/micahchoo/felt-like-it/worker:latest

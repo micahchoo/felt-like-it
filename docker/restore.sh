@@ -54,6 +54,16 @@ echo "  DB:      $DB_FILE"
 echo "  Uploads: $UPLOADS_FILE"
 echo ""
 
+# Read credentials from .env if present, fall back to defaults
+DB_USER="${POSTGRES_USER:-felt}"
+DB_NAME="${POSTGRES_DB:-felt}"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  # shellcheck disable=SC1091
+  . "$SCRIPT_DIR/.env"
+  DB_USER="${POSTGRES_USER:-$DB_USER}"
+  DB_NAME="${POSTGRES_DB:-$DB_NAME}"
+fi
+
 read -rp "This will DROP the current database. Continue? [y/N] " confirm
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
   echo "Aborted."
@@ -67,12 +77,12 @@ $COMPOSE_CMD stop web worker martin || true
 # ── Restore database ──────────────────────────────────────────────────────────
 echo "Restoring database..."
 $COMPOSE_CMD exec -T postgres \
-  psql -U felt -d postgres -c "DROP DATABASE IF EXISTS felt;"
+  psql -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;"
 $COMPOSE_CMD exec -T postgres \
-  psql -U felt -d postgres -c "CREATE DATABASE felt;"
+  psql -U "$DB_USER" -d postgres -c "CREATE DATABASE $DB_NAME;"
 
 gunzip -c "$DB_FILE" | $COMPOSE_CMD exec -T postgres \
-  psql -U felt -d felt --quiet
+  psql -U "$DB_USER" -d "$DB_NAME" --quiet
 
 echo "  Database restored."
 

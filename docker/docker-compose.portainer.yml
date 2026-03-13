@@ -1,0 +1,177 @@
+# felt-like-it — Portainer Stack
+#
+# Deploy: Stacks → Add stack → Repository or paste → set env vars → deploy
+# Update: Stacks → your stack → Pull and redeploy
+#
+# Required environment variables:
+#   DOMAIN            — your public domain (e.g., maps.example.com)
+#   ACME_EMAIL        — email for Let's Encrypt certificate notifications
+#   POSTGRES_PASSWORD — openssl rand -hex 32
+#   SESSION_SECRET    — openssl rand -hex 32
+#   REDIS_PASSWORD    — openssl rand -hex 32
+#   ORIGIN            — https://${DOMAIN} (must match for cookie security)
+#
+# Optional environment variables:
+#   IMAGE_TAG         — image version to deploy (default: latest)
+#   POSTGRES_USER     — database user (default: felt)
+#   POSTGRES_DB       — database name (default: felt)
+#   LOG_LEVEL         — debug, info, warn, error (default: info)
+#   NOMINATIM_URL     — self-hosted geocoding (default: OSM public, 1 req/s)
+#   GEOCODING_USER_AGENT — required if NOMINATIM_URL is set
+
+name: felt-like-it
+
+# ── Shared config ────────────────────────────────────────────────────────────
+x-app-env: &app-env
+  DATABASE_URL: "postgresql://${POSTGRES_USER:-felt}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-felt}"
+  REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
+  UPLOAD_DIR: /uploads
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+x-app-base: &app-base
+  image: ghcr.io/micahchoo/felt-like-it/web:${IMAGE_TAG:-latest}
+  restart: unless-stopped
+  volumes:
+    - uploads:/uploads
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  networks:
+    - felt-network
+
+services:
+  # ── Traefik Reverse Proxy ──────────────────────────────────────────────────
+  traefik:
+    image: traefik:v3.3
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=felt-network"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json"
+      - "--api.dashboard=false"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - acme_data:/acme
+    networks:
+      - felt-network
+
+  # ── PostgreSQL + PostGIS ───────────────────────────────────────────────────
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-felt}
+      POSTGRES_USER: ${POSTGRES_USER:-felt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-felt} -d ${POSTGRES_DB:-felt}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - felt-network
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD}"
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - felt-network
+
+  # ── SvelteKit App ──────────────────────────────────────────────────────────
+  web:
+    <<: *app-base
+    environment:
+      <<: *app-env
+      ORIGIN: ${ORIGIN}
+      SESSION_SECRET: ${SESSION_SECRET}
+      PUBLIC_MARTIN_URL: "https://${DOMAIN}/tiles"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.felt.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.felt.entrypoints=websecure"
+      - "traefik.http.routers.felt.tls=true"
+      - "traefik.http.routers.felt.tls.certresolver=letsencrypt"
+      - "traefik.http.services.felt.loadbalancer.server.port=3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── BullMQ Worker ──────────────────────────────────────────────────────────
+  worker:
+    image: ghcr.io/micahchoo/felt-like-it/worker:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+    volumes:
+      - uploads:/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 2
+    networks:
+      - felt-network
+
+  # ── Martin Tile Server ─────────────────────────────────────────────────────
+  # Auto-discovers PostGIS tables with geometry columns. No config file needed.
+  martin:
+    image: ghcr.io/maplibre/martin:latest
+    restart: unless-stopped
+    command:
+      - "postgresql://${POSTGRES_USER:-felt}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-felt}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.martin.rule=Host(`${DOMAIN}`) && PathPrefix(`/tiles`)"
+      - "traefik.http.routers.martin.entrypoints=websecure"
+      - "traefik.http.routers.martin.tls=true"
+      - "traefik.http.routers.martin.tls.certresolver=letsencrypt"
+      - "traefik.http.middlewares.martin-strip.stripprefix.prefixes=/tiles"
+      - "traefik.http.routers.martin.middlewares=martin-strip"
+      - "traefik.http.services.martin.loadbalancer.server.port=3000"
+    networks:
+      - felt-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads:
+  acme_data:
+
+networks:
+  felt-network:
+    driver: bridge
