@@ -110,6 +110,74 @@ export const featuresRouter = router({
       return { upsertedIds: upsertedIds.filter((id): id is string => id !== null) };
     }),
 
+  /** Paginated feature listing with optional bbox filter — metadata only, no full geometry */
+  listPaged: protectedProcedure
+    .input(
+      z.object({
+        layerId: z.string().uuid(),
+        limit: z.number().int().min(1).max(200).default(50),
+        offset: z.number().int().min(0).default(0),
+        bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
+        sortBy: z.enum(['created_at', 'updated_at', 'id']).default('created_at'),
+        sortDir: z.enum(['asc', 'desc']).default('asc'),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const [layer] = await db
+        .select({ id: layers.id, mapId: layers.mapId })
+        .from(layers)
+        .where(eq(layers.id, input.layerId));
+
+      if (!layer) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Layer not found.' });
+      }
+
+      await requireMapAccess(ctx.user.id, layer.mapId, 'viewer');
+
+      // Build WHERE clause
+      const conditions = [sql`layer_id = ${input.layerId}`];
+      if (input.bbox) {
+        const [west, south, east, north] = input.bbox;
+        conditions.push(
+          sql`ST_Intersects(geometry, ST_MakeEnvelope(${west}, ${south}, ${east}, ${north}, 4326))`
+        );
+      }
+      const whereClause = sql.join(conditions, sql` AND `);
+
+      // Sort — sql.raw() safe because sortBy validated by z.enum
+      const orderExpr =
+        input.sortDir === 'desc'
+          ? sql`${sql.raw(input.sortBy)} DESC`
+          : sql`${sql.raw(input.sortBy)} ASC`;
+
+      // Count query
+      const [countResult] = (
+        await db.execute(sql`SELECT COUNT(*)::int AS total FROM features WHERE ${whereClause}`)
+      ).rows;
+      const total = (countResult?.['total'] as number) ?? 0;
+
+      // Data query — metadata only, no full geometry serialisation
+      const rows = await db.execute(sql`
+        SELECT id, properties, ST_GeometryType(geometry) AS geometry_type,
+               created_at, updated_at
+        FROM features
+        WHERE ${whereClause}
+        ORDER BY ${orderExpr}
+        LIMIT ${input.limit} OFFSET ${input.offset}
+      `);
+
+      return {
+        total,
+        rows: rows.rows.map((r) => ({
+          id: r['id'] as string,
+          properties: r['properties'] as Record<string, unknown>,
+          geometryType: r['geometry_type'] as string,
+          createdAt: r['created_at'] as string,
+          updatedAt: r['updated_at'] as string,
+        })),
+      };
+    }),
+
   /** Delete features by ID */
   delete: protectedProcedure
     .input(
