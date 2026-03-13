@@ -93,6 +93,86 @@
   let measureResult = $state<MeasurementResult | null>(null);
   let savingViewport = $state(false);
 
+  // ── Viewport-based pagination state for large layers ─────────────────────
+  let viewportAbort: AbortController | null = null;
+  let viewportRows = $state<Array<{ id: string; properties: Record<string, unknown>; geometryType: string }>>([]);
+  let viewportTotal = $state(0);
+  let viewportPage = $state(1);
+  let viewportPageSize = $state(50);
+  let viewportSortBy = $state<'created_at' | 'updated_at' | 'id'>('created_at');
+  let viewportSortDir = $state<'asc' | 'desc'>('asc');
+  let viewportLoading = $state(false);
+
+  async function fetchViewportFeatures() {
+    const activeLayer = layersStore.active;
+    if (!activeLayer || !isLargeLayer(activeLayer)) return;
+
+    const map = mapStore.mapInstance;
+    if (!map) return;
+
+    const bounds = map.getBounds();
+    const bbox: [number, number, number, number] = [
+      bounds.getWest(),
+      bounds.getSouth(),
+      bounds.getEast(),
+      bounds.getNorth(),
+    ];
+
+    viewportAbort?.abort();
+    const controller = new AbortController();
+    viewportAbort = controller;
+
+    viewportLoading = true;
+    try {
+      const result = await trpc.features.listPaged.query({
+        layerId: activeLayer.id,
+        bbox,
+        limit: viewportPageSize,
+        offset: (viewportPage - 1) * viewportPageSize,
+        sortBy: viewportSortBy,
+        sortDir: viewportSortDir,
+      });
+      if (!controller.signal.aborted) {
+        viewportRows = result.rows;
+        viewportTotal = result.total;
+      }
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      console.error('[fetchViewportFeatures] failed:', err);
+      toastStore.error('Failed to load features for viewport');
+    } finally {
+      viewportLoading = false;
+    }
+  }
+
+  let moveEndTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function handleMoveEnd() {
+    clearTimeout(moveEndTimer);
+    moveEndTimer = setTimeout(() => {
+      viewportPage = 1;
+      fetchViewportFeatures();
+    }, 300);
+  }
+
+  function handleViewportPageChange(page: number) {
+    viewportPage = page;
+    fetchViewportFeatures();
+  }
+
+  function handleViewportPageSizeChange(size: number) {
+    viewportPageSize = size;
+    viewportPage = 1;
+    fetchViewportFeatures();
+  }
+
+  function handleViewportSortChange(sortBy: string, sortDir: 'asc' | 'desc') {
+    viewportSortBy = sortBy as 'created_at' | 'updated_at' | 'id';
+    viewportSortDir = sortDir;
+    viewportPage = 1;
+    fetchViewportFeatures();
+  }
+
   // ── Design mode + unified sidebar ──────────────────────────────────────────
   let designMode = $state(false);
   let activeSection = $state<SectionId | null>('annotations');
@@ -285,6 +365,22 @@
         }
       }
     });
+  });
+
+  // Viewport-based loading for large layers: listen to moveend on the map
+  $effect(() => {
+    const map = mapStore.mapInstance;
+    const activeLayer = layersStore.active;
+    if (!map || !activeLayer || !isLargeLayer(activeLayer)) return;
+
+    map.on('moveend', handleMoveEnd);
+    // Initial fetch for current viewport
+    fetchViewportFeatures();
+
+    return () => {
+      map.off('moveend', handleMoveEnd);
+      clearTimeout(moveEndTimer);
+    };
   });
 
   async function loadLayerData(layerId: string) {
@@ -598,15 +694,28 @@
       {@const activeLayer = layersStore.active}
       {@const rawFeatures = layerData[activeLayer.id]?.features ?? []}
       {@const filteredFeatures = filterStore.applyToFeatures(activeLayer.id, rawFeatures)}
-      <div class="border-t border-white/10 shrink-0 flex flex-col overflow-hidden" style="height: {showFilterPanel ? '22rem' : '16rem'}">
-        {#if showFilterPanel}
+      <div class="border-t border-white/10 shrink-0 flex flex-col overflow-hidden" style="height: {showFilterPanel && !isLargeLayer(activeLayer) ? '22rem' : '16rem'}">
+        {#if showFilterPanel && !isLargeLayer(activeLayer)}
           <FilterPanel layerId={activeLayer.id} features={rawFeatures} />
         {/if}
         <div class="flex-1 min-h-0 overflow-hidden">
-          <DataTable
-            features={filteredFeatures}
-            style={activeLayer.style as LayerStyle}
-          />
+          {#if isLargeLayer(activeLayer)}
+            <DataTable
+              mode="server"
+              serverRows={viewportRows}
+              serverTotal={viewportTotal}
+              serverPage={viewportPage}
+              serverPageSize={viewportPageSize}
+              onPageChange={handleViewportPageChange}
+              onPageSizeChange={handleViewportPageSizeChange}
+              onSortChange={handleViewportSortChange}
+            />
+          {:else}
+            <DataTable
+              features={filteredFeatures}
+              style={activeLayer.style as LayerStyle}
+            />
+          {/if}
         </div>
       </div>
     {/if}
