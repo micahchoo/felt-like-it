@@ -49,8 +49,9 @@ COPY --from=builder /app/packages/geo-engine/src ./packages/geo-engine/src
 # Copy migration SQL for startup
 COPY apps/web/src/lib/server/db/migrations ./apps/web/migrations
 
-# Entrypoint: auto-migrate then start
+# Entrypoint: auto-migrate, seed, then start
 COPY docker/migrate.mjs /app/migrate.mjs
+COPY docker/seed.mjs /app/seed.mjs
 COPY docker/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 

@@ -15,6 +15,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR/.."
 REGISTRY="ghcr.io/micahchoo/felt-like-it"
+
+# ── Install hook command ─────────────────────────────────────────────────
+if [[ "${1:-}" == "--install-hook" ]]; then
+  HOOK="${PROJECT_ROOT}/.git/hooks/post-commit"
+  cat > "${HOOK}" <<'HOOKEOF'
+#!/usr/bin/env bash
+# Auto-build and push images to ghcr.io after every commit.
+# Runs in the background so your terminal isn't blocked.
+echo "[post-commit] Building and pushing images in background..."
+nohup "$(git rev-parse --show-toplevel)/docker/build-push.sh" > /tmp/felt-like-it-build-push.log 2>&1 &
+echo "[post-commit] Build log: /tmp/felt-like-it-build-push.log"
+HOOKEOF
+  chmod +x "${HOOK}"
+  echo "Installed post-commit hook at ${HOOK}"
+  exit 0
+fi
+
+# ── Build and push ───────────────────────────────────────────────────────
 TAG="${1:-$(git -C "$PROJECT_ROOT" rev-parse --short HEAD)}"
 
 echo "Building felt-like-it images (tag: $TAG)"
