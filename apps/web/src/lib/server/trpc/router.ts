@@ -10,6 +10,7 @@ import { geoprocessingRouter } from './routers/geoprocessing.js';
 import { annotationsRouter } from './routers/annotations.js';
 import { apiKeysRouter } from './routers/apiKeys.js';
 import { auditLogRouter } from './routers/auditLog.js';
+import { adminRouter } from './routers/admin.js';
 
 export const appRouter = router({
   maps: mapsRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   annotations: annotationsRouter,
   apiKeys: apiKeysRouter,
   auditLog: auditLogRouter,
+  admin: adminRouter,
 });
 
 export type AppRouter = typeof appRouter;
