@@ -46,3 +46,20 @@ export const protectedProcedure = t.procedure.use(timingMiddleware).use(({ ctx, 
     },
   });
 });
+
+/** Admin procedure — requires authenticated admin user */
+export const adminProcedure = t.procedure.use(timingMiddleware).use(({ ctx, next }) => {
+  if (!ctx.user || !ctx.session) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'You must be logged in.' });
+  }
+  if (!ctx.user.isAdmin) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required.' });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      user: ctx.user,
+      session: ctx.session,
+    },
+  });
+});
