@@ -40,6 +40,7 @@ export const users = pgTable(
     isAdmin: boolean('is_admin').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    disabledAt: timestamp('disabled_at', { withTimezone: true }),
   },
   (t) => [uniqueIndex('users_email_idx').on(t.email)]
 );
