@@ -4,6 +4,7 @@ import { eq, and, desc, asc, count } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
 import { db, maps, layers, mapCollaborators } from '../../db/index.js';
 import { CreateMapSchema, UpdateMapSchema } from '@felt-like-it/shared-types';
+import { requireMapOwnership } from '../../geo/access.js';
 import { appendAuditLog } from '../../audit/index.js';
 import { createMap, deleteMap, cloneMap, createFromTemplate } from '../../maps/operations.js';
 
@@ -11,25 +12,28 @@ export const mapsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.user.id;
 
-    const rows = await db
-      .select({
-        id: maps.id,
-        title: maps.title,
-        description: maps.description,
-        viewport: maps.viewport,
-        basemap: maps.basemap,
-        createdAt: maps.createdAt,
-        updatedAt: maps.updatedAt,
-      })
-      .from(maps)
-      .where(eq(maps.userId, userId))
-      .orderBy(desc(maps.updatedAt));
+    const [rows, layerCounts] = await Promise.all([
+      db
+        .select({
+          id: maps.id,
+          title: maps.title,
+          description: maps.description,
+          viewport: maps.viewport,
+          basemap: maps.basemap,
+          createdAt: maps.createdAt,
+          updatedAt: maps.updatedAt,
+        })
+        .from(maps)
+        .where(eq(maps.userId, userId))
+        .orderBy(desc(maps.updatedAt)),
 
-    // Get layer counts per map
-    const layerCounts = await db
-      .select({ mapId: layers.mapId, count: count() })
-      .from(layers)
-      .groupBy(layers.mapId);
+      db
+        .select({ mapId: layers.mapId, count: count() })
+        .from(layers)
+        .innerJoin(maps, eq(maps.id, layers.mapId))
+        .where(eq(maps.userId, userId))
+        .groupBy(layers.mapId),
+    ]);
 
     const countMap = new Map(layerCounts.map((r) => [r.mapId, r.count]));
 
@@ -62,7 +66,6 @@ export const mapsRouter = router({
         if (!collab) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
         }
-        // All collaborator roles (viewer / commenter / editor) can fetch the map.
       }
 
       const mapLayers = await db
@@ -92,14 +95,7 @@ export const mapsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
 
-      const [existing] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, id), eq(maps.userId, ctx.user.id)));
-
-      if (!existing) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      await requireMapOwnership(ctx.user.id, id);
 
       const [updated] = await db
         .update(maps)

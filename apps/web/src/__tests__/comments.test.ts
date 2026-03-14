@@ -164,13 +164,13 @@ describe('comments.resolve', () => {
     });
   });
 
-  it('throws FORBIDDEN when caller does not own the map', async () => {
+  it('throws NOT_FOUND when caller does not own the map', async () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([{ id: COMMENT_ID, mapId: MAP_ID, resolved: false }]))
       .mockReturnValueOnce(drizzleChain([])); // map ownership check -> empty
 
     await expect(makeCaller().resolve({ id: COMMENT_ID })).rejects.toMatchObject({
-      code: 'FORBIDDEN',
+      code: 'NOT_FOUND',
     });
   });
 });

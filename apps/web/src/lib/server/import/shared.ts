@@ -26,13 +26,15 @@ export async function createLayerAndInsertFeatures(opts: {
 }): Promise<ImportResult> {
   const { mapId, jobId, layerName, features } = opts;
 
-  const layerType =
-    opts.layerTypeOverride ??
-    detectLayerType(features.map((f) => ({ geometry: { type: f.geometry.type } })));
-  const autoStyle = generateAutoStyle(
-    layerType,
-    features.map((f) => ({ properties: f.properties }))
-  );
+  const geometryHints: Array<{ geometry: { type: string } }> = [];
+  const propertyHints: Array<{ properties: Record<string, unknown> }> = [];
+  for (const f of features) {
+    geometryHints.push({ geometry: { type: f.geometry.type } });
+    propertyHints.push({ properties: f.properties });
+  }
+
+  const layerType = opts.layerTypeOverride ?? detectLayerType(geometryHints);
+  const autoStyle = generateAutoStyle(layerType, propertyHints);
 
   const [layer] = await db
     .insert(layers)

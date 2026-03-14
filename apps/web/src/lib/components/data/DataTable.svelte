@@ -2,7 +2,7 @@
   import { mapStore } from '$lib/stores/map.svelte.js';
   import { selectionStore } from '$lib/stores/selection.svelte.js';
   import type { GeoJSONFeature, LayerStyle } from '@felt-like-it/shared-types';
-  import { computeBbox } from '$lib/utils/geo.js';
+  import { computeBbox } from '@felt-like-it/geo-engine';
   import { formatAttributeValue } from '$lib/utils/format.js';
 
   interface Props {

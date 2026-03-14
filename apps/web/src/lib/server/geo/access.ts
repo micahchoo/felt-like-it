@@ -6,6 +6,25 @@ const ROLE_LEVEL = { viewer: 0, commenter: 1, editor: 2 } as const;
 type CollabRole = keyof typeof ROLE_LEVEL;
 
 /**
+ * Assert that `userId` owns the map.
+ * Throws NOT_FOUND if the map does not exist or is not owned by the user
+ * (map existence is hidden from non-owners).
+ */
+export async function requireMapOwnership(
+  userId: string,
+  mapId: string,
+): Promise<void> {
+  const [map] = await db
+    .select({ id: maps.id })
+    .from(maps)
+    .where(and(eq(maps.id, mapId), eq(maps.userId, userId)));
+
+  if (!map) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
+  }
+}
+
+/**
  * Assert that `userId` has at least `minRole` access on the map.
  *
  * Access model:

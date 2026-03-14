@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { eq, and, asc } from 'drizzle-orm';
 import { router, protectedProcedure, publicProcedure } from '../init.js';
-import { db, maps, comments, shares } from '../../db/index.js';
-import { requireMapAccess } from '../../geo/access.js';
+import { db, comments, shares } from '../../db/index.js';
+import { requireMapAccess, requireMapOwnership } from '../../geo/access.js';
 
 export const commentsRouter = router({
   /**
@@ -91,14 +91,7 @@ export const commentsRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Comment not found.' });
       }
 
-      const [map] = await db
-        .select({ id: maps.id })
-        .from(maps)
-        .where(and(eq(maps.id, comment.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the map owner can resolve comments.' });
-      }
+      await requireMapOwnership(ctx.user.id, comment.mapId);
 
       const [updated] = await db
         .update(comments)

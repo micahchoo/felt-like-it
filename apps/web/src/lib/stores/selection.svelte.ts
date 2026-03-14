@@ -24,6 +24,7 @@ export const selectionStore = {
   },
 
   clearSelection() {
+    if (!_selectedFeature && _selectedFeatureIds.size === 0) return;
     _selectedFeature = null;
     _selectedFeatureIds = new Set();
     _popupCoords = null;

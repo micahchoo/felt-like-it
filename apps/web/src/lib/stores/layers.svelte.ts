@@ -57,6 +57,6 @@ export const layersStore = {
 
   /** Get IDs in current z-order for syncing with server */
   getOrderedIds(): string[] {
-    return [..._layers].sort((a, b) => a.zIndex - b.zIndex).map((l) => l.id);
+    return _layers.map((l) => l.id);
   },
 };

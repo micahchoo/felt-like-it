@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { eq, and, asc } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
-import { db, maps, users, mapCollaborators } from '../../db/index.js';
+import { db, users, mapCollaborators } from '../../db/index.js';
+import { requireMapOwnership } from '../../geo/access.js';
 import { appendAuditLog } from '../../audit/index.js';
 
 const ROLE_SCHEMA = z.enum(['viewer', 'commenter', 'editor']);
@@ -15,14 +16,7 @@ export const collaboratorsRouter = router({
   list: protectedProcedure
     .input(z.object({ mapId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const [map] = await db
-        .select({ id: maps.id })
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      await requireMapOwnership(ctx.user.id, input.mapId);
 
       return db
         .select({
@@ -57,14 +51,7 @@ export const collaboratorsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const [map] = await db
-        .select({ id: maps.id })
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      await requireMapOwnership(ctx.user.id, input.mapId);
 
       const [invitee] = await db
         .select({ id: users.id, name: users.name })
@@ -126,14 +113,7 @@ export const collaboratorsRouter = router({
   remove: protectedProcedure
     .input(z.object({ mapId: z.string().uuid(), userId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const [map] = await db
-        .select({ id: maps.id })
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      await requireMapOwnership(ctx.user.id, input.mapId);
 
       void appendAuditLog({
         userId: ctx.user.id,
@@ -168,14 +148,7 @@ export const collaboratorsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const [map] = await db
-        .select({ id: maps.id })
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      await requireMapOwnership(ctx.user.id, input.mapId);
 
       const [updated] = await db
         .update(mapCollaborators)

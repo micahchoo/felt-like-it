@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { router, publicProcedure, protectedProcedure } from '../init.js';
 import { db, shares, maps, layers } from '../../db/index.js';
 import { CreateShareSchema } from '@felt-like-it/shared-types';
+import { requireMapOwnership } from '../../geo/access.js';
 import { appendAuditLog } from '../../audit/index.js';
 
 function generateToken(): string {
@@ -16,14 +17,7 @@ export const sharesRouter = router({
   create: protectedProcedure
     .input(CreateShareSchema)
     .mutation(async ({ ctx, input }) => {
-      const [map] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      await requireMapOwnership(ctx.user.id, input.mapId);
 
       // Check if share already exists for this map
       const [existing] = await db
@@ -79,14 +73,7 @@ export const sharesRouter = router({
   getForMap: protectedProcedure
     .input(z.object({ mapId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const [map] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      await requireMapOwnership(ctx.user.id, input.mapId);
 
       const [share] = await db.select().from(shares).where(eq(shares.mapId, input.mapId));
       return share ?? null;
@@ -95,14 +82,7 @@ export const sharesRouter = router({
   delete: protectedProcedure
     .input(z.object({ mapId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const [map] = await db
-        .select()
-        .from(maps)
-        .where(and(eq(maps.id, input.mapId), eq(maps.userId, ctx.user.id)));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
+      await requireMapOwnership(ctx.user.id, input.mapId);
 
       void appendAuditLog({
         userId: ctx.user.id,
