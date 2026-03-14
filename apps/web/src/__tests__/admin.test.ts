@@ -86,6 +86,27 @@ describe('admin router', () => {
 		});
 	});
 
+	describe('toggleAdmin', () => {
+		it('promotes a regular user to admin', async () => {
+			const targetId = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
+			vi.mocked(db.select).mockReturnValue(drizzleChain([{ id: targetId, isAdmin: false }]));
+			vi.mocked(db.update).mockReturnValue(drizzleChain([{ id: targetId, isAdmin: true }]));
+
+			const caller = adminRouter.createCaller(mockContext({ isAdmin: true }));
+			const result = await caller.toggleAdmin({ userId: targetId });
+			expect(result.isAdmin).toBe(true);
+		});
+
+		it('prevents self-demotion', async () => {
+			const selfId = 'cccccccc-0000-0000-0000-cccccccccccc';
+			const ctx = mockContext({ isAdmin: true, userId: selfId });
+			vi.mocked(db.select).mockReturnValue(drizzleChain([{ id: selfId, isAdmin: true }]));
+
+			const caller = adminRouter.createCaller(ctx);
+			await expect(caller.toggleAdmin({ userId: selfId })).rejects.toThrow('Cannot change your own admin status');
+		});
+	});
+
 	describe('listUsers', () => {
 		it('returns paginated user list for admin', async () => {
 			const mockUsers = [

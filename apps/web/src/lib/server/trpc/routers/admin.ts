@@ -87,4 +87,29 @@ export const adminRouter = router({
 				throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create user.' });
 			}
 		}),
+
+	toggleAdmin: adminProcedure
+		.input(z.object({ userId: z.string().uuid() }))
+		.mutation(async ({ ctx, input }) => {
+			if (input.userId === ctx.user.id) {
+				throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot change your own admin status.' });
+			}
+
+			const [user] = await db
+				.select({ id: users.id, isAdmin: users.isAdmin })
+				.from(users)
+				.where(eq(users.id, input.userId));
+
+			if (!user) {
+				throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found.' });
+			}
+
+			const [updated] = await db
+				.update(users)
+				.set({ isAdmin: !user.isAdmin, updatedAt: new Date() })
+				.where(eq(users.id, input.userId))
+				.returning({ id: users.id, isAdmin: users.isAdmin });
+
+			return updated!;
+		}),
 });
