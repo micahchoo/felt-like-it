@@ -135,4 +135,35 @@ export const adminRouter = router({
 
 			return { success: true };
 		}),
+
+	toggleDisabled: adminProcedure
+		.input(z.object({ userId: z.string().uuid() }))
+		.mutation(async ({ ctx, input }) => {
+			if (input.userId === ctx.user.id) {
+				throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot disable your own account.' });
+			}
+
+			const [user] = await db
+				.select({ id: users.id, disabledAt: users.disabledAt })
+				.from(users)
+				.where(eq(users.id, input.userId));
+
+			if (!user) {
+				throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found.' });
+			}
+
+			const newDisabledAt = user.disabledAt ? null : new Date();
+
+			const [updated] = await db
+				.update(users)
+				.set({ disabledAt: newDisabledAt, updatedAt: new Date() })
+				.where(eq(users.id, input.userId))
+				.returning({ id: users.id, disabledAt: users.disabledAt });
+
+			if (newDisabledAt) {
+				await lucia.invalidateUserSessions(input.userId);
+			}
+
+			return updated!;
+		}),
 });

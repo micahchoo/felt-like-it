@@ -127,6 +127,37 @@ describe('admin router', () => {
 		});
 	});
 
+	describe('toggleDisabled', () => {
+		it('disables an active user and invalidates sessions', async () => {
+			const { lucia } = await import('$lib/server/auth/index.js');
+			const targetId = 'eeeeeeee-0000-0000-0000-eeeeeeeeeeee';
+			vi.mocked(db.select).mockReturnValue(drizzleChain([{ id: targetId, disabledAt: null }]));
+			vi.mocked(db.update).mockReturnValue(drizzleChain([{ id: targetId, disabledAt: new Date() }]));
+
+			const caller = adminRouter.createCaller(mockContext({ isAdmin: true }));
+			const result = await caller.toggleDisabled({ userId: targetId });
+			expect(result.disabledAt).not.toBeNull();
+			expect(lucia.invalidateUserSessions).toHaveBeenCalledWith(targetId);
+		});
+
+		it('enables a disabled user', async () => {
+			const targetId = 'eeeeeeee-0000-0000-0000-eeeeeeeeeeee';
+			vi.mocked(db.select).mockReturnValue(drizzleChain([{ id: targetId, disabledAt: new Date() }]));
+			vi.mocked(db.update).mockReturnValue(drizzleChain([{ id: targetId, disabledAt: null }]));
+
+			const caller = adminRouter.createCaller(mockContext({ isAdmin: true }));
+			const result = await caller.toggleDisabled({ userId: targetId });
+			expect(result.disabledAt).toBeNull();
+		});
+
+		it('prevents self-disable', async () => {
+			const selfId = 'cccccccc-0000-0000-0000-cccccccccccc';
+			const ctx = mockContext({ isAdmin: true, userId: selfId });
+			const caller = adminRouter.createCaller(ctx);
+			await expect(caller.toggleDisabled({ userId: selfId })).rejects.toThrow('Cannot disable your own account');
+		});
+	});
+
 	describe('listUsers', () => {
 		it('returns paginated user list for admin', async () => {
 			const mockUsers = [
