@@ -22,6 +22,7 @@ export const lucia = new Lucia(adapter, {
       email: attributes.email,
       name: attributes.name,
       isAdmin: attributes.isAdmin,
+      disabledAt: attributes.disabledAt,
     };
   },
 });
@@ -33,6 +34,7 @@ declare module 'lucia' {
       email: string;
       name: string;
       isAdmin: boolean;
+      disabledAt: Date | null;
     };
   }
 }
