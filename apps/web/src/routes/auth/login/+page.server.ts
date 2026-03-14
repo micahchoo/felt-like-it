@@ -51,6 +51,10 @@ export const actions: Actions = {
       return fail(400, { field: '',message: 'Invalid email or password.' });
     }
 
+    if (user.disabledAt) {
+      return fail(403, { field: '', message: 'This account has been disabled.' });
+    }
+
     const session = await lucia.createSession(user.id, {});
     const sessionCookie = lucia.createSessionCookie(session.id);
     cookies.set(sessionCookie.name, sessionCookie.value, {
