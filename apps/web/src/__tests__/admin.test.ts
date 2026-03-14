@@ -70,7 +70,7 @@ describe('admin router', () => {
 				values: vi.fn().mockReturnValue({
 					returning: vi.fn().mockRejectedValue(dupeError),
 				}),
-			} as ReturnType<typeof db.insert>);
+			} as unknown as ReturnType<typeof db.insert>);
 
 			const caller = adminRouter.createCaller(mockContext({ isAdmin: true }));
 			await expect(

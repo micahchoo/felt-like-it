@@ -110,7 +110,10 @@ export const adminRouter = router({
 				.where(eq(users.id, input.userId))
 				.returning({ id: users.id, isAdmin: users.isAdmin });
 
-			return updated!;
+			if (!updated) {
+				throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found.' });
+			}
+			return updated;
 		}),
 
 	resetPassword: adminProcedure
@@ -160,10 +163,14 @@ export const adminRouter = router({
 				.where(eq(users.id, input.userId))
 				.returning({ id: users.id, disabledAt: users.disabledAt });
 
+			if (!updated) {
+				throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found.' });
+			}
+
 			if (newDisabledAt) {
 				await lucia.invalidateUserSessions(input.userId);
 			}
 
-			return updated!;
+			return updated;
 		}),
 });
