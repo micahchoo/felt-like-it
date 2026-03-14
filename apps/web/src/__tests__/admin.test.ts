@@ -42,6 +42,50 @@ describe('admin router', () => {
 		});
 	});
 
+	describe('createUser', () => {
+		it('creates a user with hashed password', async () => {
+			vi.mocked(db.insert).mockReturnValue(drizzleChain([{ id: 'new-id' }]));
+
+			const caller = adminRouter.createCaller(mockContext({ isAdmin: true }));
+			await caller.createUser({
+				email: 'new@test.com',
+				name: 'New User',
+				password: 'securepass123',
+			});
+
+			expect(db.insert).toHaveBeenCalled();
+		});
+
+		it('rejects password shorter than 8 characters', async () => {
+			const caller = adminRouter.createCaller(mockContext({ isAdmin: true }));
+			await expect(
+				caller.createUser({ email: 'x@test.com', name: 'X', password: 'short' })
+			).rejects.toThrow();
+		});
+
+		it('rejects duplicate email with friendly error', async () => {
+			const dupeError = new Error('duplicate key') as Error & { code: string };
+			dupeError.code = '23505';
+			vi.mocked(db.insert).mockReturnValue({
+				values: vi.fn().mockReturnValue({
+					returning: vi.fn().mockRejectedValue(dupeError),
+				}),
+			} as ReturnType<typeof db.insert>);
+
+			const caller = adminRouter.createCaller(mockContext({ isAdmin: true }));
+			await expect(
+				caller.createUser({ email: 'dupe@test.com', name: 'Dupe', password: 'securepass123' })
+			).rejects.toThrow('email already exists');
+		});
+
+		it('rejects non-admin users', async () => {
+			const caller = adminRouter.createCaller(mockContext({ isAdmin: false }));
+			await expect(
+				caller.createUser({ email: 'x@test.com', name: 'X', password: 'securepass123' })
+			).rejects.toThrow('Admin access required');
+		});
+	});
+
 	describe('listUsers', () => {
 		it('returns paginated user list for admin', async () => {
 			const mockUsers = [

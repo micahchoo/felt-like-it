@@ -1,7 +1,10 @@
 import { z } from 'zod';
-import { desc, or, ilike, count } from 'drizzle-orm';
+import { TRPCError } from '@trpc/server';
+import { eq, desc, or, ilike, count } from 'drizzle-orm';
 import { router, adminProcedure } from '../init.js';
 import { db, users } from '../../db/index.js';
+import { hashPassword } from '../../auth/password.js';
+import { lucia } from '../../auth/index.js';
 
 const PAGE_SIZE = 50;
 
@@ -47,5 +50,41 @@ export const adminRouter = router({
 				page: input.page,
 				pageSize: PAGE_SIZE,
 			};
+		}),
+
+	createUser: adminProcedure
+		.input(z.object({
+			email: z.string().email(),
+			name: z.string().min(1).max(200),
+			password: z.string().min(8).max(256),
+			isAdmin: z.boolean().default(false),
+		}))
+		.mutation(async ({ input }) => {
+			const hashedPassword = await hashPassword(input.password);
+
+			try {
+				const [created] = await db
+					.insert(users)
+					.values({
+						email: input.email.toLowerCase().trim(),
+						name: input.name.trim(),
+						hashedPassword,
+						isAdmin: input.isAdmin,
+					})
+					.returning({ id: users.id });
+
+				if (!created) {
+					throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create user.' });
+				}
+
+				return { id: created.id };
+			} catch (e: unknown) {
+				if (e instanceof TRPCError) throw e;
+				const dbError = e as { code?: string };
+				if (dbError.code === '23505') {
+					throw new TRPCError({ code: 'CONFLICT', message: 'A user with this email already exists.' });
+				}
+				throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create user.' });
+			}
 		}),
 });
