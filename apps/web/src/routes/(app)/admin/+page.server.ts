@@ -11,10 +11,10 @@ export const load: PageServerLoad = async () => {
       name: users.name,
       isAdmin: users.isAdmin,
       createdAt: users.createdAt,
+      disabledAt: users.disabledAt,
     })
     .from(users)
-    .orderBy(desc(users.createdAt))
-    .limit(100);
+    .orderBy(desc(users.createdAt));
 
   return { users: userList };
 };
