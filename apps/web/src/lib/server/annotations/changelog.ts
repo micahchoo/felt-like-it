@@ -41,8 +41,8 @@ function objectSnapshot(obj: AnnotationObject): Record<string, unknown> {
     templateId: obj.templateId,
     ordinal: obj.ordinal,
     version: obj.version,
-    createdAt: obj.createdAt.toISOString(),
-    updatedAt: obj.updatedAt.toISOString(),
+    createdAt: obj.createdAt instanceof Date ? obj.createdAt.toISOString() : String(obj.createdAt),
+    updatedAt: obj.updatedAt instanceof Date ? obj.updatedAt.toISOString() : String(obj.updatedAt),
   };
 }
 

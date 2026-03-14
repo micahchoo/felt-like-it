@@ -522,7 +522,7 @@
 
       {#if !effectiveReadonly}
         <!-- Design mode toggle -->
-        <Tooltip content={designMode ? 'Switch to normal mode (Ctrl+\\)' : 'Switch to design mode (Ctrl+\\)'}>
+        <Tooltip content={designMode ? 'Exit style editor — back to map editing (Ctrl+\\)' : 'Style editor — customize colors, sizes, and layer appearance (Ctrl+\\)'}>
           <Button
             variant={designMode ? 'primary' : 'ghost'}
             size="sm"
@@ -531,11 +531,12 @@
             <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M12.854.146a.5.5 0 00-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 000-.708l-3-3zM13.5 6.207L9.793 2.5 3.622 8.671a.5.5 0 00-.121.196l-1.458 4.374a.5.5 0 00.632.632l4.374-1.458a.5.5 0 00.196-.121L13.5 6.207z"/>
             </svg>
+            Style
           </Button>
         </Tooltip>
 
         {#if !designMode}
-          <Tooltip content="Import data">
+          <Tooltip content="Import — add data from files (GeoJSON, CSV, Shapefile, KML, GPX, GeoPackage)">
             <Button variant="ghost" size="sm" onclick={() => (showImportDialog = true)}>
               <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M.5 9.9a.5.5 0 01.5.5v2.5a1 1 0 001 1h12a1 1 0 001-1v-2.5a.5.5 0 011 0v2.5a2 2 0 01-2 2H2a2 2 0 01-2-2v-2.5a.5.5 0 01.5-.5z"/>
@@ -545,7 +546,7 @@
             </Button>
           </Tooltip>
 
-          <Tooltip content="Export data">
+          <Tooltip content="Export — download layer data as GeoJSON, CSV, or other formats">
             <Button variant="ghost" size="sm" onclick={() => (showExportDialog = true)}>
               <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M.5 9.9a.5.5 0 01.5.5v2.5a1 1 0 001 1h12a1 1 0 001-1v-2.5a.5.5 0 011 0v2.5a2 2 0 01-2 2H2a2 2 0 01-2-2v-2.5a.5.5 0 01.5-.5z"/>
@@ -555,7 +556,7 @@
             </Button>
           </Tooltip>
 
-          <Tooltip content="Show data table">
+          <Tooltip content="Data table — view and browse all features in the active layer as rows">
             <Button variant="ghost" size="sm" class={showDataTable ? 'bg-slate-700 text-white' : ''} onclick={() => (showDataTable = !showDataTable)}>
               <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 001-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 001 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/>
@@ -564,7 +565,7 @@
             </Button>
           </Tooltip>
 
-          <Tooltip content="Filter features by attribute value">
+          <Tooltip content="Filter — show only features matching specific attribute values (e.g. 'type = park')">
             <Button
               variant="ghost"
               size="sm"
@@ -573,6 +574,7 @@
               <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M6 10.5a.5.5 0 01.5-.5h3a.5.5 0 010 1h-3a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7a.5.5 0 01-.5-.5zm-2-3a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z"/>
               </svg>
+              Filter
               {#if layersStore.active && filterStore.hasFilters(layersStore.active.id)}
                 <span class="rounded-full bg-blue-500 px-1 text-xs font-semibold leading-tight">
                   {filterStore.get(layersStore.active.id).length}
@@ -581,11 +583,12 @@
             </Button>
           </Tooltip>
 
-          <Tooltip content="Save current viewport as default">
+          <Tooltip content="Lock viewport — saves current position and zoom as the default view whenever anyone opens this map">
             <Button variant="ghost" size="sm" onclick={saveViewport} loading={savingViewport}>
               <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H9.5a1 1 0 0 0-1 1v7.293l2.646-2.647a.5.5 0 0 1 .708.708l-3.5 3.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L7.5 9.293V2a2 2 0 0 1 2-2H14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h2.5a.5.5 0 0 1 0 1H2z"/>
+                <path d="M8 1a2 2 0 0 0-2 2v4H5a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H7V3a1 1 0 0 1 2 0v1a.5.5 0 0 0 1 0V3a2 2 0 0 0-2-2z"/>
               </svg>
+              Lock View
             </Button>
           </Tooltip>
 
@@ -611,7 +614,7 @@
 
           <div class="flex-1"></div>
 
-          <Tooltip content="Share map">
+          <Tooltip content="Share — invite collaborators, create embed links, or manage access">
             <Button
               variant="ghost"
               size="sm"
@@ -621,6 +624,7 @@
                 <path d="M13.5 1a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM11 2.5a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zm-5.5 3a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM3 7a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zm9 4.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm-2.5 1.5a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0z"/>
                 <path d="M7.5 6.35l4-2.3.5.87-4 2.3-.5-.87zm0 4.3l4 2.3.5-.87-4-2.3-.5.87z"/>
               </svg>
+              Share
             </Button>
           </Tooltip>
         {/if}
@@ -790,7 +794,8 @@
               <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M.5 14.5a.5.5 0 0 1-.354-.854l13-13a.5.5 0 0 1 .708.708l-13 13A.5.5 0 0 1 .5 14.5zM11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM8 3.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM5 .5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1A.5.5 0 0 1 5 .5z"/>
               </svg>
-              <p class="text-sm text-slate-400">Draw a line to measure distance, or a polygon for area.</p>
+              <p class="text-sm text-slate-400">Draw a line to measure distance, or a polygon for area and perimeter.</p>
+              <p class="text-xs text-slate-500 mt-1">Use the drawing tools on the left. Click to add points, double-click to finish. You can also select an existing feature and click "Measure" to measure it.</p>
             </div>
           {:else if measureResult.type === 'distance'}
             <div class="space-y-2">
@@ -908,9 +913,9 @@
   {#if !designMode && !embed}
     <SidePanel
       sections={[
-        { id: 'annotations', label: 'Annotations', icon: 'M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z', count: annotationCount + commentCount, content: annotationsContent },
-        { id: 'analysis', label: 'Analysis', icon: 'M.5 14.5a.5.5 0 0 1-.354-.854l13-13a.5.5 0 0 1 .708.708l-13 13A.5.5 0 0 1 .5 14.5zM11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM8 3.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM5 .5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1A.5.5 0 0 1 5 .5z', content: analysisContent },
-        { id: 'activity', label: 'Activity', icon: 'M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm14.5 5.5h-13v1h13v-1zM2 4.5h12v1H2v-1zm0 4h8v1H2v-1z', count: eventCount, content: activityContent },
+        { id: 'annotations', label: 'Annotations', icon: 'M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z', count: annotationCount + commentCount, helpText: 'Add notes, comments, and observations to specific places on the map. Pin annotations to points, draw regions, or attach them to existing features.', content: annotationsContent },
+        { id: 'analysis', label: 'Analysis', icon: 'M.5 14.5a.5.5 0 0 1-.354-.854l13-13a.5.5 0 0 1 .708.708l-13 13A.5.5 0 0 1 .5 14.5zM11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM8 3.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM5 .5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1A.5.5 0 0 1 5 .5z', helpText: 'Measure distances and areas by drawing on the map, or run spatial operations like buffer and intersect to create new layers from existing data.', content: analysisContent },
+        { id: 'activity', label: 'Activity', icon: 'M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm14.5 5.5h-13v1h13v-1zM2 4.5h12v1H2v-1zm0 4h8v1H2v-1z', count: eventCount, helpText: 'A timeline of all changes to this map — imports, edits, annotations, and viewport saves. Useful for tracking who did what and when.', content: activityContent },
       ]}
       {activeSection}
       onchange={(s) => { activeSection = s; }}

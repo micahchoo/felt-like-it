@@ -10,6 +10,8 @@
     label: string;
     icon: string;
     count?: number;
+    /** Short help text for newcomers — shown at the top of the expanded section. */
+    helpText?: string;
     content: Snippet;
   }
 
@@ -74,6 +76,11 @@
         id="sidepanel-{section.id}"
         class="flex-1 min-h-0 overflow-y-auto"
       >
+        {#if section.helpText}
+          <div class="px-4 py-2 bg-slate-700/30 border-b border-white/5 text-xs text-slate-400 leading-relaxed">
+            {section.helpText}
+          </div>
+        {/if}
         {@render section.content()}
       </div>
     {/if}

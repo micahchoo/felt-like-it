@@ -88,6 +88,9 @@
   <!-- Header -->
   <div class="px-3 py-3 border-b border-white/10">
     <h2 class="text-sm font-semibold text-white">Layers</h2>
+    <p class="text-[11px] text-slate-400 mt-1 leading-snug">
+      Layers organize your map data. Each layer holds one type of geometry (points, lines, or polygons). Select a layer to draw on it or view its data.
+    </p>
   </div>
 
   <!-- Layer list -->

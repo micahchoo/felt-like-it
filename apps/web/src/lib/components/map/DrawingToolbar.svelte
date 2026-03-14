@@ -198,11 +198,11 @@
     }
   }
 
-  const tools: Array<{ id: DrawTool; label: string; icon: string }> = [
-    { id: 'select', label: 'Select', icon: '↖' },
-    { id: 'point', label: 'Draw Point', icon: '●' },
-    { id: 'line', label: 'Draw Line', icon: '╱' },
-    { id: 'polygon', label: 'Draw Polygon', icon: '⬠' },
+  const tools: Array<{ id: DrawTool; label: string; helpText: string; icon: string }> = [
+    { id: 'select', label: 'Select', helpText: 'Click features to view details or take actions', icon: '↖' },
+    { id: 'point', label: 'Point', helpText: 'Click to place a point marker on the map', icon: '●' },
+    { id: 'line', label: 'Line', helpText: 'Click to add vertices, double-click to finish the line', icon: '╱' },
+    { id: 'polygon', label: 'Polygon', helpText: 'Click to add vertices, double-click to close the shape', icon: '⬠' },
   ];
 </script>
 
@@ -213,7 +213,7 @@
 >
   {#each tools as tool (tool.id)}
     {@const noLayer = !layersStore.active && !onmeasured && !onregiondrawn}
-    <Tooltip content={noLayer ? 'Select a layer first to start drawing' : tool.label} position="right">
+    <Tooltip content={noLayer ? 'Select a layer first to start drawing' : tool.helpText} position="right">
       <button
         onclick={() => setTool(tool.id)}
         disabled={!drawReady || noLayer}

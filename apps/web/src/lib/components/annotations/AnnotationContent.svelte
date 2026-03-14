@@ -6,9 +6,13 @@
     authorName: string;
     /** Date object or ISO-8601 string — displayed in the header. */
     createdAt?: Date | string;
+    /** Anchor type badge (point, region, viewport, feature, measurement). */
+    anchorType?: string;
+    /** Compact mode — used for hover tooltips (hides full content, shows preview). */
+    compact?: boolean;
   }
 
-  let { content, authorName, createdAt }: Props = $props();
+  let { content, authorName, createdAt, anchorType, compact = false }: Props = $props();
 
   function formatDate(value: Date | string): string {
     const d = value instanceof Date ? value : new Date(value);
@@ -37,14 +41,43 @@
   wrapper (single/slotted) — the latter is unwrapped before rendering.
 -->
 <div class="text-sm text-slate-200 space-y-2" style="max-width: 22rem">
-  <!-- Author + timestamp header -->
-  <div class="text-xs text-slate-400">
+  <!-- Author + timestamp + anchor type header -->
+  <div class="flex items-center gap-1.5 text-xs text-slate-400 flex-wrap">
     <span class="font-medium text-slate-300">{authorName}</span>
     {#if createdAt}
-      <span class="mx-1">·</span>
+      <span class="mx-0.5">·</span>
       <span>{formatDate(createdAt)}</span>
     {/if}
+    {#if anchorType}
+      <span class="ml-auto inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none
+        {anchorType === 'point' ? 'bg-amber-500/20 text-amber-400'
+          : anchorType === 'region' ? 'bg-blue-500/20 text-blue-400'
+          : anchorType === 'feature' ? 'bg-emerald-500/20 text-emerald-400'
+          : anchorType === 'measurement' ? 'bg-cyan-500/20 text-cyan-400'
+          : 'bg-slate-500/20 text-slate-400'}">
+        {anchorType === 'point' ? '📍 Pin'
+          : anchorType === 'region' ? '🔲 Region'
+          : anchorType === 'feature' ? '🔗 Feature'
+          : anchorType === 'measurement' ? '📏 Measurement'
+          : anchorType === 'viewport' ? '🗺️ Viewport'
+          : anchorType}
+      </span>
+    {/if}
   </div>
+
+  {#if compact}
+    <!-- Compact mode: show text preview only -->
+    {@const bodies = getBodies(content)}
+    {@const firstText = bodies.find(b => b.type === 'text')}
+    {@const firstMeasurement = bodies.find(b => b.type === 'measurement')}
+    {#if firstMeasurement && 'displayValue' in firstMeasurement}
+      <span class="text-sm font-semibold text-amber-400">{firstMeasurement.displayValue}</span>
+    {:else if firstText && 'text' in firstText}
+      <p class="text-xs text-slate-300 line-clamp-2">{firstText.text}</p>
+    {:else if bodies[0]}
+      <p class="text-xs text-slate-400 italic">{bodies[0].type} annotation</p>
+    {/if}
+  {:else}
 
   {#each getBodies(content) as body (body.type)}
     <!-- Content area — one branch per discriminated union variant -->
@@ -149,4 +182,5 @@
       {/if}
     {/if}
   {/each}
+  {/if}
 </div>

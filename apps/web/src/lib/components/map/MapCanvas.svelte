@@ -328,10 +328,14 @@
     content: AnnotationObjectContent;
     authorName: string;
     createdAt: string;
+    anchorType: string;
     lngLat: { lng: number; lat: number };
   }
 
   let selectedAnnotation = $state<SelectedAnnotationPopup | null>(null);
+
+  /** Lightweight hover tooltip — shown on mouseenter, hidden on mouseleave. */
+  let hoveredAnnotation = $state<SelectedAnnotationPopup | null>(null);
 
   // handleAnnotationClick is inlined in the template (see CircleLayer onclick below)
   // because svelte-maplibre-gl layer events are MapLayerMouseEvent (has .features),
@@ -554,6 +558,29 @@
             'circle-stroke-color': '#ffffff',
             'circle-opacity': 0.92,
           }}
+          onmouseenter={(e) => {
+            if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
+            const f = e.features?.[0];
+            if (!f) return;
+            const props = f.properties as AnnotationPinProperties | null;
+            if (!props?.contentJson) return;
+            try {
+              const raw: unknown = JSON.parse(props.contentJson);
+              const result = AnnotationObjectContentSchema.safeParse(raw);
+              if (!result.success) return;
+              hoveredAnnotation = {
+                content: result.data,
+                authorName: props.authorName,
+                createdAt: props.createdAt,
+                anchorType: props.anchorType ?? 'point',
+                lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
+              };
+            } catch { /* invalid JSON */ }
+          }}
+          onmouseleave={() => {
+            if (mapInstance) mapInstance.getCanvas().style.cursor = '';
+            hoveredAnnotation = null;
+          }}
           onclick={(e) => {
             // Don't interrupt active drawing tools
             const tool = selectionStore.activeTool;
@@ -569,19 +596,18 @@
             try {
               const raw: unknown = JSON.parse(props.contentJson);
               const result = AnnotationObjectContentSchema.safeParse(raw);
-              // Malformed annotation content (schema mismatch or invalid JSON) silently
-              // closes the popup — the pin is still visible but unclickable until refreshed.
               if (!result.success) return;
               parsed = result.data;
             } catch {
-              // JSON.parse threw — contentJson is not valid JSON.
               return;
             }
 
+            hoveredAnnotation = null;
             selectedAnnotation = {
               content: parsed,
               authorName: props.authorName,
               createdAt: props.createdAt,
+              anchorType: props.anchorType ?? 'point',
               lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
             };
           }}
@@ -601,6 +627,29 @@
             'fill-color': '#3b82f6',
             'fill-opacity': 0.15,
           }}
+          onmouseenter={(e) => {
+            if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
+            const f = e.features?.[0];
+            if (!f) return;
+            const props = f.properties as AnnotationPinProperties | null;
+            if (!props?.contentJson) return;
+            try {
+              const raw: unknown = JSON.parse(props.contentJson);
+              const result = AnnotationObjectContentSchema.safeParse(raw);
+              if (!result.success) return;
+              hoveredAnnotation = {
+                content: result.data,
+                authorName: props.authorName,
+                createdAt: props.createdAt,
+                anchorType: props.anchorType ?? 'region',
+                lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
+              };
+            } catch { /* invalid JSON */ }
+          }}
+          onmouseleave={() => {
+            if (mapInstance) mapInstance.getCanvas().style.cursor = '';
+            hoveredAnnotation = null;
+          }}
           onclick={(e) => {
             const tool = selectionStore.activeTool;
             if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
@@ -621,10 +670,12 @@
               return;
             }
 
+            hoveredAnnotation = null;
             selectedAnnotation = {
               content: parsed,
               authorName: props.authorName,
               createdAt: props.createdAt,
+              anchorType: props.anchorType ?? 'region',
               lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
             };
           }}
@@ -650,6 +701,12 @@
             'circle-color': '#f59e0b',
             'circle-stroke-width': 2,
             'circle-stroke-color': '#ffffff',
+          }}
+          onmouseenter={() => {
+            if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
+          }}
+          onmouseleave={() => {
+            if (mapInstance) mapInstance.getCanvas().style.cursor = '';
           }}
           onclick={(e) => {
             const featureId = e.features?.[0]?.properties?.['featureId'];
@@ -681,6 +738,12 @@
             'line-width': 2,
             'line-dasharray': [4, 2],
             'line-opacity': 0.8,
+          }}
+          onmouseenter={() => {
+            if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
+          }}
+          onmouseleave={() => {
+            if (mapInstance) mapInstance.getCanvas().style.cursor = '';
           }}
         />
         <FillLayer
@@ -718,6 +781,23 @@
       </GeoJSONSource>
     {/if}
 
+    <!-- Hover tooltip — compact preview on mouseenter -->
+    {#if hoveredAnnotation && !selectedAnnotation}
+      <Popup
+        lnglat={hoveredAnnotation.lngLat}
+        closeButton={false}
+        onclose={() => { hoveredAnnotation = null; }}
+      >
+        <AnnotationContent
+          content={hoveredAnnotation.content}
+          authorName={hoveredAnnotation.authorName}
+          createdAt={hoveredAnnotation.createdAt}
+          anchorType={hoveredAnnotation.anchorType}
+          compact
+        />
+      </Popup>
+    {/if}
+
     <!-- Annotation popup — shown on pin click; independent of selectionStore -->
     {#if selectedAnnotation}
       <Popup
@@ -729,6 +809,7 @@
           content={selectedAnnotation.content}
           authorName={selectedAnnotation.authorName}
           createdAt={selectedAnnotation.createdAt}
+          anchorType={selectedAnnotation.anchorType}
         />
       </Popup>
     {/if}
