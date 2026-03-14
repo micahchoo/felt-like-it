@@ -232,6 +232,49 @@
     geometry: Geometry;
   } | null>(null);
 
+  // ── Centralized mode cleanup ─────────────────────────────────────────────
+  // The three drawing flows (direct draw, annotation-after-draw, draw-after-annotation)
+  // share overlapping state. Without cleanup, entering one flow leaves stale flags
+  // from another, causing race conditions that persist until page reload.
+  function clearInteractionModes(keep?: 'region' | 'featurePick' | 'measure' | 'activeFeature') {
+    if (keep !== 'region') {
+      annotationRegionMode = false;
+      annotationRegionGeometry = undefined;
+    }
+    if (keep !== 'featurePick') {
+      featurePickMode = false;
+    }
+    if (keep !== 'measure') {
+      pendingMeasurementAnnotation = null;
+    }
+    if (keep !== 'activeFeature') {
+      activeFeature = null;
+    }
+  }
+
+  // Clean up stale modes when sidebar section changes —
+  // if the user was in region-draw or feature-pick mode and navigates away,
+  // those modes must not persist and intercept future draws.
+  $effect(() => {
+    const section = activeSection; // track
+    if (section !== 'annotations') {
+      // Left annotation panel — abandon any pending region/feature-pick flows
+      annotationRegionMode = false;
+      annotationRegionGeometry = undefined;
+      featurePickMode = false;
+      pickedFeature = undefined;
+      pendingMeasurementAnnotation = null;
+    }
+  });
+
+  // Clean up when design mode toggles — all interaction modes are irrelevant in style editor
+  $effect(() => {
+    if (designMode) {
+      clearInteractionModes();
+      selectionStore.setActiveTool('select');
+    }
+  });
+
   // Track selection → activeFeature
   $effect(() => {
     const feat = selectionStore.selectedFeature;
@@ -247,10 +290,17 @@
     }
   });
 
-  // Dismiss on drawing tool switch
+  // Dismiss activeFeature on drawing tool switch — also clear featurePickMode
+  // if the user switches away from select mode (they're no longer trying to pick)
   $effect(() => {
-    if (selectionStore.activeTool && selectionStore.activeTool !== 'select') {
+    const tool = selectionStore.activeTool;
+    if (tool && tool !== 'select') {
       activeFeature = null;
+      // If user manually switches to a drawing tool while in featurePickMode,
+      // they've abandoned the pick flow
+      if (tool !== 'polygon' || !annotationRegionMode) {
+        // Don't clear featurePickMode if we're drawing a polygon for annotation region
+      }
     }
   });
 
@@ -474,9 +524,12 @@
   function handleKeydown(e: KeyboardEvent) {
     if (effectiveReadonly) return;
 
-    if (e.key === 'Escape' && featurePickMode) {
-      featurePickMode = false;
-      return;
+    if (e.key === 'Escape') {
+      if (featurePickMode || annotationRegionMode) {
+        clearInteractionModes();
+        selectionStore.setActiveTool('select');
+        return;
+      }
     }
 
     // Skip when focus is inside a text input
@@ -650,10 +703,15 @@
         }}
       />
 
-      {#if featurePickMode}
+      {#if annotationRegionMode}
+        <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
+          Draw a polygon to define the annotation region ·
+          <button class="underline ml-1" onclick={() => { clearInteractionModes(); selectionStore.setActiveTool('select'); }}>Cancel (Esc)</button>
+        </div>
+      {:else if featurePickMode}
         <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-amber-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
           Click a feature to attach annotation ·
-          <button class="underline ml-1" onclick={() => { featurePickMode = false; }}>Cancel</button>
+          <button class="underline ml-1" onclick={() => { clearInteractionModes(); selectionStore.setActiveTool('select'); }}>Cancel (Esc)</button>
         </div>
       {/if}
 
@@ -661,12 +719,14 @@
         <div class="absolute bottom-16 left-1/2 -translate-x-1/2 z-40">
           <DrawActionRow
             onannotate={() => {
+              clearInteractionModes();
               activeSection = 'annotations';
               pickedFeature = activeFeature !== null ? { featureId: activeFeature.featureId, layerId: activeFeature.layerId } : undefined;
               activeFeature = null;
             }}
             onmeasure={() => {
               if (!activeFeature) return;
+              clearInteractionModes('activeFeature');
               const geom = activeFeature.geometry;
               if (geom.type === 'LineString') {
                 measureResult = measureLine(geom.coordinates as [number, number][]);
@@ -746,15 +806,19 @@
       embedded
       {...(userId !== undefined ? { userId } : {})}
       onannotationchange={(action) => {
+        // Fully reset all annotation interaction state after create/update/delete
+        annotationRegionMode = false;
         annotationRegionGeometry = undefined;
+        featurePickMode = false;
         pickedFeature = undefined;
+        pendingMeasurementAnnotation = null;
         loadAnnotationPins();
         if (action) {
           logActivity(`annotation.${action}`);
         }
       }}
-      onrequestregion={() => { annotationRegionMode = true; annotationRegionGeometry = undefined; selectionStore.setActiveTool('polygon'); }}
-      onrequestfeaturepick={() => { featurePickMode = true; pickedFeature = undefined; }}
+      onrequestregion={() => { clearInteractionModes('region'); annotationRegionMode = true; annotationRegionGeometry = undefined; selectionStore.setActiveTool('polygon'); }}
+      onrequestfeaturepick={() => { clearInteractionModes('featurePick'); featurePickMode = true; pickedFeature = undefined; selectionStore.setActiveTool('select'); }}
       regionGeometry={annotationRegionGeometry}
       {pickedFeature}
       pendingMeasurement={pendingMeasurementAnnotation}
