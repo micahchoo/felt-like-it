@@ -26,11 +26,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 
     if (keyRow) {
       const [userRow] = await db
-        .select({ id: users.id, email: users.email, name: users.name, isAdmin: users.isAdmin })
+        .select({ id: users.id, email: users.email, name: users.name, isAdmin: users.isAdmin, disabledAt: users.disabledAt })
         .from(users)
         .where(eq(users.id, keyRow.userId));
 
-      if (userRow) {
+      if (userRow && !userRow.disabledAt) {
         event.locals.user = userRow;
         event.locals.session = null;
         // Fire-and-forget: update last_used_at without blocking the request
@@ -56,24 +56,35 @@ export const handle: Handle = async ({ event, resolve }) => {
     } else {
       const { session, user } = await lucia.validateSession(sessionId);
 
-      if (session?.fresh) {
-        const sessionCookie = lucia.createSessionCookie(session.id);
-        event.cookies.set(sessionCookie.name, sessionCookie.value, {
-          path: '.',
-          ...sessionCookie.attributes,
-        });
-      }
-
-      if (!session) {
+      if (user?.disabledAt) {
+        await lucia.invalidateSession(sessionId);
         const blankCookie = lucia.createBlankSessionCookie();
         event.cookies.set(blankCookie.name, blankCookie.value, {
           path: '.',
           ...blankCookie.attributes,
         });
-      }
+        event.locals.user = null;
+        event.locals.session = null;
+      } else {
+        if (session?.fresh) {
+          const sessionCookie = lucia.createSessionCookie(session.id);
+          event.cookies.set(sessionCookie.name, sessionCookie.value, {
+            path: '.',
+            ...sessionCookie.attributes,
+          });
+        }
 
-      event.locals.user = user;
-      event.locals.session = session;
+        if (!session) {
+          const blankCookie = lucia.createBlankSessionCookie();
+          event.cookies.set(blankCookie.name, blankCookie.value, {
+            path: '.',
+            ...blankCookie.attributes,
+          });
+        }
+
+        event.locals.user = user;
+        event.locals.session = session;
+      }
     }
   }
 
