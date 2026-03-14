@@ -112,4 +112,27 @@ export const adminRouter = router({
 
 			return updated!;
 		}),
+
+	resetPassword: adminProcedure
+		.input(z.object({
+			userId: z.string().uuid(),
+			newPassword: z.string().min(8).max(256),
+		}))
+		.mutation(async ({ input }) => {
+			const hashedPassword = await hashPassword(input.newPassword);
+
+			const [updated] = await db
+				.update(users)
+				.set({ hashedPassword, updatedAt: new Date() })
+				.where(eq(users.id, input.userId))
+				.returning({ id: users.id });
+
+			if (!updated) {
+				throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found.' });
+			}
+
+			await lucia.invalidateUserSessions(input.userId);
+
+			return { success: true };
+		}),
 });

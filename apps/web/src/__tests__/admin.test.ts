@@ -107,6 +107,26 @@ describe('admin router', () => {
 		});
 	});
 
+	describe('resetPassword', () => {
+		it('resets password for existing user', async () => {
+			const targetId = 'dddddddd-0000-0000-0000-dddddddddddd';
+			vi.mocked(db.update).mockReturnValue(drizzleChain([{ id: targetId }]));
+
+			const caller = adminRouter.createCaller(mockContext({ isAdmin: true }));
+			await caller.resetPassword({ userId: targetId, newPassword: 'newsecurepass' });
+
+			expect(db.update).toHaveBeenCalled();
+		});
+
+		it('rejects password shorter than 8 characters', async () => {
+			const targetId = 'dddddddd-0000-0000-0000-dddddddddddd';
+			const caller = adminRouter.createCaller(mockContext({ isAdmin: true }));
+			await expect(
+				caller.resetPassword({ userId: targetId, newPassword: 'short' })
+			).rejects.toThrow();
+		});
+	});
+
 	describe('listUsers', () => {
 		it('returns paginated user list for admin', async () => {
 			const mockUsers = [
