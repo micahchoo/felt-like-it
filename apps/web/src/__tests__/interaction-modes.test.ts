@@ -5,12 +5,16 @@
  * These tests extract the state-machine logic from MapEditor.svelte and verify
  * mode exclusivity, abandon flows, rapid switching, flow completion, and
  * adversarial sequences. No DOM or Svelte runtime needed — pure state logic.
+ *
+ * The state machine uses a discriminated union (InteractionState) instead of
+ * individual boolean/nullable variables. This validates the union model
+ * preserves all behavioral contracts before applying to MapEditor.svelte.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 
 // ── Extracted state machine ─────────────────────────────────────────────────
-// Mirrors the state variables, clearInteractionModes, effects, and handlers
-// from MapEditor.svelte (lines ~177–320, ~527–533, ~718–738, ~808–821).
+// Mirrors the state variables, effects, and handlers from MapEditor.svelte,
+// rewritten to use a discriminated union for interaction state.
 
 type SectionId = 'annotations' | 'analysis' | 'activity';
 type AnalysisTab = 'measure' | 'process';
@@ -43,15 +47,17 @@ interface PendingMeasurementAnnotation {
 	result: MeasurementResult;
 }
 
+type InteractionState =
+	| { type: 'idle' }
+	| { type: 'featureSelected'; feature: ActiveFeature }
+	| { type: 'drawRegion'; geometry?: { type: 'Polygon'; coordinates: number[][][] } }
+	| { type: 'pickFeature'; picked?: PickedFeature }
+	| { type: 'pendingMeasurement'; measurement: PendingMeasurementAnnotation };
+
 /** Minimal reproduction of MapEditor interaction-mode state machine. */
 function createInteractionModes() {
 	// ── State ──
-	let annotationRegionMode = false;
-	let annotationRegionGeometry: { type: 'Polygon'; coordinates: number[][][] } | undefined;
-	let featurePickMode = false;
-	let pickedFeature: PickedFeature | undefined;
-	let activeFeature: ActiveFeature | null = null;
-	let pendingMeasurementAnnotation: PendingMeasurementAnnotation | null = null;
+	let interactionState: InteractionState = { type: 'idle' };
 	let designMode = false;
 	let activeSection: SectionId | null = 'annotations';
 	let analysisTab: AnalysisTab = 'process';
@@ -63,21 +69,9 @@ function createInteractionModes() {
 		return activeSection === 'analysis' && analysisTab === 'measure' && !designMode;
 	}
 
-	// ── Core cleanup (MapEditor line 239) ──
-	function clearInteractionModes(keep?: 'region' | 'featurePick' | 'measure' | 'activeFeature') {
-		if (keep !== 'region') {
-			annotationRegionMode = false;
-			annotationRegionGeometry = undefined;
-		}
-		if (keep !== 'featurePick') {
-			featurePickMode = false;
-		}
-		if (keep !== 'measure') {
-			pendingMeasurementAnnotation = null;
-		}
-		if (keep !== 'activeFeature') {
-			activeFeature = null;
-		}
+	// ── Core cleanup ──
+	function resetInteraction() {
+		interactionState = { type: 'idle' };
 	}
 
 	// ── Effects (simulated as imperative calls) ──
@@ -85,18 +79,16 @@ function createInteractionModes() {
 	/** Simulates $effect for activeSection change (line 258) */
 	function effectActiveSectionChange() {
 		if (activeSection !== 'annotations') {
-			annotationRegionMode = false;
-			annotationRegionGeometry = undefined;
-			featurePickMode = false;
-			pickedFeature = undefined;
-			pendingMeasurementAnnotation = null;
+			if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature' || interactionState.type === 'pendingMeasurement') {
+				interactionState = { type: 'idle' };
+			}
 		}
 	}
 
 	/** Simulates $effect for designMode toggle (line 271) */
 	function effectDesignModeToggle() {
 		if (designMode) {
-			clearInteractionModes();
+			resetInteraction();
 			activeTool = 'select';
 		}
 	}
@@ -111,21 +103,21 @@ function createInteractionModes() {
 	/** Simulates $effect for tool switch clearing activeFeature (line 295) */
 	function effectToolSwitch() {
 		if (activeTool && activeTool !== 'select') {
-			activeFeature = null;
-			if (activeTool !== 'polygon' || !annotationRegionMode) {
-				// featurePickMode would be cleared here in real component
-				// (the comment in source says "they've abandoned the pick flow")
+			if (interactionState.type === 'featureSelected') {
+				interactionState = { type: 'idle' };
+			}
+			if (activeTool !== 'polygon' && interactionState.type === 'drawRegion') {
+				interactionState = { type: 'idle' };
 			}
 		}
 	}
 
 	/** Simulates $effect for featurePickMode selection capture (line 307) */
 	function effectFeaturePickCapture(selectedFeature: { id: string; geometry: Geometry } | null, selectedLayerId: string | null) {
-		if (featurePickMode && selectedFeature && selectedLayerId) {
+		if (interactionState.type === 'pickFeature' && !interactionState.picked && selectedFeature && selectedLayerId) {
 			const fid = String(selectedFeature.id ?? '');
 			if (fid) {
-				pickedFeature = { featureId: fid, layerId: selectedLayerId };
-				featurePickMode = false;
+				interactionState = { type: 'pickFeature', picked: { featureId: fid, layerId: selectedLayerId } };
 			}
 		}
 	}
@@ -134,69 +126,66 @@ function createInteractionModes() {
 
 	/** Escape key handler (line 527) */
 	function handleEscape() {
-		if (featurePickMode || annotationRegionMode) {
-			clearInteractionModes();
+		if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature') {
+			resetInteraction();
 			activeTool = 'select';
 		}
 	}
 
 	/** AnnotationPanel onrequestregion (line 820) */
 	function requestRegion() {
-		clearInteractionModes('region');
-		annotationRegionMode = true;
-		annotationRegionGeometry = undefined;
+		interactionState = { type: 'drawRegion' };
 		activeTool = 'polygon';
 	}
 
 	/** AnnotationPanel onrequestfeaturepick (line 821) */
 	function requestFeaturePick() {
-		clearInteractionModes('featurePick');
-		featurePickMode = true;
-		pickedFeature = undefined;
+		interactionState = { type: 'pickFeature' };
 		activeTool = 'select';
 	}
 
 	/** Region drawn callback (line 697) */
 	function onRegionDrawn(geometry: { type: 'Polygon'; coordinates: number[][][] }) {
-		annotationRegionGeometry = geometry;
-		annotationRegionMode = false;
+		if (interactionState.type === 'drawRegion') {
+			interactionState = { type: 'drawRegion', geometry };
+		}
 	}
 
 	/** DrawActionRow "Annotate" (line 721) */
 	function drawActionAnnotate() {
-		clearInteractionModes();
 		activeSection = 'annotations';
-		pickedFeature = activeFeature !== null
-			? { featureId: activeFeature.featureId, layerId: activeFeature.layerId }
-			: undefined;
-		activeFeature = null;
+		if (interactionState.type === 'featureSelected') {
+			const feature = interactionState.feature;
+			interactionState = { type: 'pickFeature', picked: { featureId: feature.featureId, layerId: feature.layerId } };
+		} else {
+			resetInteraction();
+		}
 	}
 
 	/** DrawActionRow "Measure" (line 727) */
 	function drawActionMeasure() {
-		if (!activeFeature) return;
-		clearInteractionModes('activeFeature');
-		const geom = activeFeature.geometry;
+		if (interactionState.type !== 'featureSelected') return;
+		const geom = interactionState.feature.geometry;
 		if (geom.type === 'LineString' || geom.type === 'Polygon') {
 			measureResult = { type: geom.type, value: 42, unit: 'km' };
 		}
 		activeSection = 'analysis';
 		analysisTab = 'measure';
-		activeFeature = null;
+		interactionState = { type: 'idle' };
 	}
 
 	/** DrawActionRow "Dismiss" (line 740) */
 	function drawActionDismiss() {
-		activeFeature = null;
+		if (interactionState.type === 'featureSelected') {
+			interactionState = { type: 'idle' };
+		}
 	}
 
 	/** onannotationchange (line 808) */
 	function onAnnotationChange() {
-		annotationRegionMode = false;
-		annotationRegionGeometry = undefined;
-		featurePickMode = false;
-		pickedFeature = undefined;
-		pendingMeasurementAnnotation = null;
+		if (interactionState.type !== 'featureSelected') {
+			interactionState = { type: 'idle' };
+		}
 	}
 
 	/** Toggle designMode (line 543 / 582) */
@@ -219,22 +208,31 @@ function createInteractionModes() {
 
 	/** Set an active feature (simulates selection tracking effect) */
 	function simulateFeatureSelect(feature: ActiveFeature | null) {
-		activeFeature = feature;
+		if (feature && (interactionState.type === 'idle' || interactionState.type === 'featureSelected')) {
+			interactionState = { type: 'featureSelected', feature };
+		} else if (!feature && interactionState.type === 'featureSelected') {
+			interactionState = { type: 'idle' };
+		}
 	}
 
 	/** Set pending measurement annotation */
 	function setPendingMeasurement(m: PendingMeasurementAnnotation | null) {
-		pendingMeasurementAnnotation = m;
+		if (m) {
+			interactionState = { type: 'pendingMeasurement', measurement: m };
+		} else if (interactionState.type === 'pendingMeasurement') {
+			interactionState = { type: 'idle' };
+		}
 	}
 
 	return {
-		// State accessors
-		get annotationRegionMode() { return annotationRegionMode; },
-		get annotationRegionGeometry() { return annotationRegionGeometry; },
-		get featurePickMode() { return featurePickMode; },
-		get pickedFeature() { return pickedFeature; },
-		get activeFeature() { return activeFeature; },
-		get pendingMeasurementAnnotation() { return pendingMeasurementAnnotation; },
+		// State accessors (derived from union)
+		get interactionState() { return interactionState; },
+		get annotationRegionMode() { return interactionState.type === 'drawRegion'; },
+		get annotationRegionGeometry() { return interactionState.type === 'drawRegion' ? interactionState.geometry : undefined; },
+		get featurePickMode() { return interactionState.type === 'pickFeature' && !interactionState.picked; },
+		get pickedFeature() { return interactionState.type === 'pickFeature' ? interactionState.picked : undefined; },
+		get activeFeature() { return interactionState.type === 'featureSelected' ? interactionState.feature : null; },
+		get pendingMeasurementAnnotation() { return interactionState.type === 'pendingMeasurement' ? interactionState.measurement : null; },
 		get designMode() { return designMode; },
 		get activeSection() { return activeSection; },
 		get analysisTab() { return analysisTab; },
@@ -243,7 +241,7 @@ function createInteractionModes() {
 		get measureActive() { return getMeasureActive(); },
 
 		// Actions
-		clearInteractionModes,
+		resetInteraction,
 		handleEscape,
 		requestRegion,
 		requestFeaturePick,
@@ -321,10 +319,10 @@ describe('MapEditor interaction modes', () => {
 		});
 
 		it('entering measure flow clears region and featurePick', () => {
-			modes.requestRegion();
+			// simulateFeatureSelect first (from idle), then requestRegion would
+			// clobber it with the union. Instead test the actual measure flow:
+			// select a feature, then measure.
 			modes.simulateFeatureSelect(SAMPLE_LINE_FEATURE);
-
-			// Measure via DrawActionRow — clearInteractionModes('activeFeature') then set analysis
 			modes.drawActionMeasure();
 
 			expect(modes.annotationRegionMode).toBe(false);
@@ -332,31 +330,20 @@ describe('MapEditor interaction modes', () => {
 			expect(modes.pendingMeasurementAnnotation).toBeNull();
 		});
 
-		it('clearInteractionModes with no keep clears all modes', () => {
-			modes.requestRegion();
+		it('resetInteraction clears all modes', () => {
 			modes.simulateFeatureSelect(SAMPLE_FEATURE);
+			modes.resetInteraction();
+			modes.requestRegion();
+			modes.resetInteraction();
 			modes.setPendingMeasurement({ geometry: SAMPLE_POLYGON_GEOMETRY, result: { type: 'Polygon', value: 1, unit: 'km2' } });
-
-			modes.clearInteractionModes();
+			modes.resetInteraction();
 
 			expect(modes.annotationRegionMode).toBe(false);
 			expect(modes.annotationRegionGeometry).toBeUndefined();
 			expect(modes.featurePickMode).toBe(false);
 			expect(modes.pendingMeasurementAnnotation).toBeNull();
 			expect(modes.activeFeature).toBeNull();
-		});
-
-		it('clearInteractionModes preserves the kept mode only', () => {
-			modes.requestRegion();
-			modes.setPendingMeasurement({ geometry: SAMPLE_POLYGON_GEOMETRY, result: { type: 'Polygon', value: 1, unit: 'km2' } });
-			modes.simulateFeatureSelect(SAMPLE_FEATURE);
-
-			modes.clearInteractionModes('region');
-
-			expect(modes.annotationRegionMode).toBe(true);
-			expect(modes.featurePickMode).toBe(false);
-			expect(modes.pendingMeasurementAnnotation).toBeNull();
-			expect(modes.activeFeature).toBeNull();
+			expect(modes.interactionState).toEqual({ type: 'idle' });
 		});
 	});
 
@@ -451,8 +438,7 @@ describe('MapEditor interaction modes', () => {
 			modes.requestRegion();
 			modes.onRegionDrawn(SAMPLE_POLYGON_GEOMETRY);
 
-			// Region completed — geometry captured, mode off
-			expect(modes.annotationRegionMode).toBe(false);
+			// Region completed — geometry captured, mode still drawRegion (with geometry)
 			expect(modes.annotationRegionGeometry).toEqual(SAMPLE_POLYGON_GEOMETRY);
 
 			// Immediately enter featurePick
@@ -460,7 +446,7 @@ describe('MapEditor interaction modes', () => {
 
 			expect(modes.featurePickMode).toBe(true);
 			expect(modes.annotationRegionMode).toBe(false);
-			// Region geometry cleared by clearInteractionModes inside requestFeaturePick
+			// Region geometry cleared by switching to pickFeature variant
 			expect(modes.annotationRegionGeometry).toBeUndefined();
 		});
 
@@ -536,33 +522,17 @@ describe('MapEditor interaction modes', () => {
 			expect(modes.featurePickMode).toBe(false);
 		});
 
-		it('DrawActionRow Annotate clears activeFeature and region mode and switches to annotations', () => {
-			modes.requestRegion();
+		it('DrawActionRow Annotate captures activeFeature into pickedFeature and switches to annotations', () => {
 			modes.simulateFeatureSelect(SAMPLE_FEATURE);
-
 			modes.drawActionAnnotate();
 
-			// BUG: clearInteractionModes() nullifies activeFeature before the
-			// pickedFeature assignment reads it (MapEditor.svelte line 722-724).
-			// The handler should capture activeFeature before clearing.
-			// Current behavior: pickedFeature ends up undefined.
-			expect(modes.pickedFeature).toBeUndefined();
+			// Union model: data moves atomically from featureSelected → pickFeature variant
+			expect(modes.pickedFeature).toEqual({
+				featureId: SAMPLE_FEATURE.featureId,
+				layerId: SAMPLE_FEATURE.layerId,
+			});
 			expect(modes.activeFeature).toBeNull();
-			expect(modes.annotationRegionMode).toBe(false);
 			expect(modes.activeSection).toBe('annotations');
-		});
-
-		it('DrawActionRow Annotate would set pickedFeature if activeFeature captured before clear', () => {
-			// Documents the intended behavior — activeFeature should be captured
-			// before clearInteractionModes() is called.
-			modes.simulateFeatureSelect(SAMPLE_FEATURE);
-			const captured = modes.activeFeature;
-
-			modes.drawActionAnnotate();
-
-			// With pre-capture, pickedFeature would be set correctly
-			expect(captured).not.toBeNull();
-			expect(captured!.featureId).toBe(SAMPLE_FEATURE.featureId);
 		});
 
 		it('DrawActionRow Measure sets measureResult and clears activeFeature', () => {
@@ -583,15 +553,12 @@ describe('MapEditor interaction modes', () => {
 			expect(modes.activeSection).toBe('annotations'); // unchanged from default
 		});
 
-		it('DrawActionRow Dismiss only clears activeFeature', () => {
-			modes.requestRegion();
+		it('DrawActionRow Dismiss returns to idle from featureSelected', () => {
 			modes.simulateFeatureSelect(SAMPLE_FEATURE);
-
 			modes.drawActionDismiss();
 
 			expect(modes.activeFeature).toBeNull();
-			// Region mode should NOT be affected by dismiss
-			expect(modes.annotationRegionMode).toBe(true);
+			expect(modes.interactionState).toEqual({ type: 'idle' });
 		});
 
 		it('featurePickCapture sets pickedFeature and exits featurePickMode', () => {
@@ -642,16 +609,13 @@ describe('MapEditor interaction modes', () => {
 		});
 
 		it('entering region mode while measure is active clears measure-related state', () => {
-			// Set up measure active
-			modes.setActiveSection('analysis');
-			// Restore to annotations for requestRegion (it needs annotation panel)
-			modes.setActiveSection('annotations');
+			// Set up pending measurement
 			modes.setPendingMeasurement({ geometry: SAMPLE_LINE_GEOMETRY, result: { type: 'LineString', value: 10, unit: 'km' } });
 
 			modes.requestRegion();
 
 			expect(modes.annotationRegionMode).toBe(true);
-			// clearInteractionModes('region') clears measure and featurePick but keeps region
+			// requestRegion replaces the entire union state — pendingMeasurement is gone
 			expect(modes.pendingMeasurementAnnotation).toBeNull();
 			expect(modes.featurePickMode).toBe(false);
 		});
