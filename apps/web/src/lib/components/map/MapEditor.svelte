@@ -195,62 +195,40 @@
     if (!measureActive) measureResult = null;
   });
 
-  // ── Annotation region drawing ─────────────────────────────────────────────
-  // When the user wants to create a region-anchored annotation, we intercept
-  // the next drawn polygon and pass its geometry to the AnnotationPanel instead
-  // of saving it as a layer feature.
-  let annotationRegionMode = $state(false);
-  let annotationRegionGeometry = $state<{ type: 'Polygon'; coordinates: number[][][] } | undefined>(undefined);
-
-  // ── Feature-pick mode ─────────────────────────────────────────────────────
-  // When the user selects "Feature" anchor in AnnotationPanel, we enter pick
-  // mode: the next feature click on the map is captured as the annotation target.
-  // ── Pending measurement annotation ─────────────────────────────────────────
-  let pendingMeasurementAnnotation = $state<{
-    anchor: {
-      type: 'measurement';
-      geometry: { type: 'LineString'; coordinates: [number, number][] } | { type: 'Polygon'; coordinates: [number, number][][] };
-    };
-    content: {
-      type: 'measurement';
-      measurementType: 'distance' | 'area';
-      value: number;
-      unit: string;
-      displayValue: string;
-    };
-  } | null>(null);
-
-  let scrollToAnnotationFeatureId = $state<string | null>(null);
-
-  let featurePickMode = $state(false);
-  let pickedFeature = $state<{ featureId: string; layerId: string } | undefined>();
-
-  // ── Active feature (post-draw / selection action row) ─────────────────────
-  let activeFeature = $state<{
+  // ── Interaction state (discriminated union) ───────────────────────────────
+  // Replaces: annotationRegionMode, annotationRegionGeometry, featurePickMode,
+  // pickedFeature, activeFeature, pendingMeasurementAnnotation.
+  // Compiler enforces mutual exclusivity — no invalid flag combinations.
+  type SelectedFeature = {
     featureId: string;
     layerId: string;
     geometry: Geometry;
-  } | null>(null);
+  };
 
-  // ── Centralized mode cleanup ─────────────────────────────────────────────
-  // The three drawing flows (direct draw, annotation-after-draw, draw-after-annotation)
-  // share overlapping state. Without cleanup, entering one flow leaves stale flags
-  // from another, causing race conditions that persist until page reload.
-  function clearInteractionModes(keep?: 'region' | 'featurePick' | 'measure' | 'activeFeature') {
-    if (keep !== 'region') {
-      annotationRegionMode = false;
-      annotationRegionGeometry = undefined;
-    }
-    if (keep !== 'featurePick') {
-      featurePickMode = false;
-    }
-    if (keep !== 'measure') {
-      pendingMeasurementAnnotation = null;
-    }
-    if (keep !== 'activeFeature') {
-      activeFeature = null;
-    }
-  }
+  type PickedFeatureRef = {
+    featureId: string;
+    layerId: string;
+  };
+
+  type InteractionState =
+    | { type: 'idle' }
+    | { type: 'featureSelected'; feature: SelectedFeature }
+    | { type: 'drawRegion'; geometry?: { type: 'Polygon'; coordinates: number[][][] } }
+    | { type: 'pickFeature'; picked?: PickedFeatureRef }
+    | { type: 'pendingMeasurement'; anchor: {
+        type: 'measurement';
+        geometry: { type: 'LineString'; coordinates: [number, number][] } | { type: 'Polygon'; coordinates: [number, number][][] };
+      }; content: {
+        type: 'measurement';
+        measurementType: 'distance' | 'area';
+        value: number;
+        unit: string;
+        displayValue: string;
+      } };
+
+  let interactionState: InteractionState = $state({ type: 'idle' });
+
+  let scrollToAnnotationFeatureId = $state<string | null>(null);
 
   // Clean up stale modes when sidebar section changes —
   // if the user was in region-draw or feature-pick mode and navigates away,
@@ -258,59 +236,65 @@
   $effect(() => {
     const section = activeSection; // track
     if (section !== 'annotations') {
-      // Left annotation panel — abandon any pending region/feature-pick flows
-      annotationRegionMode = false;
-      annotationRegionGeometry = undefined;
-      featurePickMode = false;
-      pickedFeature = undefined;
-      pendingMeasurementAnnotation = null;
+      if (
+        interactionState.type === 'drawRegion' ||
+        interactionState.type === 'pickFeature' ||
+        interactionState.type === 'pendingMeasurement'
+      ) {
+        interactionState = { type: 'idle' };
+      }
     }
   });
 
   // Clean up when design mode toggles — all interaction modes are irrelevant in style editor
   $effect(() => {
     if (designMode) {
-      clearInteractionModes();
+      interactionState = { type: 'idle' };
       selectionStore.setActiveTool('select');
     }
   });
 
-  // Track selection → activeFeature
+  // Track selection → featureSelected
+  // Only from idle or featureSelected — don't clobber other modes.
   $effect(() => {
     const feat = selectionStore.selectedFeature;
     const lid = selectionStore.selectedLayerId;
     if (feat && lid) {
       const geom = feat.geometry as Geometry | undefined;
       const fid = String(feat.id ?? '');
-      if (geom && fid) {
-        activeFeature = { featureId: fid, layerId: lid, geometry: geom };
+      if (geom && fid && (interactionState.type === 'idle' || interactionState.type === 'featureSelected')) {
+        interactionState = { type: 'featureSelected', feature: { featureId: fid, layerId: lid, geometry: geom } };
       }
-    } else {
-      activeFeature = null;
+    } else if (interactionState.type === 'featureSelected') {
+      interactionState = { type: 'idle' };
     }
   });
 
-  // Dismiss activeFeature on drawing tool switch — also clear featurePickMode
-  // if the user switches away from select mode (they're no longer trying to pick)
+  // Dismiss featureSelected on drawing tool switch
   $effect(() => {
     const tool = selectionStore.activeTool;
     if (tool && tool !== 'select') {
-      activeFeature = null;
-      // If user manually switches to a drawing tool while in featurePickMode,
-      // they've abandoned the pick flow
-      if (tool !== 'polygon' || !annotationRegionMode) {
-        // Don't clear featurePickMode if we're drawing a polygon for annotation region
+      if (interactionState.type === 'featureSelected') {
+        interactionState = { type: 'idle' };
+      }
+      // Don't clear drawRegion when tool is 'polygon' (user is drawing the region)
+      if (interactionState.type === 'drawRegion' && tool !== 'polygon') {
+        interactionState = { type: 'idle' };
       }
     }
   });
 
+  // Feature pick capture — when in pickFeature mode and user clicks a feature
   $effect(() => {
-    if (featurePickMode && selectionStore.selectedFeature && selectionStore.selectedLayerId) {
+    if (interactionState.type === 'pickFeature' && !interactionState.picked
+        && selectionStore.selectedFeature && selectionStore.selectedLayerId) {
       const feat = selectionStore.selectedFeature;
       const fid = String(feat.id ?? '');
       if (fid) {
-        pickedFeature = { featureId: fid, layerId: selectionStore.selectedLayerId };
-        featurePickMode = false;
+        interactionState = {
+          type: 'pickFeature',
+          picked: { featureId: fid, layerId: selectionStore.selectedLayerId },
+        };
       }
     }
   });
@@ -477,7 +461,7 @@
     const geom = _feature['geometry'] as Geometry | undefined;
     const fid = _feature['id'] ?? '';
     if (geom && fid) {
-      activeFeature = { featureId: String(fid), layerId, geometry: geom };
+      interactionState = { type: 'featureSelected', feature: { featureId: String(fid), layerId, geometry: geom } };
     }
 
     logActivity('feature.drawn', {
@@ -525,8 +509,8 @@
     if (effectiveReadonly) return;
 
     if (e.key === 'Escape') {
-      if (featurePickMode || annotationRegionMode) {
-        clearInteractionModes();
+      if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature') {
+        interactionState = { type: 'idle' };
         selectionStore.setActiveTool('select');
         return;
       }
@@ -694,7 +678,7 @@
         {annotationPins}
         {annotationRegions}
         {...(measureActive ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
-        {...(annotationRegionMode ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { annotationRegionGeometry = g; annotationRegionMode = false; } } : {})}
+        {...(interactionState.type === 'drawRegion' ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { interactionState = { type: 'drawRegion', geometry: g }; } } : {})}
         annotatedFeatures={annotatedFeaturesIndex}
         measurementAnnotations={measurementAnnotationData}
         onbadgeclick={(featureId) => {
@@ -703,41 +687,44 @@
         }}
       />
 
-      {#if annotationRegionMode}
+      {#if interactionState.type === 'drawRegion'}
         <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
           Draw a polygon to define the annotation region ·
-          <button class="underline ml-1" onclick={() => { clearInteractionModes(); selectionStore.setActiveTool('select'); }}>Cancel (Esc)</button>
+          <button class="underline ml-1" onclick={() => { interactionState = { type: 'idle' }; selectionStore.setActiveTool('select'); }}>Cancel (Esc)</button>
         </div>
-      {:else if featurePickMode}
+      {:else if interactionState.type === 'pickFeature' && !interactionState.picked}
         <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-amber-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
           Click a feature to attach annotation ·
-          <button class="underline ml-1" onclick={() => { clearInteractionModes(); selectionStore.setActiveTool('select'); }}>Cancel (Esc)</button>
+          <button class="underline ml-1" onclick={() => { interactionState = { type: 'idle' }; selectionStore.setActiveTool('select'); }}>Cancel (Esc)</button>
         </div>
       {/if}
 
-      {#if activeFeature && !annotationRegionMode && !measureActive}
+      {#if interactionState.type === 'featureSelected' && !measureActive}
         <div class="absolute bottom-16 left-1/2 -translate-x-1/2 z-40">
           <DrawActionRow
             onannotate={() => {
-              const feat = activeFeature;
-              clearInteractionModes();
-              activeSection = 'annotations';
-              pickedFeature = feat !== null ? { featureId: feat.featureId, layerId: feat.layerId } : undefined;
+              if (interactionState.type === 'featureSelected') {
+                const { feature } = interactionState;
+                interactionState = {
+                  type: 'pickFeature',
+                  picked: { featureId: feature.featureId, layerId: feature.layerId },
+                };
+                activeSection = 'annotations';
+              }
             }}
             onmeasure={() => {
-              if (!activeFeature) return;
-              clearInteractionModes('activeFeature');
-              const geom = activeFeature.geometry;
-              if (geom.type === 'LineString') {
-                measureResult = measureLine(geom.coordinates as [number, number][]);
-              } else if (geom.type === 'Polygon') {
-                measureResult = measurePolygon(geom.coordinates as [number, number][][]);
+              if (interactionState.type !== 'featureSelected') return;
+              const { geometry } = interactionState.feature;
+              interactionState = { type: 'idle' };
+              if (geometry.type === 'LineString') {
+                measureResult = measureLine(geometry.coordinates as [number, number][]);
+              } else if (geometry.type === 'Polygon') {
+                measureResult = measurePolygon(geometry.coordinates as [number, number][][]);
               }
               activeSection = 'analysis';
               analysisTab = 'measure';
-              activeFeature = null;
             }}
-            ondismiss={() => { activeFeature = null; }}
+            ondismiss={() => { interactionState = { type: 'idle' }; }}
           />
         </div>
       {/if}
@@ -806,22 +793,19 @@
       embedded
       {...(userId !== undefined ? { userId } : {})}
       onannotationchange={(action) => {
-        // Fully reset all annotation interaction state after create/update/delete
-        annotationRegionMode = false;
-        annotationRegionGeometry = undefined;
-        featurePickMode = false;
-        pickedFeature = undefined;
-        pendingMeasurementAnnotation = null;
+        if (interactionState.type !== 'featureSelected') {
+          interactionState = { type: 'idle' };
+        }
         loadAnnotationPins();
         if (action) {
           logActivity(`annotation.${action}`);
         }
       }}
-      onrequestregion={() => { clearInteractionModes('region'); annotationRegionMode = true; annotationRegionGeometry = undefined; selectionStore.setActiveTool('polygon'); }}
-      onrequestfeaturepick={() => { clearInteractionModes('featurePick'); featurePickMode = true; pickedFeature = undefined; selectionStore.setActiveTool('select'); }}
-      regionGeometry={annotationRegionGeometry}
-      {pickedFeature}
-      pendingMeasurement={pendingMeasurementAnnotation}
+      onrequestregion={() => { interactionState = { type: 'drawRegion' }; selectionStore.setActiveTool('polygon'); }}
+      onrequestfeaturepick={() => { interactionState = { type: 'pickFeature' }; selectionStore.setActiveTool('select'); }}
+      regionGeometry={interactionState.type === 'drawRegion' ? interactionState.geometry : undefined}
+      pickedFeature={interactionState.type === 'pickFeature' ? interactionState.picked : undefined}
+      pendingMeasurement={interactionState.type === 'pendingMeasurement' ? { anchor: interactionState.anchor, content: interactionState.content } : null}
       scrollToFeatureId={scrollToAnnotationFeatureId}
       oncountchange={(a, c) => { annotationCount = a; commentCount = c; }}
     />
@@ -913,7 +897,8 @@
                   if (!measureResult) return;
                   const mr = measureResult;
                   if (mr.type === 'distance') {
-                    pendingMeasurementAnnotation = {
+                    interactionState = {
+                      type: 'pendingMeasurement',
                       anchor: {
                         type: 'measurement',
                         geometry: { type: 'LineString', coordinates: mr.coordinates as [number, number][] },
@@ -927,7 +912,8 @@
                       },
                     };
                   } else {
-                    pendingMeasurementAnnotation = {
+                    interactionState = {
+                      type: 'pendingMeasurement',
                       anchor: {
                         type: 'measurement',
                         geometry: { type: 'Polygon', coordinates: mr.coordinates as [number, number][][] },
