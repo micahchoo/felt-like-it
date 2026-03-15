@@ -719,10 +719,10 @@
         <div class="absolute bottom-16 left-1/2 -translate-x-1/2 z-40">
           <DrawActionRow
             onannotate={() => {
+              const feat = activeFeature;
               clearInteractionModes();
               activeSection = 'annotations';
-              pickedFeature = activeFeature !== null ? { featureId: activeFeature.featureId, layerId: activeFeature.layerId } : undefined;
-              activeFeature = null;
+              pickedFeature = feat !== null ? { featureId: feat.featureId, layerId: feat.layerId } : undefined;
             }}
             onmeasure={() => {
               if (!activeFeature) return;
