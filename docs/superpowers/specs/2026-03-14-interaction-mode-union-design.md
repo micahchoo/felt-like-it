@@ -234,14 +234,14 @@ $effect(() => {
   }
 });
 
-// Selection → featureSelected
+// Selection → featureSelected (only from idle or featureSelected — don't clobber other modes)
 $effect(() => {
   const feat = selectionStore.selectedFeature;
   const lid = selectionStore.selectedLayerId;
   if (feat && lid) {
     const geom = feat.geometry as Geometry | undefined;
     const fid = String(feat.id ?? '');
-    if (geom && fid) {
+    if (geom && fid && (interactionState.type === 'idle' || interactionState.type === 'featureSelected')) {
       interactionState = { type: 'featureSelected', feature: { featureId: fid, layerId: lid, geometry: geom } };
     }
   } else if (interactionState.type === 'featureSelected') {
