@@ -233,13 +233,15 @@
   // Clean up stale modes when sidebar section changes —
   // if the user was in region-draw or feature-pick mode and navigates away,
   // those modes must not persist and intercept future draws.
+  // Uses untrack() to avoid circular dependency (reads + writes interactionState).
   $effect(() => {
     const section = activeSection; // track
     if (section !== 'annotations') {
+      const currentType = untrack(() => interactionState.type);
       if (
-        interactionState.type === 'drawRegion' ||
-        interactionState.type === 'pickFeature' ||
-        interactionState.type === 'pendingMeasurement'
+        currentType === 'drawRegion' ||
+        currentType === 'pickFeature' ||
+        currentType === 'pendingMeasurement'
       ) {
         interactionState = { type: 'idle' };
       }
@@ -256,45 +258,57 @@
 
   // Track selection → featureSelected
   // Only from idle or featureSelected — don't clobber other modes.
+  // Uses untrack() for interactionState reads to avoid circular dependency
+  // (this effect writes interactionState, so reading it tracked would cause infinite loops).
   $effect(() => {
     const feat = selectionStore.selectedFeature;
     const lid = selectionStore.selectedLayerId;
     if (feat && lid) {
       const geom = feat.geometry as Geometry | undefined;
       const fid = String(feat.id ?? '');
-      if (geom && fid && (interactionState.type === 'idle' || interactionState.type === 'featureSelected')) {
+      const currentType = untrack(() => interactionState.type);
+      if (geom && fid && (currentType === 'idle' || currentType === 'featureSelected')) {
         interactionState = { type: 'featureSelected', feature: { featureId: fid, layerId: lid, geometry: geom } };
       }
-    } else if (interactionState.type === 'featureSelected') {
-      interactionState = { type: 'idle' };
+    } else {
+      const currentType = untrack(() => interactionState.type);
+      if (currentType === 'featureSelected') {
+        interactionState = { type: 'idle' };
+      }
     }
   });
 
   // Dismiss featureSelected on drawing tool switch
+  // Uses untrack() to avoid circular dependency (reads + writes interactionState).
   $effect(() => {
     const tool = selectionStore.activeTool;
     if (tool && tool !== 'select') {
-      if (interactionState.type === 'featureSelected') {
+      const currentType = untrack(() => interactionState.type);
+      if (currentType === 'featureSelected') {
         interactionState = { type: 'idle' };
       }
       // Don't clear drawRegion when tool is 'polygon' (user is drawing the region)
-      if (interactionState.type === 'drawRegion' && tool !== 'polygon') {
+      if (currentType === 'drawRegion' && tool !== 'polygon') {
         interactionState = { type: 'idle' };
       }
     }
   });
 
   // Feature pick capture — when in pickFeature mode and user clicks a feature
+  // Uses untrack() to avoid circular dependency (reads + writes interactionState).
   $effect(() => {
-    if (interactionState.type === 'pickFeature' && !interactionState.picked
-        && selectionStore.selectedFeature && selectionStore.selectedLayerId) {
-      const feat = selectionStore.selectedFeature;
-      const fid = String(feat.id ?? '');
-      if (fid) {
-        interactionState = {
-          type: 'pickFeature',
-          picked: { featureId: fid, layerId: selectionStore.selectedLayerId },
-        };
+    const feat = selectionStore.selectedFeature;
+    const lid = selectionStore.selectedLayerId;
+    if (feat && lid) {
+      const current = untrack(() => interactionState);
+      if (current.type === 'pickFeature' && !current.picked) {
+        const fid = String(feat.id ?? '');
+        if (fid) {
+          interactionState = {
+            type: 'pickFeature',
+            picked: { featureId: fid, layerId: lid },
+          };
+        }
       }
     }
   });
@@ -678,7 +692,7 @@
         {annotationPins}
         {annotationRegions}
         {...(measureActive ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
-        {...(interactionState.type === 'drawRegion' ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { interactionState = { type: 'drawRegion', geometry: g }; } } : {})}
+        {...(interactionState.type === 'drawRegion' && !interactionState.geometry ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { interactionState = { type: 'drawRegion', geometry: g }; } } : {})}
         annotatedFeatures={annotatedFeaturesIndex}
         measurementAnnotations={measurementAnnotationData}
         onbadgeclick={(featureId) => {
@@ -687,7 +701,7 @@
         }}
       />
 
-      {#if interactionState.type === 'drawRegion'}
+      {#if interactionState.type === 'drawRegion' && !interactionState.geometry}
         <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
           Draw a polygon to define the annotation region ·
           <button class="underline ml-1" onclick={() => { interactionState = { type: 'idle' }; selectionStore.setActiveTool('select'); }}>Cancel (Esc)</button>
