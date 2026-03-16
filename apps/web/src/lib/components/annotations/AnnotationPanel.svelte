@@ -431,6 +431,8 @@
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
+      // Also invalidate any open thread — the deleted item may be a reply
+      queryClient.invalidateQueries({ queryKey: ['annotations', 'getThread'] });
     },
   }));
 
