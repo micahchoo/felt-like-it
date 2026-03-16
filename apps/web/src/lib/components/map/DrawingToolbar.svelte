@@ -54,10 +54,16 @@
   // Lazy-load Terra Draw to avoid SSR issues
   let draw: import('terra-draw').TerraDraw | null = null;
   let drawReady = $state(false);
+  let initGeneration = 0; // Guards against concurrent inits
 
   async function initTeraDraw() {
+    const gen = ++initGeneration;
+
     const { TerraDraw, TerraDrawPointMode, TerraDrawLineStringMode, TerraDrawPolygonMode, TerraDrawSelectMode } = await import('terra-draw');
     const { TerraDrawMapLibreGLAdapter } = await import('terra-draw-maplibre-gl-adapter');
+
+    // Abort if a newer init was started while we were importing
+    if (gen !== initGeneration) return;
 
     draw = new TerraDraw({
       // terra-draw-maplibre-gl-adapter ≥1.3 no longer needs a `lib` param
