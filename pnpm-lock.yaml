@@ -54,6 +54,9 @@ importers:
       '@node-rs/argon2':
         specifier: ^2.0.0
         version: 2.0.2
+      '@tanstack/svelte-query':
+        specifier: ^6.1.0
+        version: 6.1.0(svelte@5.53.3)
       '@tmcw/togeojson':
         specifier: ^7.1.2
         version: 7.1.2
@@ -1880,6 +1883,14 @@ packages:
     resolution: {integrity: sha512-TBf2sJjYeb28jD2U/OhwdW0bbOsxkWPwQ7SrqGf9sVcoYwZj7rkXljroBO9wKBut9XnmQLXanuDUeqQK0lGg/w==}
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7
+
+  '@tanstack/query-core@5.90.20':
+    resolution: {integrity: sha512-OMD2HLpNouXEfZJWcKeVKUgQ5n+n3A2JFmBaScpNDUqSrQSjiveC7dKMe53uJUg1nDG16ttFPz2xfilz6i2uVg==}
+
+  '@tanstack/svelte-query@6.1.0':
+    resolution: {integrity: sha512-iKeMaBalk5NeRvp1Y2LgtG3j9HCeLcTEpfsyM+jL1wASnW/EYdCqyyotMKkOY4SNsnBpPDM5zrmstMn6tOzKFQ==}
+    peerDependencies:
+      svelte: ^5.25.0
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -6488,6 +6499,13 @@ snapshots:
       '@tailwindcss/oxide': 4.2.1
       tailwindcss: 4.2.1
       vite: 6.4.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)
+
+  '@tanstack/query-core@5.90.20': {}
+
+  '@tanstack/svelte-query@6.1.0(svelte@5.53.3)':
+    dependencies:
+      '@tanstack/query-core': 5.90.20
+      svelte: 5.53.3
 
   '@testing-library/dom@10.4.1':
     dependencies:
