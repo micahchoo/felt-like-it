@@ -11,6 +11,7 @@
   import LayerPanel from './LayerPanel.svelte';
   import BasemapPicker from './BasemapPicker.svelte';
   import type { Layer, GeoJSONFeature, LayerStyle } from '@felt-like-it/shared-types';
+import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   import DataTable from '$lib/components/data/DataTable.svelte';
   import FilterPanel from '$lib/components/data/FilterPanel.svelte';
   import ImportDialog from '$lib/components/data/ImportDialog.svelte';
@@ -205,14 +206,6 @@
   $effect(() => {
     if (!measureActive) measureResult = null;
   });
-
-  /** Resolve database UUID from a MapLibre feature.
-   *  GeoJSON sources set `properties._id`; Martin vector tiles expose `id` as a property.
-   *  Fall back to `feat.id` (works for GeoJSON sources where id is set directly). */
-  function resolveFeatureId(feat: { id?: string | number; properties?: Record<string, unknown> | null }): string {
-    const props = feat.properties;
-    return String(props?.['_id'] ?? props?.['id'] ?? feat.id ?? '');
-  }
 
   // ── Interaction state (discriminated union) ───────────────────────────────
   // Replaces: annotationRegionMode, annotationRegionGeometry, featurePickMode,
