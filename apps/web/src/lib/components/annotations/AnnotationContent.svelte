@@ -8,11 +8,13 @@
     createdAt?: Date | string;
     /** Anchor type badge (point, region, viewport, feature, measurement). */
     anchorType?: string;
+    /** Whether the anchored feature has been deleted. */
+    featureDeleted?: boolean;
     /** Compact mode — used for hover tooltips (hides full content, shows preview). */
     compact?: boolean;
   }
 
-  let { content, authorName, createdAt, anchorType, compact = false }: Props = $props();
+  let { content, authorName, createdAt, anchorType, featureDeleted = false, compact = false }: Props = $props();
 
   function formatDate(value: Date | string): string {
     const d = value instanceof Date ? value : new Date(value);
@@ -40,7 +42,12 @@
   Accepts both raw AnnotationContent (legacy) and the AnnotationObjectContent
   wrapper (single/slotted) — the latter is unwrapped before rendering.
 -->
-<div class="text-sm text-slate-200 space-y-2" style="max-width: 22rem">
+<div class="text-sm text-slate-200 space-y-2{featureDeleted ? ' opacity-60' : ''}" style="max-width: 22rem">
+  {#if featureDeleted}
+    <div class="flex items-center gap-1.5 rounded bg-red-500/10 px-2 py-1 text-[11px] text-red-400">
+      <span>Feature deleted</span>
+    </div>
+  {/if}
   <!-- Author + timestamp + anchor type header -->
   <div class="flex items-center gap-1.5 text-xs text-slate-400 flex-wrap">
     <span class="font-medium text-slate-300">{authorName}</span>

@@ -19,7 +19,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 
 import { featuresRouter } from '../lib/server/trpc/routers/features.js';
 import { db } from '$lib/server/db/index.js';
-import { drizzleChain, mockContext } from './test-utils.js';
+import { drizzleChain, mockContext, mockExecuteResult } from './test-utils.js';
 
 // --- Helpers ---
 
@@ -141,6 +141,7 @@ describe('features.delete', () => {
       .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))   // layer lookup
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]));    // requireMapAccess: map
     vi.mocked(db.delete).mockReturnValue(drizzleChain(undefined));
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([])); // flagOrphanedAnnotations
 
     const result = await makeCaller().delete({ layerId: LAYER_ID, ids: [FEATURE_ID] });
     expect(result).toEqual({ deleted: 1 });

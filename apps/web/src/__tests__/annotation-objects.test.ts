@@ -256,3 +256,44 @@ describe('annotationService adversarial cases', () => {
     })).rejects.toThrow(/not a root/i);
   });
 });
+
+describe('annotationService.flagOrphanedAnnotations', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  const FEATURE_ID_1 = 'dddddddd-0000-0000-0000-dddddddddddd';
+  const FEATURE_ID_2 = 'eeeeeeee-0000-0000-0000-eeeeeeeeeeee';
+
+  it('flags feature-anchored annotations when features are deleted', async () => {
+    const flaggedRows = [{ id: OBJ_ID }];
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult(flaggedRows));
+
+    const count = await annotationService.flagOrphanedAnnotations([FEATURE_ID_1]);
+
+    expect(count).toBe(1);
+    expect(db.execute).toHaveBeenCalledOnce();
+  });
+
+  it('flags multiple annotations for multiple deleted features', async () => {
+    const flaggedRows = [{ id: OBJ_ID }, { id: 'ffffffff-0000-0000-0000-ffffffffffff' }];
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult(flaggedRows));
+
+    const count = await annotationService.flagOrphanedAnnotations([FEATURE_ID_1, FEATURE_ID_2]);
+
+    expect(count).toBe(2);
+  });
+
+  it('returns zero when no annotations reference the deleted features', async () => {
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([]));
+
+    const count = await annotationService.flagOrphanedAnnotations([FEATURE_ID_1]);
+
+    expect(count).toBe(0);
+  });
+
+  it('short-circuits without a query when given empty feature IDs', async () => {
+    const count = await annotationService.flagOrphanedAnnotations([]);
+
+    expect(count).toBe(0);
+    expect(db.execute).not.toHaveBeenCalled();
+  });
+});

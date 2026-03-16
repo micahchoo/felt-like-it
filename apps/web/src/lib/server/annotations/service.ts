@@ -312,4 +312,25 @@ export const annotationService = {
 
     return { deleted: true };
   },
+
+  /**
+   * Flag feature-anchored annotations as orphaned after their features are deleted.
+   * Sets `anchor.featureDeleted = true` on any annotation whose anchor references
+   * one of the given feature IDs.
+   */
+  async flagOrphanedAnnotations(featureIds: string[]): Promise<number> {
+    if (featureIds.length === 0) return 0;
+
+    const result = await typedExecute<{ id: string }>(sql`
+      UPDATE annotation_objects
+      SET anchor = jsonb_set(anchor, '{featureDeleted}', 'true'),
+          updated_at = NOW()
+      WHERE anchor->>'type' = 'feature'
+        AND anchor->>'featureId' = ANY(${featureIds})
+        AND (anchor->>'featureDeleted' IS NULL OR anchor->>'featureDeleted' = 'false')
+      RETURNING id
+    `);
+
+    return result.length;
+  },
 };

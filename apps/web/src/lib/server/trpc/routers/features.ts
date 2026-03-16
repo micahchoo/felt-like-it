@@ -4,6 +4,7 @@ import { eq, and, inArray, sql } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
 import { db, layers, features } from '../../db/index.js';
 import { requireMapAccess } from '../../geo/access.js';
+import { annotationService } from '../../annotations/service.js';
 
 export const featuresRouter = router({
   /** Fetch all features for a layer as a GeoJSON FeatureCollection */
@@ -204,6 +205,9 @@ export const featuresRouter = router({
         .where(
           and(eq(features.layerId, input.layerId), inArray(features.id, input.ids))
         );
+
+      // Flag any annotations anchored to the deleted features
+      await annotationService.flagOrphanedAnnotations(input.ids);
 
       return { deleted: input.ids.length };
     }),
