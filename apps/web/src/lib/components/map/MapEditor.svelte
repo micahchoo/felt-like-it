@@ -206,6 +206,14 @@
     if (!measureActive) measureResult = null;
   });
 
+  /** Resolve database UUID from a MapLibre feature.
+   *  GeoJSON sources set `properties._id`; Martin vector tiles expose `id` as a property.
+   *  Fall back to `feat.id` (works for GeoJSON sources where id is set directly). */
+  function resolveFeatureId(feat: { id?: string | number; properties?: Record<string, unknown> | null }): string {
+    const props = feat.properties;
+    return String(props?.['_id'] ?? props?.['id'] ?? feat.id ?? '');
+  }
+
   // ── Interaction state (discriminated union) ───────────────────────────────
   // Replaces: annotationRegionMode, annotationRegionGeometry, featurePickMode,
   // pickedFeature, activeFeature, pendingMeasurementAnnotation.
@@ -299,7 +307,7 @@
     const lid = selectionStore.selectedLayerId;
     if (feat && lid) {
       const geom = feat.geometry as Geometry | undefined;
-      const fid = String(feat.id ?? '');
+      const fid = resolveFeatureId(feat);
       const currentType = untrack(() => interactionState.type);
       if (geom && fid && (currentType === 'idle' || currentType === 'featureSelected')) {
         transitionTo({ type: 'featureSelected', feature: { featureId: fid, layerId: lid, geometry: geom } });
@@ -336,7 +344,7 @@
     if (feat && lid) {
       const current = untrack(() => interactionState);
       if (current.type === 'pickFeature' && !current.picked) {
-        const fid = String(feat.id ?? '');
+        const fid = resolveFeatureId(feat);
         if (fid) {
           transitionTo({
             type: 'pickFeature',
