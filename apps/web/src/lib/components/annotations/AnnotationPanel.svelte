@@ -255,6 +255,25 @@
     }
   });
 
+  // Auto-open form when a picked feature arrives from external context
+  // (e.g. DrawActionRow "Annotate" button or direct feature pick).
+  // Only activates when the form is closed — never clobbers an in-progress form.
+  $effect(() => {
+    if (pickedFeature && !showForm) {
+      formAnchorType = 'feature';
+      showForm = true;
+    }
+  });
+
+  // Auto-open form when a region geometry arrives from external drawing flow.
+  // Same guard: only when form is closed to avoid clobbering user input.
+  $effect(() => {
+    if (regionGeometry && !showForm) {
+      formAnchorType = 'region';
+      showForm = true;
+    }
+  });
+
   // Track pending measurement data for the create flow
   let pendingMeasurementData = $state<typeof pendingMeasurement>(null);
 
@@ -384,6 +403,7 @@
   }
 
   function resetForm() {
+    formType = 'text';
     formText = '';
     formEmoji = '';
     formEmojiLabel = '';
@@ -396,6 +416,10 @@
     formLinkDesc = '';
     formManifestUrl = '';
     formIiifLabel = '';
+    // Anchor state
+    formAnchorType = 'point';
+    formLng = 0;
+    formLat = 0;
     // Image upload state
     if (imagePreviewUrl) { URL.revokeObjectURL(imagePreviewUrl); imagePreviewUrl = null; }
     selectedImageFile = null;
