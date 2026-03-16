@@ -132,7 +132,7 @@
     error = null;
     success = null;
     try {
-      const result = await $geoprocessingMutation.mutateAsync({
+      const result = await geoprocessingMutation.mutateAsync({
         mapId,
         op: buildOp(),
         outputLayerName: outputName.trim() || defaultName,

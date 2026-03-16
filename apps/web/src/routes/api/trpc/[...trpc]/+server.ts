@@ -10,12 +10,13 @@ function handler(event: RequestEvent) {
     router: appRouter,
     createContext: () => createContext(event),
     onError: ({ path, error }) => {
-      // Always log 5xx (INTERNAL_SERVER_ERROR); log 4xx only outside production
+      // Always log 5xx and input validation errors; log other 4xx only outside production
       const isInternal = error.code === 'INTERNAL_SERVER_ERROR';
-      if (isInternal || process.env['NODE_ENV'] !== 'production') {
+      const isBadRequest = error.code === 'BAD_REQUEST';
+      if (isInternal || isBadRequest || process.env['NODE_ENV'] !== 'production') {
         console.error(`[tRPC] ${error.code} /${path ?? '?'} — ${error.message}`);
       }
-      if (isInternal) {
+      if (isInternal || isBadRequest) {
         const cause = error.cause;
         if (cause instanceof Error && cause.stack) {
           console.error(cause.stack);

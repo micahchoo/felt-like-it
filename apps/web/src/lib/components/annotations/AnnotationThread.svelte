@@ -19,12 +19,12 @@
 </script>
 
 <div class="ml-4 mt-2 space-y-2 border-l border-white/10 pl-3">
-  {#if $threadQuery.isLoading}
+  {#if threadQuery.isLoading}
     <p class="text-xs text-slate-500">Loading replies…</p>
-  {:else if $threadQuery.isError}
+  {:else if threadQuery.isError}
     <p class="text-xs text-red-400">Failed to load replies.</p>
-  {:else if $threadQuery.data?.replies.length}
-    {#each $threadQuery.data.replies as reply (reply.id)}
+  {:else if threadQuery.data?.replies.length}
+    {#each threadQuery.data.replies as reply (reply.id)}
       <div class="group flex items-start gap-2">
         <div class="flex-1 min-w-0">
           <AnnotationContent
