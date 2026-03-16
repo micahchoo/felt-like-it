@@ -3,6 +3,7 @@
   import { selectionStore } from '$lib/stores/selection.svelte.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { undoStore } from '$lib/stores/undo.svelte.js';
+  import { drawingStore } from '$lib/stores/drawing.svelte.js';
   import { trpc } from '$lib/utils/trpc.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
@@ -51,80 +52,48 @@
     },
   }));
 
-  // Lazy-load Terra Draw to avoid SSR issues
-  let draw: import('terra-draw').TerraDraw | null = null;
-  let drawReady = $state(false);
-  let initGeneration = 0; // Guards against concurrent inits
-
-  async function initTeraDraw() {
-    const gen = ++initGeneration;
-
-    const { TerraDraw, TerraDrawPointMode, TerraDrawLineStringMode, TerraDrawPolygonMode, TerraDrawSelectMode } = await import('terra-draw');
-    const { TerraDrawMapLibreGLAdapter } = await import('terra-draw-maplibre-gl-adapter');
-
-    // Abort if a newer init was started while we were importing
-    if (gen !== initGeneration) return;
-
-    draw = new TerraDraw({
-      // terra-draw-maplibre-gl-adapter ≥1.3 no longer needs a `lib` param
-      adapter: new TerraDrawMapLibreGLAdapter({ map }),
-      modes: [
-        new TerraDrawPointMode(),
-        new TerraDrawLineStringMode(),
-        new TerraDrawPolygonMode({ snapping: { toLine: true, toCoordinate: true } }),
-        new TerraDrawSelectMode(),
-      ],
-    });
-
-    draw.start();
-
-    // terra-draw ≥1.x: finish fires with a single FeatureId (string | number),
-    // not an array. Use getSnapshotFeature(id) for direct lookup.
-    drawReady = true;
-
-    draw.on('finish', async (id: string | number) => {
-      if (!draw) return;
-
-      const f = draw.getSnapshotFeature(id);
-
-      if (f) {
-        if (onregiondrawn && f.geometry.type === 'Polygon') {
-          // Annotation region mode — pass geometry to parent; do NOT persist to DB
-          onregiondrawn(f.geometry as { type: 'Polygon'; coordinates: number[][][] });
-        } else if (onmeasured) {
-          // Measurement mode — compute result and notify parent; do NOT persist to DB
-          measureFeature(f);
-        } else {
-          await saveFeature(f);
-        }
-      }
-
-      // Re-check: component may have unmounted during the async save
-      if (!draw) return;
-
-      // Always remove the drawn feature from Terra Draw's overlay.
-      // Saved features are re-rendered via the GeoJSON source; unsaved
-      // orphans must be cleared or they corrupt subsequent draw operations.
-      try {
-        draw.removeFeatures([id]);
-      } catch (e) {
-        console.warn('[TerraDraw] removeFeatures failed:', e);
-      }
-
-      // Reset to select mode after drawing
-      draw.setMode('select');
-      selectionStore.setActiveTool('select');
-    });
-  }
-
   $effect(() => {
     if (!map) return;
 
     function startDraw() {
-      draw?.stop();
-      draw = null;
-      drawReady = false;
-      initTeraDraw().catch((err) => {
+      drawingStore.reset();
+      drawingStore.init(map).then((draw) => {
+        if (!draw) return;
+
+        draw.on('finish', async (id: string | number) => {
+          if (!drawingStore.instance) return;
+
+          const f = drawingStore.instance.getSnapshotFeature(id);
+
+          if (f) {
+            if (onregiondrawn && f.geometry.type === 'Polygon') {
+              // Annotation region mode — pass geometry to parent; do NOT persist to DB
+              onregiondrawn(f.geometry as { type: 'Polygon'; coordinates: number[][][] });
+            } else if (onmeasured) {
+              // Measurement mode — compute result and notify parent; do NOT persist to DB
+              measureFeature(f);
+            } else {
+              await saveFeature(f);
+            }
+          }
+
+          // Re-check: component may have unmounted during the async save
+          if (!drawingStore.instance) return;
+
+          // Always remove the drawn feature from Terra Draw's overlay.
+          // Saved features are re-rendered via the GeoJSON source; unsaved
+          // orphans must be cleared or they corrupt subsequent draw operations.
+          try {
+            drawingStore.instance.removeFeatures([id]);
+          } catch (e) {
+            console.warn('[TerraDraw] removeFeatures failed:', e);
+          }
+
+          // Reset to select mode after drawing
+          drawingStore.instance.setMode('select');
+          selectionStore.setActiveTool('select');
+        });
+      }).catch((err) => {
         console.error('TerraDraw init failed:', err);
         toastStore.error('Drawing tools failed to load. Try refreshing.');
       });
@@ -143,8 +112,7 @@
 
     return () => {
       map.off('style.load', onStyleLoad);
-      draw?.stop();
-      draw = null;
+      drawingStore.stop();
     };
   });
 
@@ -227,22 +195,22 @@
   // Sync external activeTool changes (e.g. annotation region request) to Terra Draw
   $effect(() => {
     const tool = selectionStore.activeTool;
-    if (!draw || !drawReady) return;
+    if (!drawingStore.instance || !drawingStore.isReady) return;
     const modeMap: Record<string, string> = { point: 'point', line: 'linestring', polygon: 'polygon', select: 'select' };
     const mode = tool ? modeMap[tool] ?? 'select' : 'select';
-    if (draw.getMode() !== mode) draw.setMode(mode);
+    if (drawingStore.instance.getMode() !== mode) drawingStore.instance.setMode(mode);
   });
 
   function setTool(tool: DrawTool) {
     selectionStore.setActiveTool(tool);
-    if (!draw) return;
+    if (!drawingStore.instance) return;
 
     switch (tool) {
-      case 'point': draw.setMode('point'); break;
-      case 'line': draw.setMode('linestring'); break;
-      case 'polygon': draw.setMode('polygon'); break;
-      case 'select': draw.setMode('select'); break;
-      default: draw.setMode('select'); break;
+      case 'point': drawingStore.instance.setMode('point'); break;
+      case 'line': drawingStore.instance.setMode('linestring'); break;
+      case 'polygon': drawingStore.instance.setMode('polygon'); break;
+      case 'select': drawingStore.instance.setMode('select'); break;
+      default: drawingStore.instance.setMode('select'); break;
     }
   }
 
@@ -264,9 +232,9 @@
     <Tooltip content={noLayer ? 'Select a layer first to start drawing' : tool.helpText} position="right">
       <button
         onclick={() => setTool(tool.id)}
-        disabled={!drawReady || noLayer}
+        disabled={!drawingStore.isReady || noLayer}
         class="h-9 w-9 rounded-md flex items-center justify-center text-base transition-colors
-               {!drawReady || noLayer
+               {!drawingStore.isReady || noLayer
                  ? 'opacity-50 cursor-not-allowed text-slate-500'
                  : selectionStore.activeTool === tool.id
                    ? 'bg-blue-600 text-white'
