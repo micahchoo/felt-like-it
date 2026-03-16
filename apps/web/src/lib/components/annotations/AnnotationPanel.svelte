@@ -1,9 +1,12 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { tick } from 'svelte';
   import exifr from 'exifr';
   import { trpc } from '$lib/utils/trpc.js';
+  import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
+  import { queryKeys } from '$lib/utils/query-keys.js';
   import Button from '$lib/components/ui/Button.svelte';
   import AnnotationContent from './AnnotationContent.svelte';
+  import AnnotationThread from './AnnotationThread.svelte';
   import { mapStore } from '$lib/stores/map.svelte.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import type { AnnotationObject, AnnotationContent as AC, Anchor } from '@felt-like-it/shared-types';
@@ -45,24 +48,18 @@
 
   let { mapId, userId, onannotationchange, onrequestregion, onrequestfeaturepick, regionGeometry = undefined, pickedFeature, pendingMeasurement, scrollToFeatureId, embedded, oncountchange }: Props = $props();
 
-  // ── Annotation list ────────────────────────────────────────────────────────
+  const queryClient = useQueryClient();
 
-  let annotationList = $state<AnnotationObject[]>([]);
-  let listLoading = $state(false);
-  let listError = $state<string | null>(null);
+  // ── Annotation list (TanStack Query) ─────────────────────────────────────
 
-  async function loadAnnotations() {
-    listLoading = true;
-    listError = null;
-    try {
-      annotationList = await trpc.annotations.list.query({ mapId });
-      oncountchange?.(annotationList.length, comments.length);
-    } catch (err: unknown) {
-      listError = (err as { message?: string })?.message ?? 'Failed to load annotations.';
-    } finally {
-      listLoading = false;
-    }
-  }
+  const annotationsQuery = createQuery(() => ({
+    queryKey: queryKeys.annotations.list({ mapId }),
+    queryFn: () => trpc.annotations.list.query({ mapId }),
+  }));
+
+  const annotationList = $derived(annotationsQuery.data ?? []);
+  const listLoading = $derived(annotationsQuery.isPending);
+  const listError = $derived(annotationsQuery.error?.message ?? null);
 
   // ── Comment integration ───────────────────────────────────────────────
   interface CommentEntry {
@@ -76,28 +73,81 @@
     updatedAt: Date;
   }
 
-  let comments = $state<CommentEntry[]>([]);
+  const commentsQuery = createQuery(() => ({
+    queryKey: queryKeys.comments.list({ mapId }),
+    queryFn: async () => {
+      const rows = await trpc.comments.list.query({ mapId });
+      return rows as CommentEntry[];
+    },
+  }));
+
+  const comments = $derived(commentsQuery.data ?? []);
   let commentBody = $state('');
   let submittingComment = $state(false);
 
-  async function loadComments() {
-    try {
-      const rows = await trpc.comments.list.query({ mapId });
-      comments = rows as CommentEntry[];
-      oncountchange?.(annotationList.length, comments.length);
-    } catch {
-      // Non-critical — silently degrade
-    }
-  }
+  $effect(() => {
+    oncountchange?.(annotationList.length, comments.length);
+  });
+
+  // ── Comment mutations (TanStack Query) ───────────────────────────────────
+
+  const createCommentMutation = createMutation(() => ({
+    mutationFn: (input: { mapId: string; body: string }) =>
+      trpc.comments.create.mutate(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.comments.list({ mapId }) });
+    },
+  }));
+
+  const deleteCommentMutation = createMutation(() => ({
+    mutationFn: (input: { id: string }) => trpc.comments.delete.mutate(input),
+    onMutate: async ({ id }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.comments.list({ mapId }) });
+      const previous = queryClient.getQueryData<CommentEntry[]>(queryKeys.comments.list({ mapId }));
+      queryClient.setQueryData<CommentEntry[]>(
+        queryKeys.comments.list({ mapId }),
+        (old) => old?.filter((c) => c.id !== id) ?? []
+      );
+      return { previous };
+    },
+    onError: (_err: unknown, _vars: { id: string }, context: { previous?: CommentEntry[] } | undefined) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.comments.list({ mapId }), context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.comments.list({ mapId }) });
+    },
+  }));
+
+  const resolveCommentMutation = createMutation(() => ({
+    mutationFn: (input: { id: string }) => trpc.comments.resolve.mutate(input),
+    onMutate: async ({ id }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.comments.list({ mapId }) });
+      const previous = queryClient.getQueryData<CommentEntry[]>(queryKeys.comments.list({ mapId }));
+      queryClient.setQueryData<CommentEntry[]>(
+        queryKeys.comments.list({ mapId }),
+        (old) => old?.map((c) => c.id === id ? { ...c, resolved: !c.resolved } : c) ?? []
+      );
+      return { previous };
+    },
+    onError: (_err: unknown, _vars: { id: string }, context: { previous?: CommentEntry[] } | undefined) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.comments.list({ mapId }), context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.comments.list({ mapId }) });
+    },
+  }));
 
   async function handleCommentSubmit() {
     const body = commentBody.trim();
     if (!body) return;
     submittingComment = true;
     try {
-      await trpc.comments.create.mutate({ mapId, body });
+      await createCommentMutation.mutateAsync({ mapId, body });
       commentBody = '';
-      await loadComments();
     } catch {
       toastStore.error('Failed to post comment.');
     } finally {
@@ -107,9 +157,7 @@
 
   async function handleCommentDelete(id: string) {
     try {
-      await trpc.comments.delete.mutate({ id });
-      comments = comments.filter((c) => c.id !== id);
-      oncountchange?.(annotationList.length, comments.length);
+      await deleteCommentMutation.mutateAsync({ id });
     } catch {
       toastStore.error('Failed to delete comment.');
     }
@@ -117,21 +165,11 @@
 
   async function handleCommentResolve(id: string) {
     try {
-      const updated = await trpc.comments.resolve.mutate({ id });
-      comments = comments.map((c) => (c.id === id ? (updated as CommentEntry) : c));
+      await resolveCommentMutation.mutateAsync({ id });
     } catch {
       toastStore.error('Failed to resolve comment.');
     }
   }
-
-  $effect(() => {
-    // Read mapId to establish reactive dependency
-    const _mapId = mapId;
-    untrack(() => {
-      loadAnnotations();
-      loadComments();
-    });
-  });
 
   // Cleanup blob URL on component unmount to prevent memory leaks
   $effect(() => {
@@ -365,6 +403,54 @@
     pendingMeasurementData = null;
   }
 
+  // ── Annotation mutations (TanStack Query) ──────────────────────────────────
+
+  const createAnnotationMutation = createMutation(() => ({
+    mutationFn: (input: { mapId: string; anchor: Anchor; content: { kind: 'single'; body: AC } }) =>
+      trpc.annotations.create.mutate(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
+    },
+  }));
+
+  const deleteAnnotationMutation = createMutation(() => ({
+    mutationFn: (input: { id: string }) => trpc.annotations.delete.mutate(input),
+    onMutate: async ({ id }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
+      const previous = queryClient.getQueryData<AnnotationObject[]>(queryKeys.annotations.list({ mapId }));
+      queryClient.setQueryData<AnnotationObject[]>(
+        queryKeys.annotations.list({ mapId }),
+        (old) => old?.filter((a) => a.id !== id) ?? []
+      );
+      return { previous };
+    },
+    onError: (_err: unknown, _vars: { id: string }, context: { previous?: AnnotationObject[] } | undefined) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.annotations.list({ mapId }), context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
+    },
+  }));
+
+  const updateAnnotationMutation = createMutation(() => ({
+    mutationFn: (input: { id: string; content?: { kind: 'single'; body: AC }; anchor?: Anchor; version?: number }) =>
+      trpc.annotations.update.mutate(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
+    },
+  }));
+
+  const replyAnnotationMutation = createMutation(() => ({
+    mutationFn: (input: { mapId: string; parentId: string; anchor: Anchor; content: { kind: 'single'; body: AC } }) =>
+      trpc.annotations.create.mutate(input),
+    onSuccess: (_data: unknown, variables: { parentId: string }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.annotations.thread({ annotationId: variables.parentId }) });
+    },
+  }));
+
   async function handleCreate(e: Event) {
     e.preventDefault();
     creating = true;
@@ -398,7 +484,7 @@
               ? { type: 'feature', featureId: pickedFeature.featureId, layerId: pickedFeature.layerId }
               : { type: 'point', geometry: { type: 'Point', coordinates: [formLng, formLat] } };
 
-      await trpc.annotations.create.mutate({
+      await createAnnotationMutation.mutateAsync({
         mapId,
         anchor,
         content: { kind: 'single', body: content },
@@ -406,7 +492,6 @@
 
       showForm = false;
       resetForm();
-      await loadAnnotations();
       onannotationchange('created');
     } catch (err: unknown) {
       createError = (err as { message?: string })?.message ?? 'Failed to create annotation.';
@@ -418,11 +503,10 @@
 
   async function handleDelete(id: string) {
     try {
-      await trpc.annotations.delete.mutate({ id });
-      await loadAnnotations();
+      await deleteAnnotationMutation.mutateAsync({ id });
       onannotationchange('deleted');
     } catch (err: unknown) {
-      listError = (err as { message?: string })?.message ?? 'Failed to delete annotation.';
+      toastStore.error((err as { message?: string })?.message ?? 'Failed to delete annotation.');
     }
   }
 
@@ -434,12 +518,11 @@
         manifestUrl: annotation.content.body.manifestUrl,
       });
       if (navPlace) {
-        await trpc.annotations.update.mutate({
+        await updateAnnotationMutation.mutateAsync({
           id: annotation.id,
           content: { kind: 'single', body: { ...annotation.content.body, navPlace } },
           version: annotation.version,
         });
-        await loadAnnotations();
         onannotationchange();
       }
     } catch {
@@ -472,7 +555,7 @@
     try {
       const parentAnnotation = annotationList.find(a => a.id === parentId);
       if (!parentAnnotation) return;
-      await trpc.annotations.create.mutate({
+      await replyAnnotationMutation.mutateAsync({
         mapId,
         parentId,
         anchor: parentAnnotation.anchor,
@@ -481,10 +564,9 @@
       replyText = '';
       replyingTo = null;
       expandedAnnotationId = parentId; // keep thread open
-      await loadAnnotations();
       onannotationchange('created');
     } catch (err: unknown) {
-      listError = (err as { message?: string })?.message ?? 'Failed to post reply.';
+      toastStore.error((err as { message?: string })?.message ?? 'Failed to post reply.');
     }
   }
 </script>
@@ -896,32 +978,11 @@
 
           <!-- Thread replies -->
           {#if expandedAnnotationId === annotation.id}
-            {#await trpc.annotations.getThread.query({ rootId: annotation.id })}
-              <p class="text-xs text-slate-500 ml-3">Loading replies...</p>
-            {:then thread}
-              {#each thread.replies as reply (reply.id)}
-                <div class="ml-4 border-l-2 border-amber-200/30 pl-2 mt-1">
-                  <AnnotationContent
-                    content={reply.content}
-                    authorName={reply.authorName}
-                    createdAt={reply.createdAt}
-                  />
-                  {#if reply.authorId === userId}
-                    <button
-                      onclick={() => handleDelete(reply.id)}
-                      class="text-xs text-red-400 hover:text-red-300 mt-0.5"
-                    >
-                      Delete
-                    </button>
-                  {/if}
-                </div>
-              {/each}
-              {#if thread.replies.length === 0}
-                <p class="text-xs text-slate-500 ml-4 italic">No replies yet.</p>
-              {/if}
-            {:catch}
-              <p class="text-xs text-red-400 ml-3">Failed to load replies.</p>
-            {/await}
+            <AnnotationThread
+              annotationId={annotation.id}
+              {userId}
+              ondelete={handleDelete}
+            />
           {/if}
 
           <!-- Reply form -->
