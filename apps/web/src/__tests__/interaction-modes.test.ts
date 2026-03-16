@@ -181,10 +181,12 @@ function createInteractionModes() {
 		}
 	}
 
-	/** onannotationchange (line 808) */
-	function onAnnotationChange() {
-		if (interactionState.type !== 'featureSelected') {
-			interactionState = { type: 'idle' };
+	/** onannotationsaved (formerly onannotationchange) */
+	function onAnnotationSaved(action?: 'created' | 'deleted') {
+		if (action === 'created') {
+			if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature') {
+				interactionState = { type: 'idle' };
+			}
 		}
 	}
 
@@ -249,7 +251,7 @@ function createInteractionModes() {
 		drawActionAnnotate,
 		drawActionMeasure,
 		drawActionDismiss,
-		onAnnotationChange,
+		onAnnotationSaved,
 		toggleDesignMode,
 		setActiveSection,
 		setActiveTool,
@@ -495,8 +497,8 @@ describe('MapEditor interaction modes', () => {
 			modes.onRegionDrawn(SAMPLE_POLYGON_GEOMETRY);
 			expect(modes.annotationRegionGeometry).toEqual(SAMPLE_POLYGON_GEOMETRY);
 
-			// Annotation panel fires onannotationchange after successful create
-			modes.onAnnotationChange();
+			// Annotation panel fires onannotationsaved after successful create
+			modes.onAnnotationSaved('created');
 
 			expect(modes.annotationRegionMode).toBe(false);
 			expect(modes.annotationRegionGeometry).toBeUndefined();
@@ -516,7 +518,7 @@ describe('MapEditor interaction modes', () => {
 			expect(modes.pickedFeature).toEqual({ featureId: 'feat-003', layerId: 'layer-002' });
 
 			// Annotation creation completes
-			modes.onAnnotationChange();
+			modes.onAnnotationSaved('created');
 
 			expect(modes.pickedFeature).toBeUndefined();
 			expect(modes.featurePickMode).toBe(false);
@@ -586,12 +588,23 @@ describe('MapEditor interaction modes', () => {
 	// ── Scenario 5: Adversarial sequences ─────────────────────────────────
 
 	describe('adversarial sequences', () => {
-		it('region mode clears even when annotation creation fails', () => {
+		it('region mode persists when annotation save fires without action', () => {
 			modes.requestRegion();
 			modes.onRegionDrawn(SAMPLE_POLYGON_GEOMETRY);
 
-			// Simulate failed annotation — onannotationchange still fires on error handling
-			modes.onAnnotationChange();
+			// onannotationsaved without 'created' does not clear draw/pick modes
+			modes.onAnnotationSaved();
+
+			// drawRegion state persists — only 'created' clears it
+			expect(modes.annotationRegionMode).toBe(true);
+			expect(modes.annotationRegionGeometry).toEqual(SAMPLE_POLYGON_GEOMETRY);
+		});
+
+		it('region mode clears when annotation creation succeeds', () => {
+			modes.requestRegion();
+			modes.onRegionDrawn(SAMPLE_POLYGON_GEOMETRY);
+
+			modes.onAnnotationSaved('created');
 
 			expect(modes.annotationRegionMode).toBe(false);
 			expect(modes.annotationRegionGeometry).toBeUndefined();
@@ -689,12 +702,12 @@ describe('MapEditor interaction modes', () => {
 			expect(modes.measureResult).toBeNull();
 		});
 
-		it('double annotation change is idempotent', () => {
+		it('double annotation saved is idempotent', () => {
 			modes.requestRegion();
 			modes.onRegionDrawn(SAMPLE_POLYGON_GEOMETRY);
 
-			modes.onAnnotationChange();
-			modes.onAnnotationChange();
+			modes.onAnnotationSaved('created');
+			modes.onAnnotationSaved('created');
 
 			expect(modes.annotationRegionMode).toBe(false);
 			expect(modes.annotationRegionGeometry).toBeUndefined();
@@ -716,17 +729,17 @@ describe('MapEditor interaction modes', () => {
 			// 1. Region draw flow
 			modes.requestRegion();
 			modes.onRegionDrawn(SAMPLE_POLYGON_GEOMETRY);
-			modes.onAnnotationChange();
+			modes.onAnnotationSaved('created');
 
 			// 2. Feature pick + annotate
 			modes.requestFeaturePick();
 			modes.effectFeaturePickCapture({ id: 'f1', geometry: SAMPLE_POLYGON_GEOMETRY }, 'l1');
-			modes.onAnnotationChange();
+			modes.onAnnotationSaved('created');
 
 			// 3. Direct draw → annotate via DrawActionRow
 			modes.simulateFeatureSelect(SAMPLE_FEATURE);
 			modes.drawActionAnnotate();
-			modes.onAnnotationChange();
+			modes.onAnnotationSaved('created');
 
 			// 4. Direct draw → measure via DrawActionRow
 			modes.simulateFeatureSelect(SAMPLE_LINE_FEATURE);

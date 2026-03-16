@@ -821,9 +821,11 @@
       {mapId}
       embedded
       {...(userId !== undefined ? { userId } : {})}
-      onannotationchange={(action) => {
-        if (interactionState.type !== 'featureSelected') {
-          interactionState = { type: 'idle' };
+      onannotationsaved={(action) => {
+        if (action === 'created') {
+          if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature') {
+            interactionState = { type: 'idle' };
+          }
         }
         if (action) {
           logActivity(`annotation.${action}`);

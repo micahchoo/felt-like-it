@@ -16,7 +16,7 @@
     /** Authenticated user id — used to gate edit / delete buttons. */
     userId?: string;
     /** Called after any mutation (create / delete) so the parent can refresh the map pins. */
-    onannotationchange: (action?: 'created' | 'deleted') => void;
+    onannotationsaved: (action?: 'created' | 'deleted') => void;
     /** Called when the user wants to draw a region polygon on the map. */
     onrequestregion?: () => void;
     /** Called when the user selects "Feature" anchor — parent enters pick mode. */
@@ -46,7 +46,7 @@
     oncountchange?: (annotationCount: number, commentCount: number) => void;
   }
 
-  let { mapId, userId, onannotationchange, onrequestregion, onrequestfeaturepick, regionGeometry = undefined, pickedFeature, pendingMeasurement, scrollToFeatureId, embedded, oncountchange }: Props = $props();
+  let { mapId, userId, onannotationsaved, onrequestregion, onrequestfeaturepick, regionGeometry = undefined, pickedFeature, pendingMeasurement, scrollToFeatureId, embedded, oncountchange }: Props = $props();
 
   const queryClient = useQueryClient();
 
@@ -492,7 +492,7 @@
 
       showForm = false;
       resetForm();
-      onannotationchange('created');
+      onannotationsaved('created');
     } catch (err: unknown) {
       createError = (err as { message?: string })?.message ?? 'Failed to create annotation.';
     } finally {
@@ -504,7 +504,7 @@
   async function handleDelete(id: string) {
     try {
       await deleteAnnotationMutation.mutateAsync({ id });
-      onannotationchange('deleted');
+      onannotationsaved('deleted');
     } catch (err: unknown) {
       toastStore.error((err as { message?: string })?.message ?? 'Failed to delete annotation.');
     }
@@ -523,7 +523,7 @@
           content: { kind: 'single', body: { ...annotation.content.body, navPlace } },
           version: annotation.version,
         });
-        onannotationchange();
+        onannotationsaved();
       }
     } catch {
       // Best-effort — don't block UI on NavPlace fetch failures
@@ -564,7 +564,7 @@
       replyText = '';
       replyingTo = null;
       expandedAnnotationId = parentId; // keep thread open
-      onannotationchange('created');
+      onannotationsaved('created');
     } catch (err: unknown) {
       toastStore.error((err as { message?: string })?.message ?? 'Failed to post reply.');
     }
