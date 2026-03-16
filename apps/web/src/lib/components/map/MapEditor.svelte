@@ -239,6 +239,29 @@
 
   let interactionState: InteractionState = $state({ type: 'idle' });
 
+  /** Centralized mode transition — atomically sets interactionState and implied tool.
+   *  Uses untrack() for the prev-state read so it's safe to call from $effect blocks. */
+  function transitionTo(next: InteractionState) {
+    const prev = untrack(() => interactionState);
+    interactionState = next;
+
+    // Entry actions: set the tool implied by the target mode
+    switch (next.type) {
+      case 'drawRegion':
+        selectionStore.setActiveTool('polygon');
+        break;
+      case 'pickFeature':
+        selectionStore.setActiveTool('select');
+        break;
+      case 'idle':
+        // Reset tool when leaving annotation-capture modes
+        if (prev.type === 'drawRegion' || prev.type === 'pickFeature' || prev.type === 'pendingMeasurement') {
+          selectionStore.setActiveTool('select');
+        }
+        break;
+    }
+  }
+
   let scrollToAnnotationFeatureId = $state<string | null>(null);
 
   // Clean up stale modes when sidebar section changes —
@@ -254,7 +277,7 @@
         currentType === 'pickFeature' ||
         currentType === 'pendingMeasurement'
       ) {
-        interactionState = { type: 'idle' };
+        transitionTo({ type: 'idle' });
       }
     }
   });
@@ -262,8 +285,8 @@
   // Clean up when design mode toggles — all interaction modes are irrelevant in style editor
   $effect(() => {
     if (designMode) {
-      interactionState = { type: 'idle' };
-      selectionStore.setActiveTool('select');
+      transitionTo({ type: 'idle' });
+      selectionStore.setActiveTool('select'); // unconditional reset for design mode
     }
   });
 
@@ -279,12 +302,12 @@
       const fid = String(feat.id ?? '');
       const currentType = untrack(() => interactionState.type);
       if (geom && fid && (currentType === 'idle' || currentType === 'featureSelected')) {
-        interactionState = { type: 'featureSelected', feature: { featureId: fid, layerId: lid, geometry: geom } };
+        transitionTo({ type: 'featureSelected', feature: { featureId: fid, layerId: lid, geometry: geom } });
       }
     } else {
       const currentType = untrack(() => interactionState.type);
       if (currentType === 'featureSelected') {
-        interactionState = { type: 'idle' };
+        transitionTo({ type: 'idle' });
       }
     }
   });
@@ -296,11 +319,11 @@
     if (tool && tool !== 'select') {
       const currentType = untrack(() => interactionState.type);
       if (currentType === 'featureSelected') {
-        interactionState = { type: 'idle' };
+        transitionTo({ type: 'idle' });
       }
       // Don't clear drawRegion when tool is 'polygon' (user is drawing the region)
       if (currentType === 'drawRegion' && tool !== 'polygon') {
-        interactionState = { type: 'idle' };
+        transitionTo({ type: 'idle' });
       }
     }
   });
@@ -315,10 +338,10 @@
       if (current.type === 'pickFeature' && !current.picked) {
         const fid = String(feat.id ?? '');
         if (fid) {
-          interactionState = {
+          transitionTo({
             type: 'pickFeature',
             picked: { featureId: fid, layerId: lid },
-          };
+          });
         }
       }
     }
@@ -483,7 +506,7 @@
     const geom = _feature['geometry'] as Geometry | undefined;
     const fid = _feature['id'] ?? '';
     if (geom && fid) {
-      interactionState = { type: 'featureSelected', feature: { featureId: String(fid), layerId, geometry: geom } };
+      transitionTo({ type: 'featureSelected', feature: { featureId: String(fid), layerId, geometry: geom } });
     }
 
     logActivity('feature.drawn', {
@@ -532,8 +555,7 @@
 
     if (e.key === 'Escape') {
       if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature') {
-        interactionState = { type: 'idle' };
-        selectionStore.setActiveTool('select');
+        transitionTo({ type: 'idle' });
         return;
       }
     }
@@ -707,7 +729,7 @@
         {annotationPins}
         {annotationRegions}
         {...(measureActive ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
-        {...(interactionState.type === 'drawRegion' && !interactionState.geometry ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { interactionState = { type: 'drawRegion', geometry: g }; } } : {})}
+        {...(interactionState.type === 'drawRegion' && !interactionState.geometry ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { transitionTo({ type: 'drawRegion', geometry: g }); } } : {})}
         annotatedFeatures={annotatedFeaturesIndex}
         measurementAnnotations={measurementAnnotationData}
         onbadgeclick={(featureId) => {
@@ -719,12 +741,12 @@
       {#if interactionState.type === 'drawRegion' && !interactionState.geometry}
         <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
           Draw a polygon to define the annotation region ·
-          <button class="underline ml-1" onclick={() => { interactionState = { type: 'idle' }; selectionStore.setActiveTool('select'); }}>Cancel (Esc)</button>
+          <button class="underline ml-1" onclick={() => { transitionTo({ type: 'idle' }); }}>Cancel (Esc)</button>
         </div>
       {:else if interactionState.type === 'pickFeature' && !interactionState.picked}
         <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-amber-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
           Click a feature to attach annotation ·
-          <button class="underline ml-1" onclick={() => { interactionState = { type: 'idle' }; selectionStore.setActiveTool('select'); }}>Cancel (Esc)</button>
+          <button class="underline ml-1" onclick={() => { transitionTo({ type: 'idle' }); }}>Cancel (Esc)</button>
         </div>
       {/if}
 
@@ -734,17 +756,17 @@
             onannotate={() => {
               if (interactionState.type === 'featureSelected') {
                 const { feature } = interactionState;
-                interactionState = {
+                transitionTo({
                   type: 'pickFeature',
                   picked: { featureId: feature.featureId, layerId: feature.layerId },
-                };
+                });
                 activeSection = 'annotations';
               }
             }}
             onmeasure={() => {
               if (interactionState.type !== 'featureSelected') return;
               const { geometry } = interactionState.feature;
-              interactionState = { type: 'idle' };
+              transitionTo({ type: 'idle' });
               if (geometry.type === 'LineString') {
                 measureResult = measureLine(geometry.coordinates as [number, number][]);
               } else if (geometry.type === 'Polygon') {
@@ -753,7 +775,7 @@
               activeSection = 'analysis';
               analysisTab = 'measure';
             }}
-            ondismiss={() => { interactionState = { type: 'idle' }; }}
+            ondismiss={() => { transitionTo({ type: 'idle' }); }}
           />
         </div>
       {/if}
@@ -824,15 +846,15 @@
       onannotationsaved={(action) => {
         if (action === 'created') {
           if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature') {
-            interactionState = { type: 'idle' };
+            transitionTo({ type: 'idle' });
           }
         }
         if (action) {
           logActivity(`annotation.${action}`);
         }
       }}
-      onrequestregion={() => { interactionState = { type: 'drawRegion' }; selectionStore.setActiveTool('polygon'); }}
-      onrequestfeaturepick={() => { interactionState = { type: 'pickFeature' }; selectionStore.setActiveTool('select'); }}
+      onrequestregion={() => { transitionTo({ type: 'drawRegion' }); }}
+      onrequestfeaturepick={() => { transitionTo({ type: 'pickFeature' }); }}
       regionGeometry={interactionState.type === 'drawRegion' ? interactionState.geometry : undefined}
       pickedFeature={interactionState.type === 'pickFeature' ? interactionState.picked : undefined}
       pendingMeasurement={interactionState.type === 'pendingMeasurement' ? { anchor: interactionState.anchor, content: interactionState.content } : null}
@@ -927,7 +949,7 @@
                   if (!measureResult) return;
                   const mr = measureResult;
                   if (mr.type === 'distance') {
-                    interactionState = {
+                    transitionTo({
                       type: 'pendingMeasurement',
                       anchor: {
                         type: 'measurement',
@@ -940,9 +962,9 @@
                         unit: distUnit,
                         displayValue: formatDistance(mr.distanceKm, distUnit),
                       },
-                    };
+                    });
                   } else {
-                    interactionState = {
+                    transitionTo({
                       type: 'pendingMeasurement',
                       anchor: {
                         type: 'measurement',
@@ -955,7 +977,7 @@
                         unit: areaUnit,
                         displayValue: formatArea(mr.areaM2, areaUnit),
                       },
-                    };
+                    });
                   }
                   activeSection = 'annotations';
                 }}

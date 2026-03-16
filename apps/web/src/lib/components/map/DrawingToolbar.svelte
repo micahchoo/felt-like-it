@@ -223,7 +223,7 @@
     if (!draw || !drawReady) return;
     const modeMap: Record<string, string> = { point: 'point', line: 'linestring', polygon: 'polygon', select: 'select' };
     const mode = tool ? modeMap[tool] ?? 'select' : 'select';
-    try { draw.setMode(mode); } catch { /* mode already active */ }
+    if (draw.getMode() !== mode) draw.setMode(mode);
   });
 
   function setTool(tool: DrawTool) {

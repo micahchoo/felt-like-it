@@ -69,9 +69,29 @@ function createInteractionModes() {
 		return activeSection === 'analysis' && analysisTab === 'measure' && !designMode;
 	}
 
+	// ── Centralized transition (mirrors MapEditor.transitionTo) ──
+	function transitionTo(next: InteractionState) {
+		const prev = interactionState;
+		interactionState = next;
+
+		switch (next.type) {
+			case 'drawRegion':
+				activeTool = 'polygon';
+				break;
+			case 'pickFeature':
+				activeTool = 'select';
+				break;
+			case 'idle':
+				if (prev.type === 'drawRegion' || prev.type === 'pickFeature' || prev.type === 'pendingMeasurement') {
+					activeTool = 'select';
+				}
+				break;
+		}
+	}
+
 	// ── Core cleanup ──
 	function resetInteraction() {
-		interactionState = { type: 'idle' };
+		transitionTo({ type: 'idle' });
 	}
 
 	// ── Effects (simulated as imperative calls) ──
@@ -80,7 +100,7 @@ function createInteractionModes() {
 	function effectActiveSectionChange() {
 		if (activeSection !== 'annotations') {
 			if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature' || interactionState.type === 'pendingMeasurement') {
-				interactionState = { type: 'idle' };
+				transitionTo({ type: 'idle' });
 			}
 		}
 	}
@@ -88,8 +108,8 @@ function createInteractionModes() {
 	/** Simulates $effect for designMode toggle (line 271) */
 	function effectDesignModeToggle() {
 		if (designMode) {
-			resetInteraction();
-			activeTool = 'select';
+			transitionTo({ type: 'idle' });
+			activeTool = 'select'; // unconditional for design mode
 		}
 	}
 
@@ -104,10 +124,10 @@ function createInteractionModes() {
 	function effectToolSwitch() {
 		if (activeTool && activeTool !== 'select') {
 			if (interactionState.type === 'featureSelected') {
-				interactionState = { type: 'idle' };
+				transitionTo({ type: 'idle' });
 			}
 			if (activeTool !== 'polygon' && interactionState.type === 'drawRegion') {
-				interactionState = { type: 'idle' };
+				transitionTo({ type: 'idle' });
 			}
 		}
 	}
@@ -117,7 +137,7 @@ function createInteractionModes() {
 		if (interactionState.type === 'pickFeature' && !interactionState.picked && selectedFeature && selectedLayerId) {
 			const fid = String(selectedFeature.id ?? '');
 			if (fid) {
-				interactionState = { type: 'pickFeature', picked: { featureId: fid, layerId: selectedLayerId } };
+				transitionTo({ type: 'pickFeature', picked: { featureId: fid, layerId: selectedLayerId } });
 			}
 		}
 	}
@@ -127,27 +147,24 @@ function createInteractionModes() {
 	/** Escape key handler (line 527) */
 	function handleEscape() {
 		if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature') {
-			resetInteraction();
-			activeTool = 'select';
+			transitionTo({ type: 'idle' });
 		}
 	}
 
 	/** AnnotationPanel onrequestregion (line 820) */
 	function requestRegion() {
-		interactionState = { type: 'drawRegion' };
-		activeTool = 'polygon';
+		transitionTo({ type: 'drawRegion' });
 	}
 
 	/** AnnotationPanel onrequestfeaturepick (line 821) */
 	function requestFeaturePick() {
-		interactionState = { type: 'pickFeature' };
-		activeTool = 'select';
+		transitionTo({ type: 'pickFeature' });
 	}
 
 	/** Region drawn callback (line 697) */
 	function onRegionDrawn(geometry: { type: 'Polygon'; coordinates: number[][][] }) {
 		if (interactionState.type === 'drawRegion') {
-			interactionState = { type: 'drawRegion', geometry };
+			transitionTo({ type: 'drawRegion', geometry });
 		}
 	}
 
@@ -156,7 +173,7 @@ function createInteractionModes() {
 		activeSection = 'annotations';
 		if (interactionState.type === 'featureSelected') {
 			const feature = interactionState.feature;
-			interactionState = { type: 'pickFeature', picked: { featureId: feature.featureId, layerId: feature.layerId } };
+			transitionTo({ type: 'pickFeature', picked: { featureId: feature.featureId, layerId: feature.layerId } });
 		} else {
 			resetInteraction();
 		}
@@ -171,13 +188,13 @@ function createInteractionModes() {
 		}
 		activeSection = 'analysis';
 		analysisTab = 'measure';
-		interactionState = { type: 'idle' };
+		transitionTo({ type: 'idle' });
 	}
 
 	/** DrawActionRow "Dismiss" (line 740) */
 	function drawActionDismiss() {
 		if (interactionState.type === 'featureSelected') {
-			interactionState = { type: 'idle' };
+			transitionTo({ type: 'idle' });
 		}
 	}
 
@@ -185,7 +202,7 @@ function createInteractionModes() {
 	function onAnnotationSaved(action?: 'created' | 'deleted') {
 		if (action === 'created') {
 			if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature') {
-				interactionState = { type: 'idle' };
+				transitionTo({ type: 'idle' });
 			}
 		}
 	}
@@ -211,18 +228,18 @@ function createInteractionModes() {
 	/** Set an active feature (simulates selection tracking effect) */
 	function simulateFeatureSelect(feature: ActiveFeature | null) {
 		if (feature && (interactionState.type === 'idle' || interactionState.type === 'featureSelected')) {
-			interactionState = { type: 'featureSelected', feature };
+			transitionTo({ type: 'featureSelected', feature });
 		} else if (!feature && interactionState.type === 'featureSelected') {
-			interactionState = { type: 'idle' };
+			transitionTo({ type: 'idle' });
 		}
 	}
 
 	/** Set pending measurement annotation */
 	function setPendingMeasurement(m: PendingMeasurementAnnotation | null) {
 		if (m) {
-			interactionState = { type: 'pendingMeasurement', measurement: m };
+			transitionTo({ type: 'pendingMeasurement', measurement: m });
 		} else if (interactionState.type === 'pendingMeasurement') {
-			interactionState = { type: 'idle' };
+			transitionTo({ type: 'idle' });
 		}
 	}
 
@@ -411,6 +428,26 @@ describe('MapEditor interaction modes', () => {
 			modes.setActiveSection('activity');
 
 			expect(modes.pendingMeasurementAnnotation).toBeNull();
+		});
+
+		it('resets tool to select when sidebar section change clears drawRegion', () => {
+			modes.requestRegion();
+			expect(modes.activeTool).toBe('polygon');
+
+			modes.setActiveSection('activity');
+
+			expect(modes.annotationRegionMode).toBe(false);
+			expect(modes.activeTool).toBe('select');
+		});
+
+		it('resets tool to select when sidebar section change clears pickFeature', () => {
+			modes.requestFeaturePick();
+			expect(modes.activeTool).toBe('select');
+
+			modes.setActiveSection('activity');
+
+			expect(modes.featurePickMode).toBe(false);
+			expect(modes.activeTool).toBe('select');
 		});
 	});
 
@@ -608,6 +645,16 @@ describe('MapEditor interaction modes', () => {
 
 			expect(modes.annotationRegionMode).toBe(false);
 			expect(modes.annotationRegionGeometry).toBeUndefined();
+		});
+
+		it('resets tool to select when annotation save clears drawRegion', () => {
+			modes.requestRegion();
+			expect(modes.activeTool).toBe('polygon');
+
+			modes.onAnnotationSaved('created');
+
+			expect(modes.annotationRegionMode).toBe(false);
+			expect(modes.activeTool).toBe('select');
 		});
 
 		it('featurePickMode survives click on non-feature area', () => {
