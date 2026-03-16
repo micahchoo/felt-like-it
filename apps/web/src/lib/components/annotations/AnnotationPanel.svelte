@@ -249,8 +249,11 @@
 
   // Anchor — defaults to current map center as a useful starting point;
   // user can adjust the numeric inputs to place the pin exactly.
-  let formLng = $state(0);
-  let formLat = $state(0);
+  // Initialized eagerly (not via $effect) to avoid tracking mapStore.center
+  // as a reactive dependency — that would cycle during scroll zoom events.
+  const [_initLng, _initLat] = mapStore.center;
+  let formLng = $state(Math.round(_initLng * 1_000_000) / 1_000_000);
+  let formLat = $state(Math.round(_initLat * 1_000_000) / 1_000_000);
 
   // Anchor type selector
   let formAnchorType = $state<'point' | 'region' | 'viewport' | 'feature'>('point');
@@ -296,13 +299,9 @@
     }
   });
 
-  $effect.pre(() => {
-    if (formLng === 0 && formLat === 0) {
-      const [lng, lat] = mapStore.center;
-      formLng = Math.round(lng * 1_000_000) / 1_000_000;
-      formLat = Math.round(lat * 1_000_000) / 1_000_000;
-    }
-  });
+  // formLng/formLat are initialized eagerly from mapStore.center at declaration
+  // (see above). No $effect.pre needed — avoids reactive dependency on
+  // mapStore.center which cycles during scroll zoom tile loading.
 
   // ── Image file handling ────────────────────────────────────────────────────
 
