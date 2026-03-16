@@ -1,7 +1,8 @@
 // @vitest-environment node
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, beforeEach } from 'vitest';
 import { QueryClient } from '@tanstack/svelte-query';
 import { queryKeys } from '$lib/utils/query-keys.js';
+import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
 
 function makeQueryClient() {
   return new QueryClient({
@@ -166,6 +167,47 @@ describe('comment resolve → optimistic toggle + rollback', () => {
     qc.setQueryData(key, previous);
     const result = qc.getQueryData<typeof original>(key);
     expect(result?.[0]?.resolved).toBe(false);
+  });
+});
+
+describe('feature upsert → cache + hot overlay', () => {
+  beforeEach(() => {
+    hotOverlay.clearHotFeatures();
+  });
+
+  test('onSuccess invalidates features list so GeoJSON source refreshes', async () => {
+    const qc = makeQueryClient();
+    const key = queryKeys.features.list({ layerId: 'layer-1' });
+    qc.setQueryData(key, [{ id: 'f-existing' }]);
+    await qc.invalidateQueries({ queryKey: key });
+    const state = qc.getQueryState(key);
+    expect(state?.isInvalidated).toBe(true);
+  });
+
+  test('adds feature to hot overlay for large layer', () => {
+    const feature = {
+      type: 'Feature' as const,
+      id: 'f1',
+      geometry: { type: 'Point' as const, coordinates: [0, 0] },
+      properties: {},
+    };
+    hotOverlay.addHotFeature('layer-1', feature);
+    const coll = hotOverlay.getCollection('layer-1');
+    expect(coll.features).toHaveLength(1);
+    expect(coll.features[0]?.id).toBe('f1');
+  });
+
+  test('removeHotFeature clears specific feature from overlay', () => {
+    const feature = {
+      type: 'Feature' as const,
+      id: 'f1',
+      geometry: { type: 'Point' as const, coordinates: [0, 0] },
+      properties: {},
+    };
+    hotOverlay.addHotFeature('layer-1', feature);
+    hotOverlay.removeHotFeature('layer-1', 'f1');
+    const coll = hotOverlay.getCollection('layer-1');
+    expect(coll.features).toHaveLength(0);
   });
 });
 

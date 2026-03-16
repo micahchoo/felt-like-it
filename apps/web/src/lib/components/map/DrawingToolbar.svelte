@@ -9,6 +9,9 @@
   import type { DrawTool } from '$lib/stores/selection.svelte.js';
   import { measureLine, measurePolygon } from '@felt-like-it/geo-engine';
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
+  import { createMutation, useQueryClient } from '@tanstack/svelte-query';
+  import { queryKeys } from '$lib/utils/query-keys.js';
+  import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
   import type { GeoJSONStoreFeatures } from 'terra-draw';
 
   interface Props {
@@ -29,6 +32,24 @@
   }
 
   let { map, onfeaturedrawn, onmeasured, onregiondrawn }: Props = $props();
+
+  const queryClient = useQueryClient();
+
+  const featureUpsertMutation = createMutation(() => ({
+    mutationFn: (input: { layerId: string; features: { geometry: Record<string, unknown>; properties: Record<string, unknown> }[] }) =>
+      trpc.features.upsert.mutate(input),
+    onSuccess: (_data: { upsertedIds: string[] }, variables: { layerId: string }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
+    },
+  }));
+
+  const featureDeleteMutation = createMutation(() => ({
+    mutationFn: (input: { layerId: string; ids: string[] }) =>
+      trpc.features.delete.mutate(input),
+    onSuccess: (_data: unknown, variables: { layerId: string }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
+    },
+  }));
 
   // Lazy-load Terra Draw to avoid SSR issues
   let draw: import('terra-draw').TerraDraw | null = null;
@@ -148,23 +169,43 @@
     const properties = (f.properties ?? {}) as Record<string, unknown>;
 
     try {
-      const { upsertedIds } = await trpc.features.upsert.mutate({
+      const { upsertedIds } = await featureUpsertMutation.current.mutateAsync({
         layerId: activeLayer.id,
         features: [{ geometry, properties }],
       });
+
+      // Add to hot overlay so the feature is visible immediately for large layers
+      // (vector tile sources won't reflect the change until the next tile reload)
+      if (upsertedIds[0]) {
+        hotOverlay.addHotFeature(activeLayer.id, {
+          type: 'Feature',
+          id: upsertedIds[0],
+          geometry: geometry as GeoJSON.Geometry,
+          properties: properties as GeoJSON.GeoJsonProperties,
+        });
+      }
 
       undoStore.push({
         description: `Draw ${f.geometry.type}`,
         undo: async () => {
           if (upsertedIds[0]) {
-            await trpc.features.delete.mutate({ layerId: activeLayer.id, ids: [upsertedIds[0]] });
+            await featureDeleteMutation.current.mutateAsync({ layerId: activeLayer.id, ids: [upsertedIds[0]] });
+            hotOverlay.removeHotFeature(activeLayer.id, upsertedIds[0]);
           }
         },
         redo: async () => {
-          await trpc.features.upsert.mutate({
+          const result = await featureUpsertMutation.current.mutateAsync({
             layerId: activeLayer.id,
             features: [{ geometry, properties }],
           });
+          if (result.upsertedIds[0]) {
+            hotOverlay.addHotFeature(activeLayer.id, {
+              type: 'Feature',
+              id: result.upsertedIds[0],
+              geometry: geometry as GeoJSON.Geometry,
+              properties: properties as GeoJSON.GeoJsonProperties,
+            });
+          }
         },
       });
 

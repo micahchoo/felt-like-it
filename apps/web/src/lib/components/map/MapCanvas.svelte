@@ -10,6 +10,7 @@
   import { fslFiltersToMapLibre, resolvePaintInterpolators } from '@felt-like-it/geo-engine';
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
   import { filterStore } from '$lib/stores/filters.svelte.js';
+  import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
   import DrawingToolbar from './DrawingToolbar.svelte';
   import FeaturePopup from './FeaturePopup.svelte';
   import AnnotationContent from '$lib/components/annotations/AnnotationContent.svelte';
@@ -527,6 +528,31 @@
                 filter={['in', ['to-string', ['id']], ['literal', highlightIds]]}
               />
             {/if}
+          </GeoJSONSource>
+        {/if}
+      {/if}
+    {/each}
+
+    <!-- Hot overlay — renders recently drawn features for large (vector tile) layers
+         so they appear instantly before the next tile rebuild. Uses the same
+         Fill+Line+Circle sublayer pattern as the main GeoJSON sources. -->
+    {#each layersStore.all as layer (layer.id)}
+      {#if layer.visible && usesVectorTiles(layer)}
+        {@const hotCollection = hotOverlay.getCollection(layer.id)}
+        {#if hotCollection.features.length > 0}
+          <GeoJSONSource id={`hot-overlay-${layer.id}`} data={hotCollection as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}>
+            <FillLayer
+              id={`hot-overlay-${layer.id}-fill`}
+              paint={getLayerPaint(layer, 'fill') as unknown as NonNullable<FillLayerSpecification['paint']>}
+            />
+            <LineLayer
+              id={`hot-overlay-${layer.id}-line`}
+              paint={getLayerPaint(layer, 'line') as unknown as NonNullable<LineLayerSpecification['paint']>}
+            />
+            <CircleLayer
+              id={`hot-overlay-${layer.id}-circle`}
+              paint={getLayerPaint(layer, 'circle') as unknown as NonNullable<CircleLayerSpecification['paint']>}
+            />
           </GeoJSONSource>
         {/if}
       {/if}

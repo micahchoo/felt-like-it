@@ -33,6 +33,9 @@
   import type { Geometry } from 'geojson';
   import { PUBLIC_MARTIN_URL } from '$env/static/public';
   import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
+  import { useQueryClient } from '@tanstack/svelte-query';
+  import { queryKeys } from '$lib/utils/query-keys.js';
+  import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
 
   function isLargeLayer(layer: Layer): boolean {
     return PUBLIC_MARTIN_URL.length > 0 && (layer.featureCount ?? 0) > VECTOR_TILE_THRESHOLD;
@@ -72,6 +75,8 @@
   }
 
   let { mapId, mapTitle, initialLayers, userId, readonly = false, embed = false, isOwner = false }: Props = $props();
+
+  const mapQueryClient = useQueryClient();
 
   // embed implies readonly — illegal state prevented at the prop level.
   const effectiveReadonly = $derived(readonly || embed);
@@ -469,6 +474,10 @@
   async function handleFeatureDrawn(layerId: string, _feature: Record<string, unknown> & { id?: string | undefined }) {
     const drawnLayer = layersStore.all.find((l) => l.id === layerId);
     if (!drawnLayer || !isLargeLayer(drawnLayer)) {
+      // Invalidate the features query so the GeoJSON source refreshes with
+      // server data. For large layers, DrawingToolbar already added the feature
+      // to hotOverlay for immediate rendering via vector tiles + hot overlay.
+      mapQueryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId }) });
       await loadLayerData(layerId);
     }
 
@@ -552,6 +561,13 @@
       undoStore.undo();
     }
   }
+
+  // Clear hot overlay features on component unmount
+  $effect(() => {
+    return () => {
+      hotOverlay.clearHotFeatures();
+    };
+  });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
