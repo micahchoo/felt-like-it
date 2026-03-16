@@ -211,6 +211,28 @@ describe('feature upsert → cache + hot overlay', () => {
   });
 });
 
+describe('annotation pins derived from query cache', () => {
+  test('annotation list data can be filtered to point anchors for pins', () => {
+    const annotations = [
+      { id: 'a1', anchor: { type: 'point', geometry: { type: 'Point', coordinates: [1, 2] } }, authorName: 'Alice', content: { kind: 'single', body: { type: 'text', value: 'note' } }, createdAt: '2026-01-01', parentId: null },
+      { id: 'a2', anchor: { type: 'region', geometry: { type: 'Polygon', coordinates: [[[0,0],[1,0],[1,1],[0,0]]] } }, authorName: 'Bob', content: { kind: 'single', body: { type: 'text', value: 'area' } }, createdAt: '2026-01-02', parentId: null },
+      { id: 'a3', anchor: { type: 'point', geometry: { type: 'Point', coordinates: [3, 4] } }, authorName: 'Carol', content: { kind: 'single', body: { type: 'text', value: 'reply' } }, createdAt: '2026-01-03', parentId: 'a1' },
+    ];
+    const pointPins = annotations
+      .filter((a) => a.anchor.type === 'point' && !a.parentId)
+      .map((a) => ({
+        type: 'Feature',
+        id: a.id,
+        geometry: a.anchor.geometry,
+        properties: { authorName: a.authorName, contentJson: JSON.stringify(a.content), anchorType: a.anchor.type },
+      }));
+    expect(pointPins).toHaveLength(1);
+    expect(pointPins[0]?.id).toBe('a1');
+    const regionFeatures = annotations.filter((a) => a.anchor.type === 'region' && !a.parentId);
+    expect(regionFeatures).toHaveLength(1);
+  });
+});
+
 describe('adversarial: empty and missing cache data', () => {
   test('optimistic delete on empty list produces empty array', () => {
     const qc = makeQueryClient();
