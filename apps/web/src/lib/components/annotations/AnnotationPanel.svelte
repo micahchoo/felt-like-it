@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import exifr from 'exifr';
   import { trpc } from '$lib/utils/trpc.js';
   import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
@@ -85,8 +85,14 @@
   let commentBody = $state('');
   let submittingComment = $state(false);
 
+  // Notify parent of count changes. untrack() the callback to avoid tracking
+  // the prop function reference as a dependency — otherwise the new closure
+  // created on each parent re-render re-fires this effect, creating a cycle
+  // that exceeds Svelte's effect depth limit during initial map tile loading.
   $effect(() => {
-    oncountchange?.(annotationList.length, comments.length);
+    const a = annotationList.length;
+    const c = comments.length;
+    untrack(() => oncountchange?.(a, c));
   });
 
   // ── Comment mutations (TanStack Query) ───────────────────────────────────
@@ -249,9 +255,11 @@
   // Anchor type selector
   let formAnchorType = $state<'point' | 'region' | 'viewport' | 'feature'>('point');
 
+  // Request feature pick mode when anchor type is 'feature' but no feature selected yet.
+  // untrack() the callback to avoid tracking the prop function reference as a dependency.
   $effect(() => {
     if (formAnchorType === 'feature' && !pickedFeature) {
-      onrequestfeaturepick?.();
+      untrack(() => onrequestfeaturepick?.());
     }
   });
 
@@ -978,6 +986,7 @@
             content={annotation.content}
             authorName={annotation.authorName}
             createdAt={annotation.createdAt}
+            featureDeleted={annotation.anchor.type === 'feature' && annotation.anchor.featureDeleted === true}
           />
 
           {#if annotation.anchor.type === 'viewport'}
