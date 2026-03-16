@@ -6,6 +6,7 @@ domains:
   - testing
   - infrastructure
   - map-state
+  - tanstack-query
 governance:
   max_entries: 100
   warn_entries: 150
