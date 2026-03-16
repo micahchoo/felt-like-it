@@ -47,6 +47,7 @@
     "@lucia-auth/adapter-drizzle": "^1.1.0",
     "@mapbox/shp-write": "^0.4.3",
     "@node-rs/argon2": "^2.0.0",
+    "@tanstack/svelte-query": "^6.1.0",
     "@tmcw/togeojson": "^7.1.2",
     "@trpc/client": "^11.0.0",
     "@trpc/server": "^11.0.0",

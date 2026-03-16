@@ -1,5 +1,7 @@
 <script lang="ts">
   import { trpc } from '$lib/utils/trpc.js';
+  import { createMutation, useQueryClient } from '@tanstack/svelte-query';
+  import { queryKeys } from '$lib/utils/query-keys.js';
   import Button from '$lib/components/ui/Button.svelte';
   import type { Layer } from '@felt-like-it/shared-types';
   import { GEO_OP_LABELS } from '@felt-like-it/shared-types';
@@ -14,6 +16,16 @@
   }
 
   let { mapId, layers, onlayercreated, embedded }: Props = $props();
+
+  const queryClient = useQueryClient();
+
+  const geoprocessingMutation = createMutation(() => ({
+    mutationFn: (input: { mapId: string; op: GeoprocessingOp; outputLayerName: string }) =>
+      trpc.geoprocessing.run.mutate(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.layers.list({ mapId }) });
+    },
+  }));
 
   // Op type is constrained to the discriminated union keys — no stringly-typed widening
   type OpType = GeoprocessingOp['type'];
@@ -120,7 +132,7 @@
     error = null;
     success = null;
     try {
-      const result = await trpc.geoprocessing.run.mutate({
+      const result = await $geoprocessingMutation.mutateAsync({
         mapId,
         op: buildOp(),
         outputLayerName: outputName.trim() || defaultName,

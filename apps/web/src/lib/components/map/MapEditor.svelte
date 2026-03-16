@@ -33,6 +33,9 @@
   import type { Geometry } from 'geojson';
   import { PUBLIC_MARTIN_URL } from '$env/static/public';
   import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { queryKeys } from '$lib/utils/query-keys.js';
+  import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
 
   function isLargeLayer(layer: Layer): boolean {
     return PUBLIC_MARTIN_URL.length > 0 && (layer.featureCount ?? 0) > VECTOR_TILE_THRESHOLD;
@@ -72,6 +75,14 @@
   }
 
   let { mapId, mapTitle, initialLayers, userId, readonly = false, embed = false, isOwner = false }: Props = $props();
+
+  const mapQueryClient = useQueryClient();
+
+  // ── Annotation pins query (shared cache with AnnotationPanel) ─────────────
+  const annotationPinsQuery = createQuery(() => ({
+    queryKey: queryKeys.annotations.list({ mapId }),
+    queryFn: () => trpc.annotations.list.query({ mapId }),
+  }));
 
   // embed implies readonly — illegal state prevented at the prop level.
   const effectiveReadonly = $derived(readonly || embed);
@@ -313,93 +324,86 @@
     }
   });
 
-  // ── Annotation pin GeoJSON ──────────────────────────────────────────────────
+  // ── Annotation pin GeoJSON (derived from query cache) ──────────────────────
   // Annotations are stored as tRPC records but rendered via MapCanvas as a
   // dedicated GeoJSON source. Content is embedded in feature properties so the
   // popup can render without a second fetch.
-  let annotationPins = $state<AnnotationPinCollection>({ type: 'FeatureCollection', features: [] });
-  let annotationRegions = $state<AnnotationRegionCollection>({ type: 'FeatureCollection', features: [] });
-  let annotatedFeaturesIndex = $state<Map<string, { layerId: string; count: number }>>(new Map());
-  let measurementAnnotationData = $state<{ type: 'FeatureCollection'; features: { type: 'Feature'; geometry: unknown; properties: Record<string, unknown> }[] }>({ type: 'FeatureCollection', features: [] });
+  // These $derived values auto-update when any annotation mutation invalidates
+  // the shared query cache — no manual refresh needed.
+  const annotationRows = $derived(annotationPinsQuery.data ?? []);
 
-  async function loadAnnotationPins() {
-    try {
-      const rows = await trpc.annotations.list.query({ mapId, rootsOnly: true });
-      annotationPins = {
-        type: 'FeatureCollection',
-        features: rows
-          .filter((a) => a.anchor.type === 'point')
-          .map((a) => ({
-            type: 'Feature' as const,
-            id: a.id,
-            geometry: a.anchor.type === 'point'
-              ? { type: 'Point' as const, coordinates: a.anchor.geometry.coordinates.slice(0, 2) as [number, number] }
-              : { type: 'Point' as const, coordinates: [0, 0] as [number, number] },
-            properties: {
-              authorName: a.authorName,
-              createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
-              contentJson: JSON.stringify(a.content),
-              anchorType: a.anchor.type,
-            },
-          })),
-      };
-      annotationRegions = {
-        type: 'FeatureCollection',
-        features: rows
-          .filter((a) => a.anchor.type === 'region')
-          .map((a) => ({
-            type: 'Feature' as const,
-            id: a.id,
-            geometry: a.anchor.type === 'region'
-              ? a.anchor.geometry
-              : { type: 'Polygon' as const, coordinates: [] },
-            properties: {
-              authorName: a.authorName,
-              createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
-              contentJson: JSON.stringify(a.content),
-              anchorType: a.anchor.type,
-            },
-          })),
-      };
+  const annotationPins: AnnotationPinCollection = $derived({
+    type: 'FeatureCollection',
+    features: annotationRows
+      .filter((a) => a.anchor.type === 'point' && !('parentId' in a && a.parentId))
+      .map((a) => ({
+        type: 'Feature' as const,
+        id: a.id,
+        geometry: a.anchor.type === 'point'
+          ? { type: 'Point' as const, coordinates: a.anchor.geometry.coordinates.slice(0, 2) as [number, number] }
+          : { type: 'Point' as const, coordinates: [0, 0] as [number, number] },
+        properties: {
+          authorName: a.authorName,
+          createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
+          contentJson: JSON.stringify(a.content),
+          anchorType: a.anchor.type,
+        },
+      })),
+  });
 
-      // Build annotated features index for highlight/badge rendering
-      const featureAnchored = rows.filter(
-        (a: { anchor: { type: string } }) => a.anchor.type === 'feature'
-      );
-      const featureMap = new Map<string, { layerId: string; count: number }>();
-      for (const ann of featureAnchored) {
-        const anchor = ann.anchor as { type: 'feature'; featureId: string; layerId: string };
-        const key = anchor.featureId;
-        const existing = featureMap.get(key);
-        if (existing) {
-          existing.count++;
-        } else {
-          featureMap.set(key, { layerId: anchor.layerId, count: 1 });
-        }
+  const annotationRegions: AnnotationRegionCollection = $derived({
+    type: 'FeatureCollection',
+    features: annotationRows
+      .filter((a) => a.anchor.type === 'region' && !('parentId' in a && a.parentId))
+      .map((a) => ({
+        type: 'Feature' as const,
+        id: a.id,
+        geometry: a.anchor.type === 'region'
+          ? a.anchor.geometry
+          : { type: 'Polygon' as const, coordinates: [] },
+        properties: {
+          authorName: a.authorName,
+          createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
+          contentJson: JSON.stringify(a.content),
+          anchorType: a.anchor.type,
+        },
+      })),
+  });
+
+  const annotatedFeaturesIndex: Map<string, { layerId: string; count: number }> = $derived.by(() => {
+    const featureAnchored = annotationRows.filter(
+      (a: { anchor: { type: string } }) => a.anchor.type === 'feature'
+    );
+    const featureMap = new Map<string, { layerId: string; count: number }>();
+    for (const ann of featureAnchored) {
+      const anchor = ann.anchor as { type: 'feature'; featureId: string; layerId: string };
+      const key = anchor.featureId;
+      const existing = featureMap.get(key);
+      if (existing) {
+        existing.count++;
+      } else {
+        featureMap.set(key, { layerId: anchor.layerId, count: 1 });
       }
-      annotatedFeaturesIndex = featureMap;
-
-      // Build measurement annotation GeoJSON for map rendering
-      const measurementAnchored = rows.filter(
-        (a: { anchor: { type: string } }) => a.anchor.type === 'measurement'
-      );
-      const measurementFeatures = measurementAnchored.map((ann) => {
-        const anchor = ann.anchor as { type: 'measurement'; geometry: { type: string; coordinates: unknown } };
-        const body = ann.content.kind === 'single' ? ann.content.body : null;
-        const label = body?.type === 'measurement' ? (body as { displayValue: string }).displayValue : '';
-        return {
-          type: 'Feature' as const,
-          geometry: anchor.geometry,
-          properties: { id: ann.id, label, annotationId: ann.id },
-        };
-      });
-      measurementAnnotationData = { type: 'FeatureCollection', features: measurementFeatures };
-    } catch {
-      // Best-effort — annotation pins are non-critical; silently degrade
     }
-  }
+    return featureMap;
+  });
 
-  $effect(() => { untrack(() => loadAnnotationPins()); });
+  const measurementAnnotationData: { type: 'FeatureCollection'; features: { type: 'Feature'; geometry: unknown; properties: Record<string, unknown> }[] } = $derived.by(() => {
+    const measurementAnchored = annotationRows.filter(
+      (a: { anchor: { type: string } }) => a.anchor.type === 'measurement'
+    );
+    const measurementFeatures = measurementAnchored.map((ann) => {
+      const anchor = ann.anchor as { type: 'measurement'; geometry: { type: string; coordinates: unknown } };
+      const body = ann.content.kind === 'single' ? ann.content.body : null;
+      const label = body?.type === 'measurement' ? (body as { displayValue: string }).displayValue : '';
+      return {
+        type: 'Feature' as const,
+        geometry: anchor.geometry,
+        properties: { id: ann.id, label, annotationId: ann.id },
+      };
+    });
+    return { type: 'FeatureCollection' as const, features: measurementFeatures };
+  });
 
   // Initialize layers — untrack the store write to prevent reading _activeLayerId
   // inside set() from becoming a tracked dependency (causes effect_update_depth_exceeded).
@@ -469,6 +473,10 @@
   async function handleFeatureDrawn(layerId: string, _feature: Record<string, unknown> & { id?: string | undefined }) {
     const drawnLayer = layersStore.all.find((l) => l.id === layerId);
     if (!drawnLayer || !isLargeLayer(drawnLayer)) {
+      // Invalidate the features query so the GeoJSON source refreshes with
+      // server data. For large layers, DrawingToolbar already added the feature
+      // to hotOverlay for immediate rendering via vector tiles + hot overlay.
+      mapQueryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId }) });
       await loadLayerData(layerId);
     }
 
@@ -552,6 +560,13 @@
       undoStore.undo();
     }
   }
+
+  // Clear hot overlay features on component unmount
+  $effect(() => {
+    return () => {
+      hotOverlay.clearHotFeatures();
+    };
+  });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -806,11 +821,12 @@
       {mapId}
       embedded
       {...(userId !== undefined ? { userId } : {})}
-      onannotationchange={(action) => {
-        if (interactionState.type !== 'featureSelected') {
-          interactionState = { type: 'idle' };
+      onannotationsaved={(action) => {
+        if (action === 'created') {
+          if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature') {
+            interactionState = { type: 'idle' };
+          }
         }
-        loadAnnotationPins();
         if (action) {
           logActivity(`annotation.${action}`);
         }
