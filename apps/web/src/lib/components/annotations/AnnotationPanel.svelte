@@ -258,8 +258,9 @@
   // Auto-open form when a picked feature arrives from external context
   // (e.g. DrawActionRow "Annotate" button or direct feature pick).
   // Only activates when the form is closed — never clobbers an in-progress form.
+  // Uses untrack() on showForm to avoid circular dependency (this effect writes showForm).
   $effect(() => {
-    if (pickedFeature && !showForm) {
+    if (pickedFeature && !untrack(() => showForm)) {
       formAnchorType = 'feature';
       showForm = true;
     }
@@ -267,8 +268,9 @@
 
   // Auto-open form when a region geometry arrives from external drawing flow.
   // Same guard: only when form is closed to avoid clobbering user input.
+  // Uses untrack() on showForm to avoid circular dependency (this effect writes showForm).
   $effect(() => {
-    if (regionGeometry && !showForm) {
+    if (regionGeometry && !untrack(() => showForm)) {
       formAnchorType = 'region';
       showForm = true;
     }
