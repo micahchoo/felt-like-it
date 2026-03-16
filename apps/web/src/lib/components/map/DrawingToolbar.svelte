@@ -169,7 +169,7 @@
     const properties = (f.properties ?? {}) as Record<string, unknown>;
 
     try {
-      const { upsertedIds } = await featureUpsertMutation.current.mutateAsync({
+      const { upsertedIds } = await featureUpsertMutation.mutateAsync({
         layerId: activeLayer.id,
         features: [{ geometry, properties }],
       });
@@ -189,12 +189,12 @@
         description: `Draw ${f.geometry.type}`,
         undo: async () => {
           if (upsertedIds[0]) {
-            await featureDeleteMutation.current.mutateAsync({ layerId: activeLayer.id, ids: [upsertedIds[0]] });
+            await featureDeleteMutation.mutateAsync({ layerId: activeLayer.id, ids: [upsertedIds[0]] });
             hotOverlay.removeHotFeature(activeLayer.id, upsertedIds[0]);
           }
         },
         redo: async () => {
-          const result = await featureUpsertMutation.current.mutateAsync({
+          const result = await featureUpsertMutation.mutateAsync({
             layerId: activeLayer.id,
             features: [{ geometry, properties }],
           });
@@ -212,7 +212,8 @@
       // Await the data reload so the GeoJSON source is updated BEFORE
       // removeFeatures() clears the Terra Draw overlay — no visual gap.
       await onfeaturedrawn?.(activeLayer.id, { geometry, properties, id: upsertedIds[0] });
-    } catch {
+    } catch (err) {
+      console.error('[DrawingToolbar] saveFeature failed:', err);
       toastStore.error('Failed to save drawn feature.');
     }
   }
