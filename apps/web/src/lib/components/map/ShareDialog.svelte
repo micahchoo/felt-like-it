@@ -100,6 +100,7 @@
   }
 
   async function deleteShare(): Promise<void> {
+    if (!window.confirm('Remove the public share link? Anyone using it will lose access.')) return;
     deleting = true;
     try {
       await trpc.shares.delete.mutate({ mapId });
@@ -154,6 +155,9 @@
   }
 
   async function handleRemove(collabUserId: string): Promise<void> {
+    const collab = collaborators.find((c) => c.userId === collabUserId);
+    const name = collab?.name ?? collab?.email ?? 'this collaborator';
+    if (!window.confirm(`Remove ${name} from this map?`)) return;
     collabError = null;
     try {
       await trpc.collaborators.remove.mutate({ mapId, userId: collabUserId });

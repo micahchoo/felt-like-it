@@ -561,6 +561,7 @@
   }
 
   async function handleDelete(id: string) {
+    if (!window.confirm('Delete this annotation? This cannot be undone.')) return;
     try {
       await deleteAnnotationMutation.mutateAsync({ id });
       onannotationsaved('deleted');
