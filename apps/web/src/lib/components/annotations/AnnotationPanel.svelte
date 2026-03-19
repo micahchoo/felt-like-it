@@ -496,6 +496,7 @@
       // so the URL is present when the content object is assembled.
       if (formType === 'image' && selectedImageFile) {
         uploading = true;
+        formImageUrl = '';
         try {
           formImageUrl = await uploadImageFile(selectedImageFile);
         } finally {
@@ -565,6 +566,22 @@
     }
   }
 
+  /** Convert an orphaned feature-anchored annotation to a point anchor using map center. */
+  async function handleConvertToPoint(annotation: AnnotationObject) {
+    if (annotation.anchor.type !== 'feature' || !annotation.anchor.featureDeleted) return;
+    try {
+      const [lng, lat] = mapStore.center;
+      await updateAnnotationMutation.mutateAsync({
+        id: annotation.id,
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [lng, lat] } },
+        version: annotation.version,
+      });
+      onannotationsaved();
+    } catch (err: unknown) {
+      toastStore.error((err as { message?: string })?.message ?? 'Failed to convert annotation.');
+    }
+  }
+
   // ── Scroll-to-feature support ───────────────────────────────────────────────
   $effect(() => {
     if (!scrollToFeatureId) return;
@@ -614,7 +631,7 @@
     <Button
       variant="ghost"
       size="sm"
-      onclick={() => { showForm = !showForm; createError = null; }}
+      onclick={() => { if (showForm) resetForm(); showForm = !showForm; createError = null; }}
     >
       {showForm ? 'Cancel' : '+ Add'}
     </Button>
@@ -625,7 +642,7 @@
     <Button
       variant="ghost"
       size="sm"
-      onclick={() => { showForm = !showForm; createError = null; }}
+      onclick={() => { if (showForm) resetForm(); showForm = !showForm; createError = null; }}
     >
       {showForm ? 'Cancel' : '+ Add'}
     </Button>
@@ -962,6 +979,18 @@
       >
         {#if uploading}Uploading…{:else}Save annotation{/if}
       </Button>
+
+      {#if !creating && !uploading
+        && ((formType === 'text' && !formText.trim())
+          || (formType === 'emoji' && !formEmoji.trim())
+          || (formType === 'gif' && !formGifUrl.trim())
+          || (formType === 'image' && !formImageUrl && !selectedImageFile)
+          || (formType === 'link' && !formLinkUrl.trim())
+          || (formType === 'iiif' && !formManifestUrl.trim())
+          || (formAnchorType === 'region' && !regionGeometry)
+          || (formAnchorType === 'feature' && !pickedFeature))}
+        <p class="text-xs text-neutral-500">Add text, emoji, or image to save.</p>
+      {/if}
     </form>
   {/if}
 
@@ -1042,6 +1071,14 @@
 
           <!-- Per-annotation actions -->
           <div class="flex gap-2">
+            {#if annotation.anchor.type === 'feature' && annotation.anchor.featureDeleted === true}
+              <button
+                onclick={() => handleConvertToPoint(annotation)}
+                class="text-xs text-amber-400 hover:text-amber-300 underline"
+              >
+                📍 Convert to map pin
+              </button>
+            {/if}
             {#if annotation.content.kind === 'single' && annotation.content.body.type === 'iiif' && !annotation.content.body.navPlace && annotation.authorId === userId}
               <button
                 onclick={() => handleFetchNavPlace(annotation)}

@@ -19,7 +19,11 @@
   let uploading = $state(false);
   let jobId = $state<string | null>(null);
   let progress = $state(0);
+  let pollTimedOut = $state(false);
+  let pollStartTime = 0;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+  const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
   const ACCEPTED_TYPES = ['.geojson', '.json', '.csv', '.kml', '.gpx', '.gpkg', '.geojsonl', '.zip'];
 
@@ -67,6 +71,7 @@
       jobId = data.jobId;
 
       // Poll for progress
+      pollStartTime = Date.now();
       pollInterval = setInterval(pollJob, 1500);
     } catch (err) {
       toastStore.error(String(err instanceof Error ? err.message : 'Upload failed'));
@@ -76,6 +81,14 @@
 
   async function pollJob() {
     if (!jobId) return;
+
+    if (Date.now() - pollStartTime > POLL_TIMEOUT_MS) {
+      clearInterval(pollInterval!);
+      pollInterval = null;
+      pollTimedOut = true;
+      uploading = false;
+      return;
+    }
 
     try {
       const res = await fetch(`/api/job/${jobId}`);
@@ -111,6 +124,7 @@
     jobId = null;
     progress = 0;
     uploading = false;
+    pollTimedOut = false;
     if (pollInterval) {
       clearInterval(pollInterval);
       pollInterval = null;
@@ -124,8 +138,13 @@
   });
 </script>
 
-<Modal bind:open title="Import Data" dismissible={!uploading} onclose={reset}>
-  {#if uploading}
+<Modal bind:open title="Import Data" dismissible={!uploading || pollTimedOut} onclose={reset}>
+  {#if pollTimedOut}
+    <!-- Timeout view -->
+    <div class="flex flex-col items-center gap-4 py-6">
+      <p class="text-sm text-amber-400">Import is taking longer than expected. Check back later.</p>
+    </div>
+  {:else if uploading}
     <!-- Progress view -->
     <div class="flex flex-col items-center gap-4 py-6">
       <Spinner size="lg" />
@@ -201,7 +220,9 @@
   {/if}
 
   {#snippet footer()}
-    {#if !uploading && selectedFile}
+    {#if pollTimedOut}
+      <Button variant="secondary" onclick={() => { reset(); open = false; }}>Dismiss</Button>
+    {:else if !uploading && selectedFile}
       <Button variant="secondary" onclick={reset}>Cancel</Button>
       <Button variant="primary" onclick={startUpload}>
         Import

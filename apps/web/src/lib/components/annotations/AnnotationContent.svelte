@@ -45,7 +45,7 @@
 <div class="text-sm text-slate-200 space-y-2{featureDeleted ? ' opacity-60' : ''}" style="max-width: 22rem">
   {#if featureDeleted}
     <div class="flex items-center gap-1.5 rounded bg-red-500/10 px-2 py-1 text-[11px] text-red-400">
-      <span>Feature deleted</span>
+      <span>Feature deleted — convert to map pin to preserve</span>
     </div>
   {/if}
   <!-- Author + timestamp + anchor type header -->

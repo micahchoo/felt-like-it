@@ -206,7 +206,8 @@ export const annotationService = {
     userId: string;
     userName: string;
     id: string;
-    content: AnnotationObjectContent;
+    content?: AnnotationObjectContent;
+    anchor?: Anchor;
     version: number;
   }): Promise<AnnotationObject> {
     // 1. Fetch current
@@ -229,15 +230,21 @@ export const annotationService = {
       throw new TRPCError({ code: 'CONFLICT', message: 'Version conflict — annotation was modified by another user.' });
     }
 
-    // 5. Update with version guard
-    const contentJson = JSON.stringify(params.content);
+    // 5. Build SET clauses — content and/or anchor may be updated
     const newVersion = current.version + 1;
+    const contentJson = params.content ? JSON.stringify(params.content) : null;
+    const anchorJson = params.anchor ? JSON.stringify(params.anchor) : null;
+
+    const setClauses = [
+      sql`version = ${newVersion}`,
+      sql`updated_at = NOW()`,
+    ];
+    if (contentJson) setClauses.push(sql`content = ${contentJson}::jsonb`);
+    if (anchorJson) setClauses.push(sql`anchor = ${anchorJson}::jsonb`);
 
     const rows = await typedExecute<RawObjectRow>(sql`
       UPDATE annotation_objects
-      SET content = ${contentJson}::jsonb,
-          version = ${newVersion},
-          updated_at = NOW()
+      SET ${sql.join(setClauses, sql`, `)}
       WHERE id = ${params.id}::uuid AND version = ${params.version}
       RETURNING ${OBJECT_COLS}
     `);
@@ -247,11 +254,12 @@ export const annotationService = {
 
     const obj = rowToObject(row);
 
-    // 5. Changelog
-    const { patch, inverse } = buildModPatch(
-      { content: params.content },
-      { content: current.content },
-    );
+    // 6. Changelog
+    const modFields: Record<string, unknown> = {};
+    const oldFields: Record<string, unknown> = {};
+    if (params.content) { modFields.content = params.content; oldFields.content = current.content; }
+    if (params.anchor) { modFields.anchor = params.anchor; oldFields.anchor = current.anchor; }
+    const { patch, inverse } = buildModPatch(modFields, oldFields);
     await insertChangelog({
       mapId: obj.mapId,
       objectId: obj.id,

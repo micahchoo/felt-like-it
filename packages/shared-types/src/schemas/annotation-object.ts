@@ -130,7 +130,9 @@ export const CreateAnnotationObjectSchema = z.object({
 
 export const UpdateAnnotationObjectSchema = z.object({
   id: z.string().uuid(),
-  content: AnnotationObjectContentSchema,
+  content: AnnotationObjectContentSchema.optional(),
+  /** Optional anchor replacement (e.g. converting orphaned feature → point). */
+  anchor: AnchorSchema.optional(),
   /** Client must send current version for optimistic concurrency. */
   version: z.number().int(),
 });
