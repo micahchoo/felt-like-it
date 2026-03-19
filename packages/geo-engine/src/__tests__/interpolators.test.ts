@@ -66,10 +66,8 @@ describe('fslInterpolatorToMapLibre', () => {
       expect(result).toEqual(['interpolate', ['linear'], ['zoom'], 8, 1, 12, 4, 16, 12]);
     });
 
-    it('throws for fewer than 2 stops', () => {
-      expect(() =>
-        fslInterpolatorToMapLibre({ linear: [[10, 2]] })
-      ).toThrow('at least 2 stops');
+    it('returns undefined for fewer than 2 stops', () => {
+      expect(fslInterpolatorToMapLibre({ linear: [[10, 2]] })).toBeUndefined();
     });
 
     it('throws for non-array stops', () => {
@@ -118,10 +116,8 @@ describe('fslInterpolatorToMapLibre', () => {
       ).toThrow('base must be a number');
     });
 
-    it('throws for fewer than 2 stops', () => {
-      expect(() =>
-        fslInterpolatorToMapLibre({ exp: [2, [[10, 2]]] })
-      ).toThrow('at least 2 stops');
+    it('returns undefined for fewer than 2 stops', () => {
+      expect(fslInterpolatorToMapLibre({ exp: [2, [[10, 2]]] })).toBeUndefined();
     });
   });
 
@@ -153,10 +149,69 @@ describe('fslInterpolatorToMapLibre', () => {
       ).toThrow();
     });
 
-    it('throws for fewer than 2 stops', () => {
-      expect(() =>
-        fslInterpolatorToMapLibre({ cubicbezier: [0.42, 0, 1, 1, [[10, 2]]] })
-      ).toThrow('at least 2 stops');
+    it('returns undefined for fewer than 2 stops', () => {
+      expect(fslInterpolatorToMapLibre({ cubicbezier: [0.42, 0, 1, 1, [[10, 2]]] })).toBeUndefined();
+    });
+  });
+
+  describe('null value filtering in zoom stops', () => {
+    it('filters out stops with null values from linear interpolator', () => {
+      const result = fslInterpolatorToMapLibre({
+        linear: [[10, 0.3], [14, 0.6], [16, null]],
+      });
+      expect(result).toEqual(['interpolate', ['linear'], ['zoom'], 10, 0.3, 14, 0.6]);
+    });
+
+    it('returns undefined when all linear stops have null values', () => {
+      expect(fslInterpolatorToMapLibre({ linear: [[10, null], [16, null]] })).toBeUndefined();
+    });
+
+    it('returns undefined when filtering leaves fewer than 2 linear stops', () => {
+      expect(fslInterpolatorToMapLibre({ linear: [[10, 0.3], [16, null]] })).toBeUndefined();
+    });
+
+    it('filters out stops with undefined values from linear interpolator', () => {
+      const result = fslInterpolatorToMapLibre({
+        linear: [[10, 0.3], [14, undefined], [16, 0.9]],
+      });
+      expect(result).toEqual(['interpolate', ['linear'], ['zoom'], 10, 0.3, 16, 0.9]);
+    });
+
+    it('filters null stops from exp interpolator', () => {
+      const result = fslInterpolatorToMapLibre({
+        exp: [2, [[10, 2], [14, null], [16, 8]]],
+      });
+      expect(result).toEqual(['interpolate', ['exponential', 2], ['zoom'], 10, 2, 16, 8]);
+    });
+
+    it('returns undefined when all exp stops are null', () => {
+      expect(fslInterpolatorToMapLibre({ exp: [2, [[10, null], [16, null]]] })).toBeUndefined();
+    });
+
+    it('filters null stops from step interpolator', () => {
+      const result = fslInterpolatorToMapLibre({
+        step: [2, [[14, 4], [16, null]]],
+      });
+      expect(result).toEqual(['step', ['zoom'], 2, 14, 4]);
+    });
+
+    it('returns base value when all step stops are null', () => {
+      expect(fslInterpolatorToMapLibre({ step: [2, [[14, null], [16, null]]] })).toBe(2);
+    });
+
+    it('filters null stops from cubicbezier interpolator', () => {
+      const result = fslInterpolatorToMapLibre({
+        cubicbezier: [0.42, 0, 1, 1, [[10, 2], [14, null], [16, 8]]],
+      });
+      expect(result).toEqual([
+        'interpolate', ['cubic-bezier', 0.42, 0, 1, 1], ['zoom'], 10, 2, 16, 8,
+      ]);
+    });
+
+    it('returns undefined when all cubicbezier stops are null', () => {
+      expect(
+        fslInterpolatorToMapLibre({ cubicbezier: [0.42, 0, 1, 1, [[10, null], [16, null]]] })
+      ).toBeUndefined();
     });
   });
 
