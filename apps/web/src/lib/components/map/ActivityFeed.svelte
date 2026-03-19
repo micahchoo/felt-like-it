@@ -45,6 +45,28 @@
   let error = $state<string | null>(null);
   let selectedFilter = $state<FilterCategory>('all');
   let lastVisit = $state<Date | null>(null);
+  let filterRestored = $state(false);
+
+  // Restore saved filter on mount (runs once; flag prevents save-effect loop)
+  $effect(() => {
+    try {
+      const saved = localStorage.getItem(`felt-activity-filter-${mapId}`);
+      if (saved) selectedFilter = saved as FilterCategory;
+    } catch {
+      // localStorage unavailable
+    }
+    filterRestored = true;
+  });
+
+  // Persist filter whenever it changes, but only after restore has run
+  $effect(() => {
+    if (!filterRestored) return;
+    try {
+      localStorage.setItem(`felt-activity-filter-${mapId}`, selectedFilter);
+    } catch {
+      // ignore
+    }
+  });
 
   $effect(() => {
     void refreshTrigger; // reactive dependency — increment triggers re-fetch
