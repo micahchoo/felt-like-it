@@ -62,10 +62,17 @@ export const mapStore = {
     bearing?: number;
     pitch?: number;
   }) {
-    if (viewport.center !== undefined) _center = viewport.center;
-    if (viewport.zoom !== undefined) _zoom = viewport.zoom;
-    if (viewport.bearing !== undefined) _bearing = viewport.bearing;
-    if (viewport.pitch !== undefined) _pitch = viewport.pitch;
+    // Guard each field with equality checks to prevent reactive churn.
+    // Without these, the MapLibre center prop → moveend → setViewport → re-render
+    // cycle creates an infinite loop (effect_update_depth_exceeded) because each
+    // call assigns a new array/value even when coordinates are identical.
+    if (viewport.center !== undefined &&
+        (viewport.center[0] !== _center[0] || viewport.center[1] !== _center[1])) {
+      _center = viewport.center;
+    }
+    if (viewport.zoom !== undefined && viewport.zoom !== _zoom) _zoom = viewport.zoom;
+    if (viewport.bearing !== undefined && viewport.bearing !== _bearing) _bearing = viewport.bearing;
+    if (viewport.pitch !== undefined && viewport.pitch !== _pitch) _pitch = viewport.pitch;
   },
 
   setBasemap(id: BasemapId) {

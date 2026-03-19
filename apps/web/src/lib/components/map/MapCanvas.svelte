@@ -98,6 +98,19 @@
     mapStore.setMapInstance(mapInstance);
   });
 
+  // Stable center object — only recreated when coordinates actually change.
+  // An inline object literal `{ lng: x, lat: y }` in the template creates a new
+  // reference every render; svelte-maplibre-gl detects the new reference, calls
+  // map.setCenter() synchronously, which fires moveend → setViewport → re-render
+  // → new object → infinite loop (effect_update_depth_exceeded).
+  let stableCenter = $state({ lng: mapStore.center[0], lat: mapStore.center[1] });
+  $effect.pre(() => {
+    const [lng, lat] = mapStore.center;
+    if (lng !== stableCenter.lng || lat !== stableCenter.lat) {
+      stableCenter = { lng, lat };
+    }
+  });
+
   /**
    * ID of the first basemap symbol layer (e.g. road labels, city names).
    * Computed once the map is loaded; used by isSandwiched to position FillLayers
@@ -392,7 +405,7 @@
 <div class="relative w-full h-full">
   <MapLibre
     style={mapStore.basemapUrl}
-    center={{ lng: mapStore.center[0], lat: mapStore.center[1] }}
+    center={stableCenter}
     zoom={mapStore.zoom}
     bearing={mapStore.bearing}
     pitch={mapStore.pitch}
