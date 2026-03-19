@@ -203,7 +203,46 @@
     if (!drawingStore.instance || !drawingStore.isReady) return;
     const modeMap: Record<string, string> = { point: 'point', line: 'linestring', polygon: 'polygon', select: 'select' };
     const mode = tool ? modeMap[tool] ?? 'select' : 'select';
-    if (drawingStore.instance.getMode() !== mode) drawingStore.instance.setMode(mode);
+    if (drawingStore.instance.getMode() !== mode) {
+      // Before switching modes, check for in-progress (unsaved) geometry
+      const snapshot = drawingStore.instance.getSnapshot() ?? [];
+      // TYPE_DEBT: terra-draw GeoJSONStoreFeatures properties are typed as Record<string,unknown>
+      const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
+      if (inProgress.length > 0) {
+        const confirmed = window.confirm('You have an unfinished drawing. Discard it?');
+        if (!confirmed) return;
+        try {
+          drawingStore.instance.removeFeatures(inProgress.map((f: any) => f.id!));
+        } catch (e) {
+          console.warn('[DrawingToolbar] removeFeatures during tool switch failed:', e);
+        }
+      }
+      drawingStore.instance.setMode(mode);
+    }
+  });
+
+  // Cancel in-progress drawing on Escape key
+  $effect(() => {
+    if (!drawingStore.isReady) return;
+    function handleKeydown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        const snapshot = drawingStore.instance?.getSnapshot();
+        if (snapshot) {
+          // TYPE_DEBT: terra-draw GeoJSONStoreFeatures properties are typed as Record<string,unknown>
+          const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
+          if (inProgress.length > 0) {
+            try {
+              drawingStore.instance?.removeFeatures(inProgress.map((f: any) => f.id!));
+            } catch (e) {
+              console.warn('[DrawingToolbar] removeFeatures on Escape failed:', e);
+            }
+          }
+        }
+        selectionStore.setActiveTool('select');
+      }
+    }
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
   });
 
   function setTool(tool: DrawTool) {
