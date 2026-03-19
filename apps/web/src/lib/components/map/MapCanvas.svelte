@@ -442,7 +442,14 @@
     } as unknown as NonNullable<SymbolLayerSpecification['layout']>;
   }
 
+  // DEBUG: track handleFeatureClick calls to diagnose effect_update_depth_exceeded
+  let _clickCount = 0;
   function handleFeatureClick(feature: GeoJSONFeature, e: MapMouseEvent, layerStyle?: LayerStyle, layerId?: string) {
+    _clickCount++;
+    if (_clickCount <= 5) {
+      console.warn(`[handleFeatureClick #${_clickCount}]`, { featureId: feature.id, layerId, tool: selectionStore.activeTool });
+      console.trace('[handleFeatureClick] call stack');
+    }
     // Block feature clicks during active drawing operations only
     const tool = selectionStore.activeTool;
     if (tool === 'point' || tool === 'line' || tool === 'polygon') return;

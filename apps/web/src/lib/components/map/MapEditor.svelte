@@ -240,9 +240,16 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
 
   let interactionState: InteractionState = $state({ type: 'idle' });
 
+  // DEBUG: track transitions to diagnose effect_update_depth_exceeded
+  let _transitionCount = 0;
+
   /** Centralized mode transition — atomically sets interactionState and implied tool.
    *  Uses untrack() for the prev-state read so it's safe to call from $effect blocks. */
   function transitionTo(next: InteractionState) {
+    _transitionCount++;
+    if (_transitionCount <= 10) {
+      console.warn(`[transitionTo #${_transitionCount}]`, next.type, { prev: untrack(() => interactionState.type) });
+    }
     const prev = untrack(() => interactionState);
     interactionState = next;
 
