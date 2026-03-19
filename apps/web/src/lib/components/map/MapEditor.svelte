@@ -112,6 +112,24 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     saveFilters(mapId);
   });
 
+  // ── Viewport persistence ──────────────────────────────────────────────────
+  // Save viewport to localStorage on moveend so the user returns to the same
+  // position after navigating away and back. Fires for all maps regardless of
+  // layer type (the large-layer moveend handler is separate and conditional).
+  $effect(() => {
+    const map = mapStore.mapInstance;
+    if (!map) return;
+
+    function persistViewport() {
+      mapStore.saveViewportLocally(mapId);
+    }
+
+    map.on('moveend', persistViewport);
+    return () => {
+      map.off('moveend', persistViewport);
+    };
+  });
+
   // GeoJSON data cache per layer
   let layerData = $state<Record<string, { type: 'FeatureCollection'; features: GeoJSONFeature[] }>>({});
   let showDataTable = $state(false);
