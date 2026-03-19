@@ -207,6 +207,63 @@ describe('annotationsRouter (tRPC adapter)', () => {
     expect(result).toHaveLength(1);
     expect(result[0]?.id).toBe(OBJ_ID);
   });
+
+  it('create mutation rejects empty content text', async () => {
+    // Empty string fails TextContentSchema.text.min(1) — tRPC throws BAD_REQUEST
+    // before the service is ever called. This characterizes the form validation
+    // contract: the router is the last line of defence against blank submissions.
+    await expect(
+      makeCaller().create({
+        mapId: MAP_ID,
+        anchor: { type: 'viewport' },
+        content: { kind: 'single', body: { type: 'text', text: '' } },
+      }),
+    ).rejects.toThrow();
+
+    // Service must not have been reached — no db.execute calls
+    expect(db.execute).not.toHaveBeenCalled();
+  });
+
+  it('create mutation rejects whitespace-only content text', async () => {
+    // Whitespace is non-empty so it passes min(1) — service IS called.
+    // Characterize that the router forwards to the service (which may or may
+    // not accept it). The important thing: no schema rejection at this layer.
+    // vi.resetAllMocks() in beforeEach wipes mock return values, so we re-setup
+    // the mocks the service needs.
+    const { buildAddPatch } = await import('$lib/server/annotations/changelog.js');
+    vi.mocked(buildAddPatch).mockReturnValue({ patch: { op: 'add' }, inverse: { op: 'del' } } as ReturnType<typeof buildAddPatch>);
+    vi.mocked(insertChangelog).mockResolvedValue('changelog-id');
+    vi.mocked(db.execute)
+      .mockResolvedValueOnce(mockExecuteResult([{ cnt: '0' }]))
+      .mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+
+    // A single space satisfies z.string().min(1) — router passes it through
+    const result = await makeCaller().create({
+      mapId: MAP_ID,
+      anchor: { type: 'viewport' },
+      content: { kind: 'single', body: { type: 'text', text: ' ' } },
+    });
+    expect(result.id).toBe(OBJ_ID);
+  });
+
+  it('create mutation accepts valid content and returns annotation', async () => {
+    // Re-setup after vi.resetAllMocks() wipes mock return values
+    const { buildAddPatch } = await import('$lib/server/annotations/changelog.js');
+    vi.mocked(buildAddPatch).mockReturnValue({ patch: { op: 'add' }, inverse: { op: 'del' } } as ReturnType<typeof buildAddPatch>);
+    vi.mocked(insertChangelog).mockResolvedValue('changelog-id');
+    vi.mocked(db.execute)
+      .mockResolvedValueOnce(mockExecuteResult([{ cnt: '0' }]))
+      .mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+
+    const result = await makeCaller().create({
+      mapId: MAP_ID,
+      anchor: { type: 'point', geometry: { type: 'Point', coordinates: [-122.4, 37.8] } },
+      content: { kind: 'single', body: { type: 'text', text: 'hello' } },
+    });
+
+    expect(result.id).toBe(OBJ_ID);
+    expect(result.content).toMatchObject({ kind: 'single', body: { type: 'text' } });
+  });
 });
 
 describe('annotationService adversarial cases', () => {
