@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { filterStore } from '../lib/stores/filters.svelte.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { filterStore, loadFilters, saveFilters } from '../lib/stores/filters.svelte.js';
 import type { GeoJSONFeature } from '@felt-like-it/shared-types';
 
 // geo-engine module is ESM — mock it so fslFiltersToMapLibre returns a simple
@@ -173,5 +173,93 @@ describe('filterStore.applyToFeatures() — operator coverage', () => {
   it('returns empty array when no features match', () => {
     filterStore.add(LAYER_A, { field: 'city', operator: 'eq', value: 'Berlin' });
     expect(filterStore.applyToFeatures(LAYER_A, features)).toHaveLength(0);
+  });
+});
+
+// ─── localStorage persistence ────────────────────────────────────────────────
+
+const MAP_ID = 'map-test-123';
+const STORAGE_KEY = `felt-filters-${MAP_ID}`;
+
+describe('saveFilters / loadFilters', () => {
+  beforeEach(() => {
+    filterStore.clear(LAYER_A);
+    filterStore.clear(LAYER_B);
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('saveFilters persists active filters to localStorage', () => {
+    filterStore.add(LAYER_A, { field: 'city', operator: 'eq', value: 'Paris' });
+    saveFilters(MAP_ID);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    expect(raw).not.toBeNull();
+    const parsed = JSON.parse(raw!);
+    expect(parsed[LAYER_A]).toHaveLength(1);
+    expect(parsed[LAYER_A][0].value).toBe('Paris');
+  });
+
+  it('saveFilters removes the key when no filters remain', () => {
+    filterStore.add(LAYER_A, { field: 'city', operator: 'eq', value: 'Paris' });
+    saveFilters(MAP_ID);
+    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+
+    filterStore.clear(LAYER_A);
+    saveFilters(MAP_ID);
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('saveFilters does not write empty layers', () => {
+    filterStore.clear(LAYER_A); // explicitly empty
+    filterStore.add(LAYER_B, { field: 'pop', operator: 'gt', value: '1000' });
+    saveFilters(MAP_ID);
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(Object.keys(parsed)).not.toContain(LAYER_A);
+    expect(parsed[LAYER_B]).toHaveLength(1);
+  });
+
+  it('loadFilters restores persisted filters into the store', () => {
+    filterStore.add(LAYER_A, { field: 'name', operator: 'cn', value: 'ar' });
+    filterStore.add(LAYER_B, { field: 'pop', operator: 'lt', value: '500' });
+    saveFilters(MAP_ID);
+
+    // Reset store state
+    filterStore.clear(LAYER_A);
+    filterStore.clear(LAYER_B);
+    expect(filterStore.hasFilters(LAYER_A)).toBe(false);
+
+    loadFilters(MAP_ID);
+    expect(filterStore.get(LAYER_A)).toHaveLength(1);
+    expect(filterStore.get(LAYER_A)[0]?.field).toBe('name');
+    expect(filterStore.get(LAYER_B)).toHaveLength(1);
+  });
+
+  it('loadFilters is a no-op when no key exists', () => {
+    loadFilters('nonexistent-map');
+    expect(filterStore.get(LAYER_A)).toHaveLength(0);
+  });
+
+  it('loadFilters silently ignores corrupt JSON', () => {
+    localStorage.setItem(STORAGE_KEY, '{broken json{{');
+    expect(() => loadFilters(MAP_ID)).not.toThrow();
+    expect(filterStore.get(LAYER_A)).toHaveLength(0);
+  });
+
+  it('saveFilters scopes storage by map ID — different maps are independent', () => {
+    const OTHER_MAP = 'map-other-456';
+    filterStore.add(LAYER_A, { field: 'city', operator: 'eq', value: 'Tokyo' });
+    saveFilters(MAP_ID);
+
+    filterStore.clear(LAYER_A);
+    filterStore.add(LAYER_A, { field: 'city', operator: 'eq', value: 'Berlin' });
+    saveFilters(OTHER_MAP);
+
+    const parsedA = JSON.parse(localStorage.getItem(`felt-filters-${MAP_ID}`)!);
+    const parsedB = JSON.parse(localStorage.getItem(`felt-filters-${OTHER_MAP}`)!);
+    expect(parsedA[LAYER_A][0].value).toBe('Tokyo');
+    expect(parsedB[LAYER_A][0].value).toBe('Berlin');
   });
 });

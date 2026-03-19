@@ -3,6 +3,8 @@ import type { GeoJSONFeature } from '@felt-like-it/shared-types';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
+const STORAGE_KEY_PREFIX = 'felt-filters-';
+
 export type FilterOperator = 'eq' | 'ne' | 'lt' | 'gt' | 'cn' | 'in' | 'ni';
 
 export const FILTER_OPERATOR_LABELS: Record<FilterOperator, string> = {
@@ -21,9 +23,49 @@ export interface UIFilter {
   value: string;
 }
 
+// ─── Persistence ────────────────────────────────────────────────────────────
+
+/**
+ * Save all active filters for a map to localStorage.
+ * Removes the key entirely when no filters remain, keeping storage clean.
+ */
+export function saveFilters(mapId: string): void {
+  try {
+    const data: Record<string, UIFilter[]> = {};
+    for (const [layerId, filters] of Object.entries(_filters)) {
+      if (filters && filters.length > 0) {
+        data[layerId] = filters;
+      }
+    }
+    const key = `${STORAGE_KEY_PREFIX}${mapId}`;
+    if (Object.keys(data).length === 0) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+  } catch { /* silently ignore storage errors (e.g. private browsing) */ }
+}
+
+/**
+ * Restore filters for a map from localStorage.
+ * Call this once when the map mounts. Silently ignores missing or corrupt data.
+ */
+export function loadFilters(mapId: string): void {
+  try {
+    const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${mapId}`);
+    if (!raw) return;
+    const data = JSON.parse(raw) as Record<string, UIFilter[]>;
+    for (const [layerId, filters] of Object.entries(data)) {
+      if (Array.isArray(filters) && filters.length > 0) {
+        _filters = { ..._filters, [layerId]: filters };
+      }
+    }
+  } catch { /* silently ignore parse errors */ }
+}
+
 // ─── State ──────────────────────────────────────────────────────────────────
 
-/** Per-layer active UI filters. Ephemeral — not persisted to the server. */
+/** Per-layer active UI filters. Scoped to a map via loadFilters/saveFilters. */
 let _filters = $state<Record<string, UIFilter[]>>({});
 
 // ─── Client-side filter evaluator ───────────────────────────────────────────

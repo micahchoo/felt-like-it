@@ -3,7 +3,7 @@
   import { trpc } from '$lib/utils/trpc.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { mapStore } from '$lib/stores/map.svelte.js';
-  import { filterStore } from '$lib/stores/filters.svelte.js';
+  import { filterStore, loadFilters, saveFilters } from '$lib/stores/filters.svelte.js';
   import { selectionStore } from '$lib/stores/selection.svelte.js';
   import { undoStore } from '$lib/stores/undo.svelte.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
@@ -93,6 +93,21 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   $effect(() => {
     mapStore.setMapContainerEl(mapAreaEl);
     return () => { mapStore.setMapContainerEl(undefined); };
+  });
+
+  // ── Filter persistence ────────────────────────────────────────────────────
+  // Load persisted filters once when the editor mounts (runs once: mapId is stable).
+  $effect(() => {
+    loadFilters(mapId);
+  });
+
+  // Save filters to localStorage whenever filter state changes for any layer.
+  $effect(() => {
+    // Access every layer's filters to create a reactive dependency on the full state.
+    for (const layer of layersStore.layers) {
+      filterStore.get(layer.id);
+    }
+    saveFilters(mapId);
   });
 
   // GeoJSON data cache per layer
