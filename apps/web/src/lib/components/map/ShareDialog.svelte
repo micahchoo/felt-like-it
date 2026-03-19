@@ -149,6 +149,7 @@
       await trpc.collaborators.invite.mutate({ mapId, email, role: inviteRole });
       inviteEmail = '';
       await loadCollaborators();
+      toastStore.success('Invitation sent.');
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message;
       collabError = msg ?? 'Failed to invite collaborator.';
@@ -165,6 +166,7 @@
     try {
       await trpc.collaborators.remove.mutate({ mapId, userId: collabUserId });
       collaborators = collaborators.filter((c) => c.userId !== collabUserId);
+      toastStore.success('Collaborator removed.');
     } catch {
       collabError = 'Failed to remove collaborator.';
     }
@@ -179,6 +181,7 @@
         role: role as 'viewer' | 'commenter' | 'editor',
       });
       collaborators = collaborators.map((c) => (c.userId === collabUserId ? { ...c, role } : c));
+      toastStore.success('Role updated.');
     } catch {
       collabError = 'Failed to update role.';
     }

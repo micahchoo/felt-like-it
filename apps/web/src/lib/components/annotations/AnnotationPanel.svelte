@@ -552,6 +552,7 @@
       showForm = false;
       resetForm();
       onannotationsaved('created');
+      toastStore.success('Annotation saved.');
     } catch (err: unknown) {
       createError = (err as { message?: string })?.message ?? 'Failed to create annotation.';
     } finally {
@@ -565,6 +566,7 @@
     try {
       await deleteAnnotationMutation.mutateAsync({ id });
       onannotationsaved('deleted');
+      toastStore.success('Annotation deleted.');
     } catch (err: unknown) {
       toastStore.error((err as { message?: string })?.message ?? 'Failed to delete annotation.');
     }
@@ -625,6 +627,7 @@
       replyingTo = null;
       expandedAnnotationId = parentId; // keep thread open
       onannotationsaved('created');
+      toastStore.success('Reply posted.');
     } catch (err: unknown) {
       toastStore.error((err as { message?: string })?.message ?? 'Failed to post reply.');
     }
