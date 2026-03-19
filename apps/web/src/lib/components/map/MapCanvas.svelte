@@ -98,17 +98,34 @@
     mapStore.setMapInstance(mapInstance);
   });
 
-  // Stable center object — only recreated when coordinates actually change.
-  // An inline object literal `{ lng: x, lat: y }` in the template creates a new
-  // reference every render; svelte-maplibre-gl detects the new reference, calls
-  // map.setCenter() synchronously, which fires moveend → setViewport → re-render
-  // → new object → infinite loop (effect_update_depth_exceeded).
-  let stableCenter = $state({ lng: mapStore.center[0], lat: mapStore.center[1] });
-  $effect.pre(() => {
+  // ── Viewport sync (store → map) ─────────────────────────────────────────
+  // Do NOT pass center/zoom/bearing/pitch as reactive props to <MapLibre>.
+  // Object-identity churn on center ({ lng, lat }) causes svelte-maplibre-gl
+  // to call map.setCenter() → moveend → setViewport → re-render → new object
+  // → effect_update_depth_exceeded.  Instead we sync imperatively via jumpTo.
+  //
+  // _viewportSyncFlag is set by the store-watching effect; onmoveend clears it
+  // to break the store→map→moveend→store feedback loop.
+  let _viewportSyncFlag = false;
+
+  $effect(() => {
+    if (!mapInstance) return;
+    // Track store values — this effect re-runs when loadViewport() changes them.
     const [lng, lat] = mapStore.center;
-    if (lng !== stableCenter.lng || lat !== stableCenter.lat) {
-      stableCenter = { lng, lat };
-    }
+    const zoom = mapStore.zoom;
+    const bearing = mapStore.bearing;
+    const pitch = mapStore.pitch;
+
+    // Skip if the map is already at the requested viewport (from onmoveend feedback).
+    const c = mapInstance.getCenter();
+    if (c.lng === lng && c.lat === lat &&
+        mapInstance.getZoom() === zoom &&
+        mapInstance.getBearing() === bearing &&
+        mapInstance.getPitch() === pitch) return;
+
+    _viewportSyncFlag = true;
+    mapInstance.jumpTo({ center: [lng, lat], zoom, bearing, pitch });
+    _viewportSyncFlag = false;
   });
 
   /**
@@ -405,10 +422,6 @@
 <div class="relative w-full h-full">
   <MapLibre
     style={mapStore.basemapUrl}
-    center={stableCenter}
-    zoom={mapStore.zoom}
-    bearing={mapStore.bearing}
-    pitch={mapStore.pitch}
     class="w-full h-full"
     autoloadGlobalCss={false}
     canvasContextAttributes={{ preserveDrawingBuffer: true }}
@@ -416,8 +429,20 @@
       // TYPE_DEBT: svelte-maplibre-gl onload event type is generic; e.target is MapLibreMap
       // at runtime. bind:map unusable due to exactOptionalPropertyTypes.
       mapInstance = e.target as unknown as MapLibreMap;
+      // Apply saved viewport once on load — after this, the imperative $effect above
+      // handles any store-driven viewport changes (e.g. from loadViewport).
+      const [lng, lat] = mapStore.center;
+      mapInstance.jumpTo({
+        center: [lng, lat],
+        zoom: mapStore.zoom,
+        bearing: mapStore.bearing,
+        pitch: mapStore.pitch,
+      });
     }}
     onmoveend={(e) => {
+      // Skip store sync when the move was caused by our own store→map sync,
+      // breaking the reactive feedback loop.
+      if (_viewportSyncFlag) return;
       const m = e.target as MapLibreMap;
       const c = m.getCenter();
       mapStore.setViewport({ center: [c.lng, c.lat], zoom: m.getZoom() });
