@@ -82,6 +82,18 @@
   }));
 
   const comments = $derived(commentsQuery.data ?? []);
+
+  const canSubmit = $derived(!(
+    creating || uploading
+    || (formType === 'text' && !formText.trim())
+    || (formType === 'emoji' && !formEmoji.trim())
+    || (formType === 'gif' && !formGifUrl.trim())
+    || (formType === 'image' && !formImageUrl && !selectedImageFile)
+    || (formType === 'link' && !formLinkUrl.trim())
+    || (formType === 'iiif' && !formManifestUrl.trim())
+    || (formAnchorType === 'region' && !regionGeometry)
+    || (formAnchorType === 'feature' && !pickedFeature)
+  ));
   let commentBody = $state('');
   let submittingComment = $state(false);
 
@@ -963,6 +975,17 @@
       >
         {#if uploading}Uploading…{:else}Save annotation{/if}
       </Button>
+      {#if !canSubmit && showForm}
+        <p class="text-xs text-slate-500 mt-1">
+          {#if formAnchorType === 'feature' && !pickedFeature}
+            Pick a feature on the map to anchor this annotation.
+          {:else if formType === 'text' && !formText.trim()}
+            Write some text to save this annotation.
+          {:else}
+            Add content (text, emoji, image, or link) to save.
+          {/if}
+        </p>
+      {/if}
     </form>
   {/if}
 
