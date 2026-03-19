@@ -209,7 +209,34 @@
     if (drawingStore.instance.getMode() !== mode) drawingStore.instance.setMode(mode);
   });
 
+  /** Check whether Terra Draw is mid-draw (incomplete geometry in progress). */
+  function isDrawing(): boolean {
+    return drawingStore.instance?.getModeState() === 'drawing';
+  }
+
+  /** Cancel the current in-progress drawing and return to select mode. */
+  function cancelDrawing() {
+    if (!drawingStore.instance) return;
+    // Switching to select mode discards any incomplete geometry
+    drawingStore.instance.setMode('select');
+    selectionStore.setActiveTool('select');
+  }
+
+  // Task 2.3: Escape key cancels in-progress drawing
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && isDrawing()) {
+      e.preventDefault();
+      cancelDrawing();
+    }
+  }
+
   function setTool(tool: DrawTool) {
+    // Task 2.4: Confirm before switching tools if mid-draw
+    if (isDrawing()) {
+      const discard = window.confirm('You have an unfinished drawing. Discard it?');
+      if (!discard) return;
+    }
+
     selectionStore.setActiveTool(tool);
     if (!drawingStore.instance) return;
 
@@ -229,6 +256,8 @@
     { id: 'polygon', label: 'Polygon', helpText: 'Click to add vertices, double-click to close the shape', icon: '⬠' },
   ];
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div
   class="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-1 bg-slate-800/90 backdrop-blur-sm rounded-lg p-1 shadow-xl ring-1 ring-white/10"
