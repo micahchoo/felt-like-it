@@ -38,7 +38,7 @@
     a.href = url;
     a.download = filename;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   async function exportGeoJSON(): Promise<void> {
@@ -114,7 +114,7 @@
       a.href = url;
       a.download = filename;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
 
       toastStore.success('PDF exported.');
     } catch {
