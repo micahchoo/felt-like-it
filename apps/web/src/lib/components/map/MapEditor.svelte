@@ -73,9 +73,11 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     embed?: boolean;
     /** When true, show owner-only controls (collaborator management, etc.). */
     isOwner?: boolean;
+    /** Role of the current user — shown as a badge for non-owners to clarify permissions. */
+    userRole?: string;
   }
 
-  let { mapId, mapTitle, initialLayers, userId, readonly = false, embed = false, isOwner = false }: Props = $props();
+  let { mapId, mapTitle, initialLayers, userId, readonly = false, embed = false, isOwner = false, userRole }: Props = $props();
 
   const mapQueryClient = useQueryClient();
 
@@ -634,6 +636,11 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     {#if !embed}
     <div class="flex items-center gap-1 px-3 py-2 bg-slate-800 border-b border-white/10 shrink-0">
       <span class="text-sm font-medium text-white truncate mr-auto">{mapTitle}</span>
+      {#if userRole && userRole !== 'owner'}
+        <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/80 text-slate-300 capitalize">
+          {userRole}
+        </span>
+      {/if}
 
       {#if !effectiveReadonly}
         <!-- Design mode toggle -->

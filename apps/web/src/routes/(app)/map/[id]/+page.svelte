@@ -25,4 +25,5 @@
   userId={data.userId}
   readonly={data.userRole === 'viewer' || data.userRole === 'commenter'}
   isOwner={data.userRole === 'owner'}
+  userRole={data.userRole}
 />

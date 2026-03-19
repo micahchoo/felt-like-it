@@ -1,6 +1,7 @@
 <script lang="ts">
   import { trpc } from '$lib/utils/trpc.js';
   import Button from '$lib/components/ui/Button.svelte';
+  import { toastStore } from '$lib/components/ui/Toast.svelte';
 
   interface Props {
     shareToken: string;
@@ -51,6 +52,7 @@
     try {
       await trpc.comments.createForShare.mutate({ shareToken, authorName: name, body });
       newBody = '';
+      toastStore.success('Comment posted.');
       await loadComments();
     } catch {
       error = 'Failed to post comment.';
