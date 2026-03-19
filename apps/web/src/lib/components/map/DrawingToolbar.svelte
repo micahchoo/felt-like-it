@@ -187,6 +187,14 @@
       // removeFeatures() clears the Terra Draw overlay — no visual gap.
       await onfeaturedrawn?.(activeLayer.id, { geometry, properties, id: upsertedIds[0] });
     } catch (err) {
+      // Clean up the orphaned Terra Draw geometry so it doesn't persist visually
+      if (drawingStore.instance) {
+        try {
+          drawingStore.instance.removeFeatures([f.id]);
+        } catch (_) {
+          // Feature may already have been removed — safe to ignore
+        }
+      }
       console.error('[DrawingToolbar] saveFeature failed:', err);
       toastStore.error('Failed to save drawn feature.');
     }
