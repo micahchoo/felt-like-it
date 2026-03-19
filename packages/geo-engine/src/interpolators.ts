@@ -35,6 +35,11 @@ function isZoomStopArray(v: unknown): v is ZoomStop[] {
   );
 }
 
+/** Filter out zoom stops whose value is null or undefined. */
+function filterNullStops(stops: ZoomStop[]): ZoomStop[] {
+  return stops.filter(([, value]) => value != null);
+}
+
 function flattenStops(stops: ZoomStop[]): unknown[] {
   const flat: unknown[] = [];
   for (const [zoom, value] of stops) {
@@ -56,19 +61,20 @@ export function isFslInterpolator(value: unknown): boolean {
  * Convert an FSL interpolator object to a MapLibre zoom expression.
  * Returns the value unchanged if it is not an FSL interpolator.
  */
-export function fslInterpolatorToMapLibre(value: unknown): unknown {
+export function fslInterpolatorToMapLibre(value: unknown): unknown | undefined {
   if (!isFslInterpolator(value)) return value;
 
   const obj = value as Record<string, unknown>;
 
   // { linear: [[zoom, value], ...] }
   if ('linear' in obj) {
-    const stops = obj['linear'];
-    if (!isZoomStopArray(stops)) {
-      throw new Error(`FSL linear interpolator: expected [[zoom, value], ...], got: ${JSON.stringify(stops)}`);
+    const rawStops = obj['linear'];
+    if (!isZoomStopArray(rawStops)) {
+      throw new Error(`FSL linear interpolator: expected [[zoom, value], ...], got: ${JSON.stringify(rawStops)}`);
     }
+    const stops = filterNullStops(rawStops);
     if (stops.length < 2) {
-      throw new Error(`FSL linear interpolator requires at least 2 stops`);
+      return undefined;
     }
     return ['interpolate', ['linear'], ['zoom'], ...flattenStops(stops)];
   }
@@ -79,9 +85,13 @@ export function fslInterpolatorToMapLibre(value: unknown): unknown {
     if (!Array.isArray(raw) || raw.length !== 2) {
       throw new Error(`FSL step interpolator: expected [baseValue, stops], got: ${JSON.stringify(raw)}`);
     }
-    const [base, stops] = raw as [unknown, unknown];
-    if (!isZoomStopArray(stops)) {
+    const [base, rawStops] = raw as [unknown, unknown];
+    if (!isZoomStopArray(rawStops)) {
       throw new Error(`FSL step interpolator: expected [[zoom, value], ...] as second element`);
+    }
+    const stops = filterNullStops(rawStops);
+    if (stops.length === 0) {
+      return base != null ? base : undefined;
     }
     return ['step', ['zoom'], base, ...flattenStops(stops)];
   }
@@ -92,15 +102,16 @@ export function fslInterpolatorToMapLibre(value: unknown): unknown {
     if (!Array.isArray(raw) || raw.length !== 2) {
       throw new Error(`FSL exp interpolator: expected [base, stops], got: ${JSON.stringify(raw)}`);
     }
-    const [base, stops] = raw as [unknown, unknown];
+    const [base, rawStops] = raw as [unknown, unknown];
     if (typeof base !== 'number') {
       throw new Error(`FSL exp interpolator: base must be a number, got: ${JSON.stringify(base)}`);
     }
-    if (!isZoomStopArray(stops)) {
+    if (!isZoomStopArray(rawStops)) {
       throw new Error(`FSL exp interpolator: expected [[zoom, value], ...] as second element`);
     }
+    const stops = filterNullStops(rawStops);
     if (stops.length < 2) {
-      throw new Error(`FSL exp interpolator requires at least 2 stops`);
+      return undefined;
     }
     return ['interpolate', ['exponential', base], ['zoom'], ...flattenStops(stops)];
   }
@@ -123,10 +134,11 @@ export function fslInterpolatorToMapLibre(value: unknown): unknown {
     if (!isZoomStopArray(stops)) {
       throw new Error(`FSL cubicbezier interpolator: expected [[zoom, value], ...] as fifth element`);
     }
-    if (stops.length < 2) {
-      throw new Error(`FSL cubicbezier interpolator requires at least 2 stops`);
+    const filteredStops = filterNullStops(stops);
+    if (filteredStops.length < 2) {
+      return undefined;
     }
-    return ['interpolate', ['cubic-bezier', x1, y1, x2, y2], ['zoom'], ...flattenStops(stops)];
+    return ['interpolate', ['cubic-bezier', x1, y1, x2, y2], ['zoom'], ...flattenStops(filteredStops)];
   }
 
   return value;
