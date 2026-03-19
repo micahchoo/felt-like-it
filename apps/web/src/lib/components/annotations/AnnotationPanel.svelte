@@ -85,14 +85,22 @@
   let commentBody = $state('');
   let submittingComment = $state(false);
 
-  // Notify parent of count changes. untrack() the callback to avoid tracking
-  // the prop function reference as a dependency — otherwise the new closure
-  // created on each parent re-render re-fires this effect, creating a cycle
-  // that exceeds Svelte's effect depth limit during initial map tile loading.
+  // Notify parent of count changes. Two guards prevent effect_update_depth_exceeded:
+  //  1. untrack() the callback so the parent's new closure isn't a dependency.
+  //  2. Previous-value check so the callback only fires when counts actually change,
+  //     breaking the synchronous re-render cycle during initial map tile loading.
+  let _prevAnnotationCount = -1;
+  let _prevCommentCount = -1;
   $effect(() => {
     const a = annotationList.length;
     const c = comments.length;
-    untrack(() => oncountchange?.(a, c));
+    untrack(() => {
+      if (a !== _prevAnnotationCount || c !== _prevCommentCount) {
+        _prevAnnotationCount = a;
+        _prevCommentCount = c;
+        oncountchange?.(a, c);
+      }
+    });
   });
 
   // ── Comment mutations (TanStack Query) ───────────────────────────────────
