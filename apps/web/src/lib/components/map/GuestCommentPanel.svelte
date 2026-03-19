@@ -113,7 +113,7 @@
     />
     <textarea
       bind:value={newBody}
-      placeholder="Leave a comment…"
+      placeholder="Write a comment..."
       rows={3}
       class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
     ></textarea>
