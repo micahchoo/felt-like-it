@@ -314,6 +314,29 @@ export const annotationService = {
   },
 
   /**
+   * Convert a feature-anchored (orphaned) annotation's anchor to a plain point.
+   * Replaces the entire anchor with a point anchor at the given coordinates.
+   * Map access is checked at the router layer (editor role required).
+   */
+  async convertAnchorToPoint(
+    annotationId: string,
+    mapId: string,
+    coordinates: [number, number],
+  ): Promise<void> {
+    const anchorJson = JSON.stringify({
+      type: 'point',
+      geometry: { type: 'Point', coordinates },
+    });
+
+    await typedExecute<{ id: string }>(sql`
+      UPDATE annotation_objects
+      SET anchor = ${anchorJson}::jsonb,
+          updated_at = NOW()
+      WHERE id = ${annotationId}::uuid AND map_id = ${mapId}::uuid
+    `);
+  },
+
+  /**
    * Flag feature-anchored annotations as orphaned after their features are deleted.
    * Sets `anchor.featureDeleted = true` on any annotation whose anchor references
    * one of the given feature IDs.

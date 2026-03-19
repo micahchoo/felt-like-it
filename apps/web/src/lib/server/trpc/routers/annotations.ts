@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../init.js';
 import { annotationService } from '../../annotations/service.js';
+import { requireMapAccess } from '../../geo/access.js';
 import {
   CreateAnnotationObjectSchema,
   UpdateAnnotationObjectSchema,
@@ -69,6 +70,17 @@ export const annotationsRouter = router({
         userName: ctx.user.name,
         id: input.id,
       });
+    }),
+
+  convertToPoint: protectedProcedure
+    .input(z.object({
+      mapId: z.string().uuid(),
+      annotationId: z.string().uuid(),
+      coordinates: z.tuple([z.number(), z.number()]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireMapAccess(ctx.user.id, input.mapId, 'editor');
+      await annotationService.convertAnchorToPoint(input.annotationId, input.mapId, input.coordinates);
     }),
 
   /** Fetch IIIF NavPlace extension — unchanged from legacy router. */

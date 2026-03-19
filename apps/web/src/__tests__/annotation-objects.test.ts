@@ -314,6 +314,44 @@ describe('annotationService adversarial cases', () => {
   });
 });
 
+describe('annotationService.convertAnchorToPoint', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('updates annotation anchor from feature to point', async () => {
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([{ id: OBJ_ID }]));
+
+    await annotationService.convertAnchorToPoint(OBJ_ID, MAP_ID, [-122.4, 37.8]);
+
+    expect(db.execute).toHaveBeenCalledOnce();
+  });
+
+  it('calls convertToPoint via tRPC router and returns void', async () => {
+    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([{ id: OBJ_ID }]));
+
+    await expect(
+      makeCaller().convertToPoint({
+        mapId: MAP_ID,
+        annotationId: OBJ_ID,
+        coordinates: [-122.4, 37.8],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(db.execute).toHaveBeenCalledOnce();
+  });
+
+  it('does not call db when annotationId is not a valid uuid (schema rejects)', async () => {
+    await expect(
+      makeCaller().convertToPoint({
+        mapId: MAP_ID,
+        annotationId: 'not-a-uuid',
+        coordinates: [0, 0],
+      }),
+    ).rejects.toThrow();
+
+    expect(db.execute).not.toHaveBeenCalled();
+  });
+});
+
 describe('annotationService.flagOrphanedAnnotations', () => {
   beforeEach(() => vi.resetAllMocks());
 

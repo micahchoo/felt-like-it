@@ -498,6 +498,17 @@
     },
   }));
 
+  const convertToPointMutation = createMutation(() => ({
+    mutationFn: (input: { mapId: string; annotationId: string; coordinates: [number, number] }) =>
+      trpc.annotations.convertToPoint.mutate(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
+    },
+    onError: (_err: unknown) => {
+      toastStore.error('Failed to convert annotation to point.');
+    },
+  }));
+
   async function handleCreate(e: Event) {
     e.preventDefault();
     creating = true;
@@ -1010,6 +1021,15 @@
             authorName={annotation.authorName}
             createdAt={annotation.createdAt}
             featureDeleted={annotation.anchor.type === 'feature' && annotation.anchor.featureDeleted === true}
+            onconverttopoint={annotation.anchor.type === 'feature' && annotation.anchor.featureDeleted === true
+              ? () => {
+                  const coords: [number, number] =
+                    annotation.anchor.type === 'feature' && 'geometry' in annotation.anchor && annotation.anchor.geometry
+                      ? (annotation.anchor.geometry as { type: string; coordinates: [number, number] }).coordinates
+                      : [0, 0];
+                  convertToPointMutation.mutate({ mapId, annotationId: annotation.id, coordinates: coords });
+                }
+              : undefined}
           />
 
           {#if annotation.anchor.type === 'viewport'}
