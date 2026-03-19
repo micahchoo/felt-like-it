@@ -109,10 +109,16 @@
   // Local $state vars are bound to <MapLibre> via bind:center/zoom/bearing/pitch.
   // The library's move handler updates them. We sync to mapStore via $effect
   // with untrack on the callback to avoid circular deps.
-  let mapCenter = $state<maplibregl.LngLatLike | undefined>(undefined);
-  let mapZoom = $state<number | undefined>(undefined);
-  let mapBearing = $state<number | undefined>(undefined);
-  let mapPitch = $state<number | undefined>(undefined);
+  //
+  // IMPORTANT: Initialize from mapStore — NOT undefined. The library's internal
+  // move handler has two branches: if (center) writes only on change (safe),
+  // else writes tr.center on EVERY frame (creates undefined→value transition
+  // that cascades into effect_update_depth_exceeded). Seeding real values keeps
+  // us on the safe branch from the first frame.
+  let mapCenter = $state<maplibregl.LngLatLike>({ lng: mapStore.center[0], lat: mapStore.center[1] });
+  let mapZoom = $state<number>(mapStore.zoom);
+  let mapBearing = $state<number>(mapStore.bearing);
+  let mapPitch = $state<number>(mapStore.pitch);
 
   // Store → local (only fires when loadViewport changes the store)
   $effect(() => {
@@ -123,10 +129,8 @@
     // Only update if store values differ from what the library wrote.
     // This prevents re-triggering the library's camera effect with the same values.
     untrack(() => {
-      if (!mapCenter || (mapCenter as { lng: number; lat: number }).lng !== lng ||
-          (mapCenter as { lng: number; lat: number }).lat !== lat) {
-        mapCenter = { lng, lat };
-      }
+      const cur = mapCenter as { lng: number; lat: number };
+      if (cur.lng !== lng || cur.lat !== lat) mapCenter = { lng, lat };
       if (mapZoom !== z) mapZoom = z;
       if (mapBearing !== b) mapBearing = b;
       if (mapPitch !== p) mapPitch = p;
@@ -135,16 +139,11 @@
 
   // Local → store (fires when the library's move handler updates bound values)
   $effect(() => {
-    // Read bound values (tracked)
-    const c = mapCenter;
+    const c = mapCenter as { lng: number; lat: number };
     const z = mapZoom;
-    if (!c || z === undefined) return;
-    const lng = (c as { lng: number }).lng ?? (c as number[])[0];
-    const lat = (c as { lat: number }).lat ?? (c as number[])[1];
-    if (typeof lng !== 'number' || typeof lat !== 'number') return;
     // Write to store (untracked to avoid circular dep)
     untrack(() => {
-      mapStore.setViewport({ center: [lng, lat], zoom: z });
+      mapStore.setViewport({ center: [c.lng, c.lat], zoom: z });
     });
   });
 
@@ -619,9 +618,9 @@
               paint={lrc.circlePaint as unknown as NonNullable<CircleLayerSpecification['paint']>}
               filter={lrc.filter as unknown as NonNullable<CircleLayerSpecification['filter']>}
               onclick={(e) => {
-                if (!clickable) return;
+                if (!lrc.clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
               }}
             />
             {#if lrc.labelAttr && lrc.symbolLayout && lrc.symbolPaint}

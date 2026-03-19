@@ -34,11 +34,15 @@ export const selectionStore = {
   setActiveTool(tool: DrawTool) {
     _activeTool = tool;
     if (tool !== null) {
-      // Clear selection when switching to a drawing tool
-      _selectedFeature = null;
-      _selectedFeatureIds = new Set();
-      _popupCoords = null;
-      _selectedLayerId = null;
+      // Clear selection when switching tools (skip if already clear to
+      // avoid spurious reactivity from new Set() reference — same guard
+      // as clearSelection()).
+      if (_selectedFeature || _selectedFeatureIds.size > 0) {
+        _selectedFeature = null;
+        _selectedFeatureIds = new Set();
+        _popupCoords = null;
+        _selectedLayerId = null;
+      }
     }
   },
 

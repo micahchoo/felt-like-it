@@ -248,6 +248,11 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
 
     // Entry actions: set the tool implied by the target mode
     switch (next.type) {
+      case 'featureSelected':
+        // Reset to select tool so the drawing tool doesn't stay active
+        // (e.g. after handleFeatureDrawn where tool was 'polygon'/'point')
+        selectionStore.setActiveTool('select');
+        break;
       case 'drawRegion':
         selectionStore.setActiveTool('polygon');
         break;
