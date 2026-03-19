@@ -212,6 +212,88 @@
     fill:   { 'fill-color': '#22c55e', 'fill-opacity': 0.45, 'fill-outline-color': '#15803d' },
   };
 
+  // Stable fallback — avoids creating a new empty FeatureCollection on every render.
+  const EMPTY_COLLECTION: { type: 'FeatureCollection'; features: GeoJSONFeature[] } = { type: 'FeatureCollection', features: [] };
+
+  // Stable canvas context attributes — new object literal on every render would
+  // cause svelte-maplibre-gl to re-create the canvas.
+  const CANVAS_CTX_ATTRS = { preserveDrawingBuffer: true };
+
+  // Stable paint objects for non-data layers — avoids creating new references per render.
+  const ANNOTATION_PIN_PAINT = {
+    'circle-radius': 10, 'circle-color': '#f59e0b',
+    'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.92,
+  };
+  const ANNOTATION_REGION_FILL_PAINT = { 'fill-color': '#3b82f6', 'fill-opacity': 0.15 };
+  const ANNOTATION_REGION_LINE_PAINT = { 'line-color': '#3b82f6', 'line-width': 2, 'line-opacity': 0.6 };
+  const ANNOTATION_HIGHLIGHT_PAINT = { 'line-color': '#f59e0b', 'line-width': 3, 'line-opacity': 0.6 };
+  const BADGE_CIRCLE_PAINT = {
+    'circle-radius': 8, 'circle-color': '#f59e0b',
+    'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff',
+  };
+  const BADGE_LABEL_LAYOUT = {
+    'text-field': ['to-string', ['get', 'count']], 'text-size': 10, 'text-allow-overlap': true,
+  };
+  const BADGE_LABEL_PAINT = { 'text-color': '#ffffff' };
+  const MEASURE_LINE_PAINT = { 'line-color': '#f59e0b', 'line-width': 2, 'line-dasharray': [4, 2], 'line-opacity': 0.8 };
+  const MEASURE_FILL_PAINT = { 'fill-color': '#f59e0b', 'fill-opacity': 0.1 };
+  const MEASURE_LABEL_LAYOUT = {
+    'text-field': ['get', 'label'], 'text-size': 12, 'text-offset': [0, -1.5], 'text-allow-overlap': false,
+  };
+  const MEASURE_LABEL_PAINT = { 'text-color': '#f59e0b', 'text-halo-color': '#1e293b', 'text-halo-width': 1.5 };
+  const LINESTRING_FILTER = ['==', '$type', 'LineString'];
+  const POLYGON_FILTER = ['==', '$type', 'Polygon'];
+
+  // ── Memoized per-layer render props ───────────────────────────────────────
+  // CRITICAL: function calls in the template (getLayerPaint, getLayerFilter, etc.)
+  // create new objects on every template re-evaluation. svelte-maplibre-gl compares
+  // by reference: new paint object → setPaintProperty → MapLibre render → tile
+  // events → template re-evaluates → new paint object → INFINITE LOOP.
+  //
+  // This $derived.by caches all per-layer props. It only recomputes when its
+  // tracked dependencies change (layersStore.all, selectionStore, filterStore),
+  // NOT on every template re-evaluation from unrelated state changes.
+  interface LayerRenderCache {
+    fillPaint: Record<string, unknown>;
+    linePaint: Record<string, unknown>;
+    circlePaint: Record<string, unknown>;
+    symbolPaint: NonNullable<SymbolLayerSpecification['paint']> | null;
+    symbolLayout: NonNullable<SymbolLayerSpecification['layout']> | null;
+    filter: unknown[] | undefined;
+    vtFilter: unknown[];
+    labelAttr: string | undefined;
+    clickable: boolean;
+    sandwiched: boolean;
+    isHeatmap: boolean;
+    usesVT: boolean;
+    layerStyle: LayerStyle | null | undefined;
+  }
+
+  const layerRenderCache = $derived.by<Record<string, LayerRenderCache>>(() => {
+    const result: Record<string, LayerRenderCache> = {};
+    for (const layer of layersStore.all) {
+      if (!layer.visible) continue;
+      const labelAttr = getLabelAttribute(layer);
+      const style = layer.style as LayerStyle | null | undefined;
+      result[layer.id] = {
+        fillPaint: getLayerPaint(layer, 'fill'),
+        linePaint: getLayerPaint(layer, 'line'),
+        circlePaint: getLayerPaint(layer, 'circle'),
+        symbolPaint: labelAttr ? getSymbolPaint(layer) : null,
+        symbolLayout: labelAttr ? getSymbolLayout(layer, labelAttr) : null,
+        filter: getLayerFilter(layer),
+        vtFilter: getVectorTileFilter(layer),
+        labelAttr,
+        clickable: isLayerClickable(layer),
+        sandwiched: isLayerSandwiched(layer),
+        isHeatmap: (layer.style as Record<string, unknown>)?.['type'] === 'heatmap',
+        usesVT: usesVectorTiles(layer),
+        layerStyle: style,
+      };
+    }
+    return result;
+  });
+
   function getLayerPaint(layer: Layer, paintType: 'circle' | 'line' | 'fill') {
     const style = layer.style as Record<string, unknown> | null | undefined;
     const rawPaint = (style?.['paint'] as Record<string, unknown>) ?? {};
@@ -424,7 +506,7 @@
     style={mapStore.basemapUrl}
     class="w-full h-full"
     autoloadGlobalCss={false}
-    canvasContextAttributes={{ preserveDrawingBuffer: true }}
+    canvasContextAttributes={CANVAS_CTX_ATTRS}
     onload={(e) => {
       // TYPE_DEBT: svelte-maplibre-gl onload event type is generic; e.target is MapLibreMap
       // at runtime. bind:map unusable due to exactOptionalPropertyTypes.
@@ -450,15 +532,8 @@
   >
     {#each layersStore.all as layer (layer.id)}
       {#if layer.visible}
-        {@const data = layerData[layer.id] ?? { type: 'FeatureCollection', features: [] }}
-        {@const isHeatmap = (layer.style as Record<string, unknown>)?.['type'] === 'heatmap'}
-
-        {@const labelAttr = getLabelAttribute(layer)}
-        {@const clickable = isLayerClickable(layer)}
-        {@const layerFilter = getLayerFilter(layer)}
-        {@const sandwiched = isLayerSandwiched(layer)}
-
-        {@const layerStyle = layer.style as LayerStyle | null | undefined}
+        {@const lrc = layerRenderCache[layer.id]}
+        {@const data = layerData[layer.id] ?? EMPTY_COLLECTION}
 
         <!-- TYPE_DEBT: paint/filter casts below — our dynamic builders return Record<string,unknown>
              but svelte-maplibre-gl props expect strict MapLibre spec union types. Runtime-safe;
@@ -466,103 +541,99 @@
              feature casts: svelte-maplibre-gl returns its own feature type, not maplibre-gl's
              GeoJSONFeature — structurally compatible at runtime. -->
         <!-- Heatmap layers are rendered by DeckGLOverlay (mounted below). Skip MapLibre. -->
-        {#if !isHeatmap && usesVectorTiles(layer)}
+        {#if lrc && !lrc.isHeatmap && lrc.usesVT}
           <!-- Martin vector tiles — used for layers above VECTOR_TILE_THRESHOLD features -->
           <VectorTileSource id={`source-${layer.id}`} tiles={[martinTileUrl()]}>
             <FillLayer
               id={`layer-${layer.id}-fill`}
               sourceLayer={MARTIN_SOURCE_LAYER}
-              paint={getLayerPaint(layer, 'fill') as unknown as NonNullable<FillLayerSpecification['paint']>}
-              filter={getVectorTileFilter(layer) as unknown as NonNullable<FillLayerSpecification['filter']>}
-              {...(sandwiched && firstLabelLayerId ? { beforeId: firstLabelLayerId } : {})}
+              paint={lrc.fillPaint as unknown as NonNullable<FillLayerSpecification['paint']>}
+              filter={lrc.vtFilter as unknown as NonNullable<FillLayerSpecification['filter']>}
+              {...(lrc.sandwiched && firstLabelLayerId ? { beforeId: firstLabelLayerId } : {})}
               onclick={(e) => {
-                if (!clickable) return;
+                if (!lrc.clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
               }}
             />
             <LineLayer
               id={`layer-${layer.id}-line`}
               sourceLayer={MARTIN_SOURCE_LAYER}
-              paint={getLayerPaint(layer, 'line') as unknown as NonNullable<LineLayerSpecification['paint']>}
-              filter={getVectorTileFilter(layer) as unknown as NonNullable<LineLayerSpecification['filter']>}
+              paint={lrc.linePaint as unknown as NonNullable<LineLayerSpecification['paint']>}
+              filter={lrc.vtFilter as unknown as NonNullable<LineLayerSpecification['filter']>}
               onclick={(e) => {
-                if (!clickable) return;
+                if (!lrc.clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
               }}
             />
             <CircleLayer
               id={`layer-${layer.id}-circle`}
               sourceLayer={MARTIN_SOURCE_LAYER}
-              paint={getLayerPaint(layer, 'circle') as unknown as NonNullable<CircleLayerSpecification['paint']>}
-              filter={getVectorTileFilter(layer) as unknown as NonNullable<CircleLayerSpecification['filter']>}
+              paint={lrc.circlePaint as unknown as NonNullable<CircleLayerSpecification['paint']>}
+              filter={lrc.vtFilter as unknown as NonNullable<CircleLayerSpecification['filter']>}
               onclick={(e) => {
-                if (!clickable) return;
+                if (!lrc.clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
               }}
             />
-            {#if labelAttr}
+            {#if lrc.labelAttr && lrc.symbolLayout && lrc.symbolPaint}
               <SymbolLayer
                 id={`layer-${layer.id}-label`}
                 sourceLayer={MARTIN_SOURCE_LAYER}
-                layout={getSymbolLayout(layer, labelAttr)}
-                paint={getSymbolPaint(layer)}
+                layout={lrc.symbolLayout}
+                paint={lrc.symbolPaint}
               />
             {/if}
           </VectorTileSource>
-        {:else if !isHeatmap}
+        {:else if lrc && !lrc.isHeatmap}
           <!-- GeoJSON source — used for layers below VECTOR_TILE_THRESHOLD features -->
           <GeoJSONSource id={`source-${layer.id}`} data={data}>
             <FillLayer
               id={`layer-${layer.id}-fill`}
-              paint={getLayerPaint(layer, 'fill') as unknown as NonNullable<FillLayerSpecification['paint']>}
-              filter={layerFilter as unknown as NonNullable<FillLayerSpecification['filter']>}
-              {...(sandwiched && firstLabelLayerId ? { beforeId: firstLabelLayerId } : {})}
+              paint={lrc.fillPaint as unknown as NonNullable<FillLayerSpecification['paint']>}
+              filter={lrc.filter as unknown as NonNullable<FillLayerSpecification['filter']>}
+              {...(lrc.sandwiched && firstLabelLayerId ? { beforeId: firstLabelLayerId } : {})}
               onclick={(e) => {
-                if (!clickable) return;
+                if (!lrc.clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
               }}
             />
             <LineLayer
               id={`layer-${layer.id}-line`}
-              paint={getLayerPaint(layer, 'line') as unknown as NonNullable<LineLayerSpecification['paint']>}
-              filter={layerFilter as unknown as NonNullable<LineLayerSpecification['filter']>}
+              paint={lrc.linePaint as unknown as NonNullable<LineLayerSpecification['paint']>}
+              filter={lrc.filter as unknown as NonNullable<LineLayerSpecification['filter']>}
               onclick={(e) => {
-                if (!clickable) return;
+                if (!lrc.clickable) return;
                 const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
+                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
               }}
             />
             <CircleLayer
               id={`layer-${layer.id}-circle`}
-              paint={getLayerPaint(layer, 'circle') as unknown as NonNullable<CircleLayerSpecification['paint']>}
-              filter={layerFilter as unknown as NonNullable<CircleLayerSpecification['filter']>}
+              paint={lrc.circlePaint as unknown as NonNullable<CircleLayerSpecification['paint']>}
+              filter={lrc.filter as unknown as NonNullable<CircleLayerSpecification['filter']>}
               onclick={(e) => {
                 if (!clickable) return;
                 const f = e.features?.[0];
                 if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, layerStyle ?? undefined, layer.id);
               }}
             />
-            {#if labelAttr}
+            {#if lrc.labelAttr && lrc.symbolLayout && lrc.symbolPaint}
               <!-- FSL labelAttribute: render the chosen property as a text label above each feature -->
               <SymbolLayer
                 id={`layer-${layer.id}-label`}
-                layout={getSymbolLayout(layer, labelAttr)}
-                paint={getSymbolPaint(layer)}
+                layout={lrc.symbolLayout}
+                paint={lrc.symbolPaint}
               />
             {/if}
             {@const highlightIds = annotatedByLayer.get(layer.id)}
             {#if highlightIds?.length}
               <LineLayer
                 id={`layer-${layer.id}-annotation-highlight`}
-                paint={{
-                  'line-color': '#f59e0b',
-                  'line-width': 3,
-                  'line-opacity': 0.6,
-                }}
+                paint={ANNOTATION_HIGHLIGHT_PAINT}
                 filter={['in', ['to-string', ['id']], ['literal', highlightIds]]}
               />
             {/if}
@@ -575,21 +646,22 @@
          so they appear instantly before the next tile rebuild. Uses the same
          Fill+Line+Circle sublayer pattern as the main GeoJSON sources. -->
     {#each layersStore.all as layer (layer.id)}
-      {#if layer.visible && usesVectorTiles(layer)}
+      {@const hotLrc = layerRenderCache[layer.id]}
+      {#if layer.visible && hotLrc?.usesVT}
         {@const hotCollection = hotOverlay.getCollection(layer.id)}
         {#if hotCollection.features.length > 0}
           <GeoJSONSource id={`hot-overlay-${layer.id}`} data={hotCollection as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}>
             <FillLayer
               id={`hot-overlay-${layer.id}-fill`}
-              paint={getLayerPaint(layer, 'fill') as unknown as NonNullable<FillLayerSpecification['paint']>}
+              paint={hotLrc.fillPaint as unknown as NonNullable<FillLayerSpecification['paint']>}
             />
             <LineLayer
               id={`hot-overlay-${layer.id}-line`}
-              paint={getLayerPaint(layer, 'line') as unknown as NonNullable<LineLayerSpecification['paint']>}
+              paint={hotLrc.linePaint as unknown as NonNullable<LineLayerSpecification['paint']>}
             />
             <CircleLayer
               id={`hot-overlay-${layer.id}-circle`}
-              paint={getLayerPaint(layer, 'circle') as unknown as NonNullable<CircleLayerSpecification['paint']>}
+              paint={hotLrc.circlePaint as unknown as NonNullable<CircleLayerSpecification['paint']>}
             />
           </GeoJSONSource>
         {/if}
@@ -615,13 +687,7 @@
       >
         <CircleLayer
           id="layer-annotations-circle"
-          paint={{
-            'circle-radius': 10,
-            'circle-color': '#f59e0b',
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#ffffff',
-            'circle-opacity': 0.92,
-          }}
+          paint={ANNOTATION_PIN_PAINT}
           onmouseenter={(e) => {
             if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
             const f = e.features?.[0];
@@ -687,10 +753,7 @@
       >
         <FillLayer
           id="layer-annotation-regions-fill"
-          paint={{
-            'fill-color': '#3b82f6',
-            'fill-opacity': 0.15,
-          }}
+          paint={ANNOTATION_REGION_FILL_PAINT}
           onmouseenter={(e) => {
             if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
             const f = e.features?.[0];
@@ -746,11 +809,7 @@
         />
         <LineLayer
           id="layer-annotation-regions-outline"
-          paint={{
-            'line-color': '#3b82f6',
-            'line-width': 2,
-            'line-opacity': 0.6,
-          }}
+          paint={ANNOTATION_REGION_LINE_PAINT}
         />
       </GeoJSONSource>
     {/if}
@@ -760,12 +819,7 @@
       <GeoJSONSource id="annotation-badges" data={badgeGeoJson}>
         <CircleLayer
           id="layer-annotation-badges"
-          paint={{
-            'circle-radius': 8,
-            'circle-color': '#f59e0b',
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#ffffff',
-          }}
+          paint={BADGE_CIRCLE_PAINT}
           onmouseenter={() => {
             if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
           }}
@@ -779,14 +833,8 @@
         />
         <SymbolLayer
           id="layer-annotation-badge-labels"
-          layout={{
-            'text-field': ['to-string', ['get', 'count']],
-            'text-size': 10,
-            'text-allow-overlap': true,
-          }}
-          paint={{
-            'text-color': '#ffffff',
-          }}
+          layout={BADGE_LABEL_LAYOUT}
+          paint={BADGE_LABEL_PAINT}
         />
       </GeoJSONSource>
     {/if}
@@ -796,13 +844,8 @@
       <GeoJSONSource id="measurement-annotations" data={measurementAnnotations as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}>
         <LineLayer
           id="measurement-annotations-line"
-          filter={['==', '$type', 'LineString']}
-          paint={{
-            'line-color': '#f59e0b',
-            'line-width': 2,
-            'line-dasharray': [4, 2],
-            'line-opacity': 0.8,
-          }}
+          filter={LINESTRING_FILTER}
+          paint={MEASURE_LINE_PAINT}
           onmouseenter={() => {
             if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
           }}
@@ -812,35 +855,18 @@
         />
         <FillLayer
           id="measurement-annotations-fill"
-          filter={['==', '$type', 'Polygon']}
-          paint={{
-            'fill-color': '#f59e0b',
-            'fill-opacity': 0.1,
-          }}
+          filter={POLYGON_FILTER}
+          paint={MEASURE_FILL_PAINT}
         />
         <LineLayer
           id="measurement-annotations-outline"
-          filter={['==', '$type', 'Polygon']}
-          paint={{
-            'line-color': '#f59e0b',
-            'line-width': 2,
-            'line-dasharray': [4, 2],
-            'line-opacity': 0.8,
-          }}
+          filter={POLYGON_FILTER}
+          paint={MEASURE_LINE_PAINT}
         />
         <SymbolLayer
           id="measurement-annotations-label"
-          layout={{
-            'text-field': ['get', 'label'],
-            'text-size': 12,
-            'text-offset': [0, -1.5],
-            'text-allow-overlap': false,
-          }}
-          paint={{
-            'text-color': '#f59e0b',
-            'text-halo-color': '#1e293b',
-            'text-halo-width': 1.5,
-          }}
+          layout={MEASURE_LABEL_LAYOUT}
+          paint={MEASURE_LABEL_PAINT}
         />
       </GeoJSONSource>
     {/if}
