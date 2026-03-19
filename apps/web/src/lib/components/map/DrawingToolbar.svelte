@@ -189,6 +189,11 @@
     } catch (err) {
       console.error('[DrawingToolbar] saveFeature failed:', err);
       toastStore.error('Failed to save drawn feature.');
+      try {
+        drawingStore.instance?.removeFeatures([f.id]);
+      } catch (cleanupErr) {
+        console.warn('[DrawingToolbar] cleanup after failed save:', cleanupErr);
+      }
     }
   }
 
