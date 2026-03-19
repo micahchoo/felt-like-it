@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { MapLibre, GeoJSONSource, VectorTileSource, CircleLayer, LineLayer, FillLayer, SymbolLayer, Popup } from 'svelte-maplibre-gl';
+  import maplibregl from 'maplibre-gl';
   import type { Map as MapLibreMap, MapMouseEvent, FillLayerSpecification, LineLayerSpecification, CircleLayerSpecification, SymbolLayerSpecification } from 'maplibre-gl';
   import { PUBLIC_MARTIN_URL } from '$env/static/public';
   import { mapStore } from '$lib/stores/map.svelte.js';
@@ -98,34 +100,52 @@
     mapStore.setMapInstance(mapInstance);
   });
 
-  // ── Viewport sync (store → map) ─────────────────────────────────────────
-  // Do NOT pass center/zoom/bearing/pitch as reactive props to <MapLibre>.
-  // Object-identity churn on center ({ lng, lat }) causes svelte-maplibre-gl
-  // to call map.setCenter() → moveend → setViewport → re-render → new object
-  // → effect_update_depth_exceeded.  Instead we sync imperatively via jumpTo.
+  // ── Viewport sync via svelte-maplibre-gl's bidirectional binding ────────
+  // The library uses $bindable() props + an internal 'move' handler:
+  //   if (center) → only writes when values change (safe, no churn)
+  //   else        → writes center = tr.center on EVERY frame (dangerous)
+  // By always providing bound values, we stay on the safe 'if' branch.
   //
-  // _viewportSyncFlag is set by the store-watching effect; onmoveend clears it
-  // to break the store→map→moveend→store feedback loop.
-  let _viewportSyncFlag = false;
+  // Local $state vars are bound to <MapLibre> via bind:center/zoom/bearing/pitch.
+  // The library's move handler updates them. We sync to mapStore via $effect
+  // with untrack on the callback to avoid circular deps.
+  let mapCenter = $state<maplibregl.LngLatLike | undefined>(undefined);
+  let mapZoom = $state<number | undefined>(undefined);
+  let mapBearing = $state<number | undefined>(undefined);
+  let mapPitch = $state<number | undefined>(undefined);
 
+  // Store → local (only fires when loadViewport changes the store)
   $effect(() => {
-    if (!mapInstance) return;
-    // Track store values — this effect re-runs when loadViewport() changes them.
     const [lng, lat] = mapStore.center;
-    const zoom = mapStore.zoom;
-    const bearing = mapStore.bearing;
-    const pitch = mapStore.pitch;
+    const z = mapStore.zoom;
+    const b = mapStore.bearing;
+    const p = mapStore.pitch;
+    // Only update if store values differ from what the library wrote.
+    // This prevents re-triggering the library's camera effect with the same values.
+    untrack(() => {
+      if (!mapCenter || (mapCenter as { lng: number; lat: number }).lng !== lng ||
+          (mapCenter as { lng: number; lat: number }).lat !== lat) {
+        mapCenter = { lng, lat };
+      }
+      if (mapZoom !== z) mapZoom = z;
+      if (mapBearing !== b) mapBearing = b;
+      if (mapPitch !== p) mapPitch = p;
+    });
+  });
 
-    // Skip if the map is already at the requested viewport (from onmoveend feedback).
-    const c = mapInstance.getCenter();
-    if (c.lng === lng && c.lat === lat &&
-        mapInstance.getZoom() === zoom &&
-        mapInstance.getBearing() === bearing &&
-        mapInstance.getPitch() === pitch) return;
-
-    _viewportSyncFlag = true;
-    mapInstance.jumpTo({ center: [lng, lat], zoom, bearing, pitch });
-    _viewportSyncFlag = false;
+  // Local → store (fires when the library's move handler updates bound values)
+  $effect(() => {
+    // Read bound values (tracked)
+    const c = mapCenter;
+    const z = mapZoom;
+    if (!c || z === undefined) return;
+    const lng = (c as { lng: number }).lng ?? (c as number[])[0];
+    const lat = (c as { lat: number }).lat ?? (c as number[])[1];
+    if (typeof lng !== 'number' || typeof lat !== 'number') return;
+    // Write to store (untracked to avoid circular dep)
+    untrack(() => {
+      mapStore.setViewport({ center: [lng, lat], zoom: z });
+    });
   });
 
   /**
@@ -504,31 +524,14 @@
 <div class="relative w-full h-full">
   <MapLibre
     style={mapStore.basemapUrl}
+    bind:map={mapInstance as maplibregl.Map | undefined}
+    bind:center={mapCenter}
+    bind:zoom={mapZoom}
+    bind:bearing={mapBearing}
+    bind:pitch={mapPitch}
     class="w-full h-full"
     autoloadGlobalCss={false}
     canvasContextAttributes={CANVAS_CTX_ATTRS}
-    onload={(e) => {
-      // TYPE_DEBT: svelte-maplibre-gl onload event type is generic; e.target is MapLibreMap
-      // at runtime. bind:map unusable due to exactOptionalPropertyTypes.
-      mapInstance = e.target as unknown as MapLibreMap;
-      // Apply saved viewport once on load — after this, the imperative $effect above
-      // handles any store-driven viewport changes (e.g. from loadViewport).
-      const [lng, lat] = mapStore.center;
-      mapInstance.jumpTo({
-        center: [lng, lat],
-        zoom: mapStore.zoom,
-        bearing: mapStore.bearing,
-        pitch: mapStore.pitch,
-      });
-    }}
-    onmoveend={(e) => {
-      // Skip store sync when the move was caused by our own store→map sync,
-      // breaking the reactive feedback loop.
-      if (_viewportSyncFlag) return;
-      const m = e.target as MapLibreMap;
-      const c = m.getCenter();
-      mapStore.setViewport({ center: [c.lng, c.lat], zoom: m.getZoom() });
-    }}
   >
     {#each layersStore.all as layer (layer.id)}
       {#if layer.visible}
