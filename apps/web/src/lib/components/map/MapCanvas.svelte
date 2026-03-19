@@ -442,19 +442,20 @@
     } as unknown as NonNullable<SymbolLayerSpecification['layout']>;
   }
 
-  // DEBUG: track handleFeatureClick calls to diagnose effect_update_depth_exceeded
-  let _clickCount = 0;
   function handleFeatureClick(feature: GeoJSONFeature, e: MapMouseEvent, layerStyle?: LayerStyle, layerId?: string) {
-    _clickCount++;
-    if (_clickCount <= 5) {
-      console.warn(`[handleFeatureClick #${_clickCount}]`, { featureId: feature.id, layerId, tool: selectionStore.activeTool });
-      console.trace('[handleFeatureClick] call stack');
-    }
     // Block feature clicks during active drawing operations only
     const tool = selectionStore.activeTool;
     if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
-    selectedLayerStyle = layerStyle;
-    selectionStore.selectFeature(feature, { lng: e.lngLat.lng, lat: e.lngLat.lat }, layerId);
+    // Defer state writes to a fresh microtask. MapLibre click handlers can fire
+    // during Svelte's initial effect flush (e.g. if the user clicks while the page
+    // is loading). Writing state synchronously would add to the current flush
+    // iteration counter — which already consumed ~900+ iterations mounting all the
+    // map layers — and exceed Svelte 5's 1000-iteration depth limit.
+    const coords = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+    queueMicrotask(() => {
+      selectedLayerStyle = layerStyle;
+      selectionStore.selectFeature(feature, coords, layerId);
+    });
   }
 
   // ── Annotation pin popup ──────────────────────────────────────────────────
@@ -741,14 +742,18 @@
               return;
             }
 
-            hoveredAnnotation = null;
-            selectedAnnotation = {
-              content: parsed,
-              authorName: props.authorName,
-              createdAt: props.createdAt,
-              anchorType: props.anchorType ?? 'point',
-              lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
-            };
+            // Defer state writes — see handleFeatureClick comment for rationale.
+            const lngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+            queueMicrotask(() => {
+              hoveredAnnotation = null;
+              selectedAnnotation = {
+                content: parsed,
+                authorName: props.authorName,
+                createdAt: props.createdAt,
+                anchorType: props.anchorType ?? 'point',
+                lngLat,
+              };
+            });
           }}
         />
       </GeoJSONSource>
@@ -806,14 +811,18 @@
               return;
             }
 
-            hoveredAnnotation = null;
-            selectedAnnotation = {
-              content: parsed,
-              authorName: props.authorName,
-              createdAt: props.createdAt,
-              anchorType: props.anchorType ?? 'region',
-              lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
-            };
+            // Defer state writes — see handleFeatureClick comment for rationale.
+            const lngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+            queueMicrotask(() => {
+              hoveredAnnotation = null;
+              selectedAnnotation = {
+                content: parsed,
+                authorName: props.authorName,
+                createdAt: props.createdAt,
+                anchorType: props.anchorType ?? 'region',
+                lngLat,
+              };
+            });
           }}
         />
         <LineLayer
