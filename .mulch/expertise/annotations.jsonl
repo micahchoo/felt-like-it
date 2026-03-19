@@ -1,0 +1,1 @@
+{"type":"pattern","name":"orphaned-annotation-repair","description":"convertAnchorToPoint uses raw SQL ::jsonb cast. Router requires editor role. AnnotationContent onconverttopoint prop only passed when featureDeleted===true.","classification":"tactical","recorded_at":"2026-03-19T00:27:00.267Z","id":"mx-d4d284"}

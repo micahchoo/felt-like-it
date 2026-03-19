@@ -8,6 +8,7 @@ domains:
   - map-state
   - tanstack-query
   - shared-types
+  - annotations
 governance:
   max_entries: 100
   warn_entries: 150
