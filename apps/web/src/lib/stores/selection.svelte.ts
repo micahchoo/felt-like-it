@@ -33,10 +33,12 @@ export const selectionStore = {
 
   setActiveTool(tool: DrawTool) {
     _activeTool = tool;
-    if (tool !== null) {
-      // Clear selection when switching tools (skip if already clear to
-      // avoid spurious reactivity from new Set() reference — same guard
-      // as clearSelection()).
+    // Only clear selection when switching to a drawing tool (point/line/polygon).
+    // 'select' tool preserves the selection — that's its purpose.
+    // Clearing on 'select' causes an effect cycle: selectFeature(feat) →
+    // transitionTo(featureSelected) → setActiveTool('select') → clears feat →
+    // effect re-fires → transitionTo(idle) → layerRenderCache recomputes ×N layers.
+    if (tool !== null && tool !== 'select') {
       if (_selectedFeature || _selectedFeatureIds.size > 0) {
         _selectedFeature = null;
         _selectedFeatureIds = new Set();

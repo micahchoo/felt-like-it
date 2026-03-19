@@ -292,7 +292,8 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   $effect(() => {
     if (designMode) {
       transitionTo({ type: 'idle' });
-      selectionStore.setActiveTool('select'); // unconditional reset for design mode
+      selectionStore.clearSelection();
+      selectionStore.setActiveTool('select');
     }
   });
 
