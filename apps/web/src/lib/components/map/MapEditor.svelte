@@ -85,6 +85,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   const annotationPinsQuery = createQuery(() => ({
     queryKey: queryKeys.annotations.list({ mapId }),
     queryFn: () => trpc.annotations.list.query({ mapId }),
+    enabled: !!userId, // Skip for unauthenticated guests (share/embed pages)
   }));
 
   // embed implies readonly — illegal state prevented at the prop level.

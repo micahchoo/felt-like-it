@@ -55,6 +55,7 @@
   const annotationsQuery = createQuery(() => ({
     queryKey: queryKeys.annotations.list({ mapId }),
     queryFn: () => trpc.annotations.list.query({ mapId }),
+    enabled: !!userId, // Skip for unauthenticated guests (share/embed pages)
   }));
 
   const annotationList = $derived(annotationsQuery.data ?? []);
