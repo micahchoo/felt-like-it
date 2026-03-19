@@ -27,7 +27,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   import AnnotationPanel from '$lib/components/annotations/AnnotationPanel.svelte';
   import SidePanel from './SidePanel.svelte';
   import type { SectionId } from './SidePanel.svelte';
-  import type { AnnotationPinCollection, AnnotationRegionCollection } from '$lib/components/map/MapCanvas.svelte';
+  import { createAnnotationGeoStore } from '$lib/stores/annotation-geo.svelte.js';
   import type { MeasurementResult, DistanceUnit, AreaUnit } from '@felt-like-it/geo-engine';
   import { DISTANCE_UNITS, AREA_UNITS, formatDistance, formatArea, measureLine, measurePolygon } from '@felt-like-it/geo-engine';
   import DrawActionRow from './DrawActionRow.svelte';
@@ -388,82 +388,9 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   // Annotations are stored as tRPC records but rendered via MapCanvas as a
   // dedicated GeoJSON source. Content is embedded in feature properties so the
   // popup can render without a second fetch.
-  // These $derived values auto-update when any annotation mutation invalidates
+  // These derived values auto-update when any annotation mutation invalidates
   // the shared query cache — no manual refresh needed.
-  const annotationRows = $derived(annotationPinsQuery.data ?? []);
-
-  const annotationPins: AnnotationPinCollection = $derived({
-    type: 'FeatureCollection',
-    features: annotationRows
-      .filter((a) => a.anchor.type === 'point' && !('parentId' in a && a.parentId))
-      .map((a) => ({
-        type: 'Feature' as const,
-        id: a.id,
-        geometry: a.anchor.type === 'point'
-          ? { type: 'Point' as const, coordinates: a.anchor.geometry.coordinates.slice(0, 2) as [number, number] }
-          : { type: 'Point' as const, coordinates: [0, 0] as [number, number] },
-        properties: {
-          authorName: a.authorName,
-          createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
-          contentJson: JSON.stringify(a.content),
-          anchorType: a.anchor.type,
-        },
-      })),
-  });
-
-  const annotationRegions: AnnotationRegionCollection = $derived({
-    type: 'FeatureCollection',
-    features: annotationRows
-      .filter((a) => a.anchor.type === 'region' && !('parentId' in a && a.parentId))
-      .map((a) => ({
-        type: 'Feature' as const,
-        id: a.id,
-        geometry: a.anchor.type === 'region'
-          ? a.anchor.geometry
-          : { type: 'Polygon' as const, coordinates: [] },
-        properties: {
-          authorName: a.authorName,
-          createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
-          contentJson: JSON.stringify(a.content),
-          anchorType: a.anchor.type,
-        },
-      })),
-  });
-
-  const annotatedFeaturesIndex: Map<string, { layerId: string; count: number }> = $derived.by(() => {
-    const featureAnchored = annotationRows.filter(
-      (a: { anchor: { type: string } }) => a.anchor.type === 'feature'
-    );
-    const featureMap = new Map<string, { layerId: string; count: number }>();
-    for (const ann of featureAnchored) {
-      const anchor = ann.anchor as { type: 'feature'; featureId: string; layerId: string };
-      const key = anchor.featureId;
-      const existing = featureMap.get(key);
-      if (existing) {
-        existing.count++;
-      } else {
-        featureMap.set(key, { layerId: anchor.layerId, count: 1 });
-      }
-    }
-    return featureMap;
-  });
-
-  const measurementAnnotationData: { type: 'FeatureCollection'; features: { type: 'Feature'; geometry: unknown; properties: Record<string, unknown> }[] } = $derived.by(() => {
-    const measurementAnchored = annotationRows.filter(
-      (a: { anchor: { type: string } }) => a.anchor.type === 'measurement'
-    );
-    const measurementFeatures = measurementAnchored.map((ann) => {
-      const anchor = ann.anchor as { type: 'measurement'; geometry: { type: string; coordinates: unknown } };
-      const body = ann.content.kind === 'single' ? ann.content.body : null;
-      const label = body?.type === 'measurement' ? (body as { displayValue: string }).displayValue : '';
-      return {
-        type: 'Feature' as const,
-        geometry: anchor.geometry,
-        properties: { id: ann.id, label, annotationId: ann.id },
-      };
-    });
-    return { type: 'FeatureCollection' as const, features: measurementFeatures };
-  });
+  const annotationGeo = createAnnotationGeoStore(() => annotationPinsQuery.data ?? []);
 
   // Initialize layers — untrack the store write to prevent reading _activeLayerId
   // inside set() from becoming a tracked dependency (causes effect_update_depth_exceeded).
@@ -779,12 +706,12 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
         readonly={effectiveReadonly}
         {layerData}
         onfeaturedrawn={handleFeatureDrawn}
-        {annotationPins}
-        {annotationRegions}
+        annotationPins={annotationGeo.pins}
+        annotationRegions={annotationGeo.regions}
         {...(measureActive ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
         {...(interactionState.type === 'drawRegion' && !interactionState.geometry ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { transitionTo({ type: 'drawRegion', geometry: g }); } } : {})}
-        annotatedFeatures={annotatedFeaturesIndex}
-        measurementAnnotations={measurementAnnotationData}
+        annotatedFeatures={annotationGeo.index}
+        measurementAnnotations={annotationGeo.measurements}
         onbadgeclick={(featureId) => {
           activeSection = 'annotations';
           scrollToAnnotationFeatureId = featureId;
