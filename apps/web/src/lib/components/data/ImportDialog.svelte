@@ -20,6 +20,8 @@
   let jobId = $state<string | null>(null);
   let progress = $state(0);
   let pollInterval: ReturnType<typeof setInterval> | null = null;
+  let pollStartedAt: number | null = null;
+  const POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
   const ACCEPTED_TYPES = ['.geojson', '.json', '.csv', '.kml', '.gpx', '.gpkg', '.geojsonl', '.zip'];
 
@@ -68,6 +70,7 @@
 
       // Poll for progress
       pollInterval = setInterval(pollJob, 1500);
+      pollStartedAt = Date.now();
     } catch (err) {
       toastStore.error(String(err instanceof Error ? err.message : 'Upload failed'));
       uploading = false;
@@ -76,6 +79,14 @@
 
   async function pollJob() {
     if (!jobId) return;
+
+    if (pollStartedAt && Date.now() - pollStartedAt > POLL_TIMEOUT_MS) {
+      clearInterval(pollInterval!);
+      pollInterval = null;
+      uploading = false;
+      toastStore.error('Import is taking longer than expected. Check back later or try a smaller file.');
+      return;
+    }
 
     try {
       const res = await fetch(`/api/job/${jobId}`);
@@ -111,6 +122,7 @@
     jobId = null;
     progress = 0;
     uploading = false;
+    pollStartedAt = null;
     if (pollInterval) {
       clearInterval(pollInterval);
       pollInterval = null;
