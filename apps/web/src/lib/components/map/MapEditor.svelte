@@ -37,6 +37,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { queryKeys } from '$lib/utils/query-keys.js';
   import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
+  import { type InteractionState, type SelectedFeature, type PickedFeatureRef, interactionModes } from '$lib/stores/interaction-modes.svelte.js';
 
   function isLargeLayer(layer: Layer): boolean {
     return PUBLIC_MARTIN_URL.length > 0 && (layer.featureCount ?? 0) > VECTOR_TILE_THRESHOLD;
@@ -244,60 +245,10 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   });
 
   // ── Interaction state (discriminated union) ───────────────────────────────
-  // Replaces: annotationRegionMode, annotationRegionGeometry, featurePickMode,
-  // pickedFeature, activeFeature, pendingMeasurementAnnotation.
-  // Compiler enforces mutual exclusivity — no invalid flag combinations.
-  type SelectedFeature = {
-    featureId: string;
-    layerId: string;
-    geometry: Geometry;
-  };
-
-  type PickedFeatureRef = {
-    featureId: string;
-    layerId: string;
-  };
-
-  type InteractionState =
-    | { type: 'idle' }
-    | { type: 'featureSelected'; feature: SelectedFeature }
-    | { type: 'drawRegion'; geometry?: { type: 'Polygon'; coordinates: number[][][] } }
-    | { type: 'pickFeature'; picked?: PickedFeatureRef }
-    | { type: 'pendingMeasurement'; anchor: {
-        type: 'measurement';
-        geometry: { type: 'LineString'; coordinates: [number, number][] } | { type: 'Polygon'; coordinates: [number, number][][] };
-      }; content: {
-        type: 'measurement';
-        measurementType: 'distance' | 'area';
-        value: number;
-        unit: string;
-        displayValue: string;
-      } };
-
-  let interactionState: InteractionState = $state({ type: 'idle' });
-
-  /** Centralized mode transition — atomically sets interactionState and implied tool.
-   *  Uses untrack() for the prev-state read so it's safe to call from $effect blocks. */
-  function transitionTo(next: InteractionState) {
-    const prev = untrack(() => interactionState);
-    interactionState = next;
-
-    // Entry actions: set the tool implied by the target mode
-    switch (next.type) {
-      case 'drawRegion':
-        selectionStore.setActiveTool('polygon');
-        break;
-      case 'pickFeature':
-        selectionStore.setActiveTool('select');
-        break;
-      case 'idle':
-        // Reset tool when leaving annotation-capture modes
-        if (prev.type === 'drawRegion' || prev.type === 'pickFeature' || prev.type === 'pendingMeasurement') {
-          selectionStore.setActiveTool('select');
-        }
-        break;
-    }
-  }
+  // Types and transitionTo() live in $lib/stores/interaction-modes.svelte.ts.
+  // This component binds a local accessor for brevity; the store owns the state.
+  const { transitionTo } = interactionModes;
+  const interactionState = $derived(interactionModes.state);
 
   let scrollToAnnotationFeatureId = $state<string | null>(null);
 
