@@ -553,6 +553,8 @@
       resetForm();
       onannotationsaved('created');
       toastStore.success('Annotation saved.');
+      // Scroll list to top so the newly created annotation is visible when the query refetches
+      tick().then(() => { listContainerEl?.scrollTo({ top: 0, behavior: 'smooth' }); });
     } catch (err: unknown) {
       createError = (err as { message?: string })?.message ?? 'Failed to create annotation.';
     } finally {
@@ -608,6 +610,7 @@
 
   // ── Thread / reply state ────────────────────────────────────────────────────
 
+  let listContainerEl = $state<HTMLDivElement | undefined>(undefined);
   let expandedAnnotationId = $state<string | null>(null);
   let replyingTo = $state<string | null>(null);
   let replyText = $state('');
@@ -1005,7 +1008,7 @@
   {/if}
 
   <!-- Annotation list -->
-  <div class="flex-1 overflow-y-auto">
+  <div class="flex-1 overflow-y-auto" bind:this={listContainerEl}>
     {#if listLoading}
       <p class="text-xs text-slate-500 text-center py-6">Loading…</p>
     {:else if listError}
