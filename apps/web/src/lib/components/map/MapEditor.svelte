@@ -28,6 +28,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   import SidePanel from './SidePanel.svelte';
   import type { SectionId } from './SidePanel.svelte';
   import { createAnnotationGeoStore } from '$lib/stores/annotation-geo.svelte.js';
+  import { createViewportStore } from '$lib/stores/viewport.svelte.js';
   import type { MeasurementResult, DistanceUnit, AreaUnit } from '@felt-like-it/geo-engine';
   import { DISTANCE_UNITS, AREA_UNITS, formatDistance, formatArea, measureLine, measurePolygon } from '@felt-like-it/geo-engine';
   import DrawActionRow from './DrawActionRow.svelte';
@@ -143,84 +144,16 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   let savingViewport = $state(false);
 
   // ── Viewport-based pagination state for large layers ─────────────────────
-  let viewportAbort: AbortController | null = null;
-  let viewportRows = $state<Array<{ id: string; properties: Record<string, unknown>; geometryType: string }>>([]);
-  let viewportTotal = $state(0);
-  let viewportPage = $state(1);
-  let viewportPageSize = $state(50);
-  let viewportSortBy = $state<'created_at' | 'updated_at' | 'id'>('created_at');
-  let viewportSortDir = $state<'asc' | 'desc'>('asc');
-  let viewportLoading = $state(false);
-
-  async function fetchViewportFeatures() {
-    const activeLayer = layersStore.active;
-    if (!activeLayer || !isLargeLayer(activeLayer)) return;
-
-    const map = mapStore.mapInstance;
-    if (!map) return;
-
-    const bounds = map.getBounds();
-    const bbox: [number, number, number, number] = [
-      bounds.getWest(),
-      bounds.getSouth(),
-      bounds.getEast(),
-      bounds.getNorth(),
-    ];
-
-    viewportAbort?.abort();
-    const controller = new AbortController();
-    viewportAbort = controller;
-
-    viewportLoading = true;
-    try {
-      const result = await trpc.features.listPaged.query({
-        layerId: activeLayer.id,
-        bbox,
-        limit: viewportPageSize,
-        offset: (viewportPage - 1) * viewportPageSize,
-        sortBy: viewportSortBy,
-        sortDir: viewportSortDir,
-      });
-      if (!controller.signal.aborted) {
-        viewportRows = result.rows;
-        viewportTotal = result.total;
-      }
-    } catch (err) {
-      if (controller.signal.aborted) return;
+  const viewportStore = createViewportStore({
+    fetchFn: (params) => trpc.features.listPaged.query(params),
+    getActiveLayer: () => layersStore.active,
+    isLargeLayer,
+    getMap: () => mapStore.mapInstance ?? undefined,
+    onError: (err) => {
       console.error('[fetchViewportFeatures] failed:', err);
       toastStore.error('Failed to load features for viewport');
-    } finally {
-      viewportLoading = false;
-    }
-  }
-
-  let moveEndTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function handleMoveEnd() {
-    clearTimeout(moveEndTimer);
-    moveEndTimer = setTimeout(() => {
-      viewportPage = 1;
-      fetchViewportFeatures();
-    }, 300);
-  }
-
-  function handleViewportPageChange(page: number) {
-    viewportPage = page;
-    fetchViewportFeatures();
-  }
-
-  function handleViewportPageSizeChange(size: number) {
-    viewportPageSize = size;
-    viewportPage = 1;
-    fetchViewportFeatures();
-  }
-
-  function handleViewportSortChange(sortBy: string, sortDir: 'asc' | 'desc') {
-    viewportSortBy = sortBy as 'created_at' | 'updated_at' | 'id';
-    viewportSortDir = sortDir;
-    viewportPage = 1;
-    fetchViewportFeatures();
-  }
+    },
+  });
 
   // ── Design mode + unified sidebar ──────────────────────────────────────────
   let designMode = $state(false);
@@ -363,14 +296,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     const activeLayer = layersStore.active;
     if (!map || !activeLayer || !isLargeLayer(activeLayer)) return;
 
-    map.on('moveend', handleMoveEnd);
-    // Initial fetch for current viewport
-    fetchViewportFeatures();
-
-    return () => {
-      map.off('moveend', handleMoveEnd);
-      clearTimeout(moveEndTimer);
-    };
+    return viewportStore.bindMap(map);
   });
 
   async function loadLayerData(layerId: string) {
@@ -732,7 +658,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
             <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span>Large layer ({(activeLayer.featureCount ?? 0).toLocaleString()} features) — rendered via vector tiles. {viewportLoading ? 'Loading…' : 'Use the table to inspect features in the current viewport.'}</span>
+            <span>Large layer ({(activeLayer.featureCount ?? 0).toLocaleString()} features) — rendered via vector tiles. {viewportStore.loading ? 'Loading…' : 'Use the table to inspect features in the current viewport.'}</span>
           </div>
         {:else if showFilterPanel}
           <FilterPanel layerId={activeLayer.id} features={rawFeatures} />
@@ -741,13 +667,13 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
           {#if isLargeLayer(activeLayer)}
             <DataTable
               mode="server"
-              serverRows={viewportRows}
-              serverTotal={viewportTotal}
-              serverPage={viewportPage}
-              serverPageSize={viewportPageSize}
-              onPageChange={handleViewportPageChange}
-              onPageSizeChange={handleViewportPageSizeChange}
-              onSortChange={handleViewportSortChange}
+              serverRows={viewportStore.rows}
+              serverTotal={viewportStore.total}
+              serverPage={viewportStore.page}
+              serverPageSize={viewportStore.pageSize}
+              onPageChange={(p) => viewportStore.changePage(p)}
+              onPageSizeChange={(s) => viewportStore.changePageSize(s)}
+              onSortChange={(by, dir) => viewportStore.changeSortBy(by, dir)}
             />
           {:else}
             <DataTable
