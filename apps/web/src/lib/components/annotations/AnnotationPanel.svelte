@@ -496,6 +496,7 @@
       // so the URL is present when the content object is assembled.
       if (formType === 'image' && selectedImageFile) {
         uploading = true;
+        formImageUrl = '';
         try {
           formImageUrl = await uploadImageFile(selectedImageFile);
         } finally {
@@ -614,7 +615,7 @@
     <Button
       variant="ghost"
       size="sm"
-      onclick={() => { showForm = !showForm; createError = null; }}
+      onclick={() => { if (showForm) resetForm(); showForm = !showForm; createError = null; }}
     >
       {showForm ? 'Cancel' : '+ Add'}
     </Button>
@@ -625,7 +626,7 @@
     <Button
       variant="ghost"
       size="sm"
-      onclick={() => { showForm = !showForm; createError = null; }}
+      onclick={() => { if (showForm) resetForm(); showForm = !showForm; createError = null; }}
     >
       {showForm ? 'Cancel' : '+ Add'}
     </Button>
