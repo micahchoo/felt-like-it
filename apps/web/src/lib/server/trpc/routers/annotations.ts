@@ -56,7 +56,8 @@ export const annotationsRouter = router({
         userId: ctx.user.id,
         userName: ctx.user.name,
         id: input.id,
-        content: input.content,
+        ...(input.content !== undefined ? { content: input.content } : {}),
+        ...(input.anchor !== undefined ? { anchor: input.anchor } : {}),
         version: input.version,
       });
     }),

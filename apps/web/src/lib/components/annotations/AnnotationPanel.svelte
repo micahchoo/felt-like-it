@@ -566,6 +566,22 @@
     }
   }
 
+  /** Convert an orphaned feature-anchored annotation to a point anchor using map center. */
+  async function handleConvertToPoint(annotation: AnnotationObject) {
+    if (annotation.anchor.type !== 'feature' || !annotation.anchor.featureDeleted) return;
+    try {
+      const [lng, lat] = mapStore.center;
+      await updateAnnotationMutation.mutateAsync({
+        id: annotation.id,
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [lng, lat] } },
+        version: annotation.version,
+      });
+      onannotationsaved();
+    } catch (err: unknown) {
+      toastStore.error((err as { message?: string })?.message ?? 'Failed to convert annotation.');
+    }
+  }
+
   // ── Scroll-to-feature support ───────────────────────────────────────────────
   $effect(() => {
     if (!scrollToFeatureId) return;
@@ -1055,6 +1071,14 @@
 
           <!-- Per-annotation actions -->
           <div class="flex gap-2">
+            {#if annotation.anchor.type === 'feature' && annotation.anchor.featureDeleted === true}
+              <button
+                onclick={() => handleConvertToPoint(annotation)}
+                class="text-xs text-amber-400 hover:text-amber-300 underline"
+              >
+                📍 Convert to map pin
+              </button>
+            {/if}
             {#if annotation.content.kind === 'single' && annotation.content.body.type === 'iiif' && !annotation.content.body.navPlace && annotation.authorId === userId}
               <button
                 onclick={() => handleFetchNavPlace(annotation)}
