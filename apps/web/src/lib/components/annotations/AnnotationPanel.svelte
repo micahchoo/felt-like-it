@@ -963,6 +963,18 @@
       >
         {#if uploading}Uploading…{:else}Save annotation{/if}
       </Button>
+
+      {#if !creating && !uploading
+        && ((formType === 'text' && !formText.trim())
+          || (formType === 'emoji' && !formEmoji.trim())
+          || (formType === 'gif' && !formGifUrl.trim())
+          || (formType === 'image' && !formImageUrl && !selectedImageFile)
+          || (formType === 'link' && !formLinkUrl.trim())
+          || (formType === 'iiif' && !formManifestUrl.trim())
+          || (formAnchorType === 'region' && !regionGeometry)
+          || (formAnchorType === 'feature' && !pickedFeature))}
+        <p class="text-xs text-neutral-500">Add text, emoji, or image to save.</p>
+      {/if}
     </form>
   {/if}
 
