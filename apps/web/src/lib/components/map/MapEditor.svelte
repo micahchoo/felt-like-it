@@ -589,13 +589,24 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     }
 
     const mod = e.metaKey || e.ctrlKey;
-    if (!mod || e.key.toLowerCase() !== 'z') return;
 
-    e.preventDefault();
-    if (e.shiftKey) {
-      undoStore.redo();
-    } else {
-      undoStore.undo();
+    if (mod && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        undoStore.redo();
+      } else {
+        undoStore.undo();
+      }
+      return;
+    }
+
+    // 1/2/3 — switch drawing tools (only in editing mode, no modifier keys)
+    if (!designMode && !mod && !e.shiftKey && !e.altKey) {
+      switch (e.key) {
+        case '1': selectionStore.setActiveTool('select'); break;
+        case '2': selectionStore.setActiveTool('point'); break;
+        case '3': selectionStore.setActiveTool('polygon'); break;
+      }
     }
   }
 
