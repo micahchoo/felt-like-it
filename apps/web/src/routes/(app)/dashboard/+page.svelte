@@ -150,7 +150,7 @@
         <div class="text-5xl mb-4">🗺</div>
         <h2 class="text-xl font-semibold text-white mb-2">No maps yet</h2>
         <p class="text-slate-400 mb-6">
-          Create your first map to start adding and visualizing spatial data.
+          Create your first map to visualize, annotate, and share geographic data with your team.
         </p>
         <Button variant="primary" onclick={() => (showNewMapForm = true)}>
           Create your first map

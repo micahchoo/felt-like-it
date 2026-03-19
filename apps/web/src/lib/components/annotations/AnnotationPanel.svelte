@@ -1012,7 +1012,7 @@
         <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z"/>
         </svg>
-        <p class="text-sm text-slate-400">Pin notes, images, and links to locations on your map, or leave a comment.</p>
+        <p class="text-sm text-slate-400">No annotations yet. Click the map to add a note, or pick a feature to annotate it.</p>
       </div>
     {:else}
       {#each annotationList as annotation (annotation.id)}
