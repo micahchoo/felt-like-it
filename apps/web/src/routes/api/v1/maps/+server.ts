@@ -45,7 +45,10 @@ export const GET: RequestHandler = async ({ request, url }) => {
 
   const hasNext = rows.length > limit;
   const items = hasNext ? rows.slice(0, limit) : rows;
-  const nextCursor = hasNext ? encodeCursor(items[items.length - 1].created_at, items[items.length - 1].id) : null;
+  const last = items[items.length - 1];
+  const nextCursor = hasNext && last
+    ? encodeCursor(new Date(last.created_at), last.id)
+    : null;
 
   const [countRow] = await typedExecute<{ cnt: string }>(sql`
     SELECT COUNT(*)::text AS cnt FROM maps m
