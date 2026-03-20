@@ -47,7 +47,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
   const items = hasNext ? rows.slice(0, limit) : rows;
   const last = items[items.length - 1];
   const nextCursor = hasNext && last
-    ? encodeCursor(new Date(last.created_at), last.id)
+    ? encodeCursor(last.created_at, last.id)
     : null;
 
   const [countRow] = await typedExecute<{ cnt: string }>(sql`

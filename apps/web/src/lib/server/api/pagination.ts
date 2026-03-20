@@ -1,6 +1,7 @@
 /** Encode createdAt + id into an opaque cursor string. */
-export function encodeCursor(createdAt: Date, id: string): string {
-  return Buffer.from(`${createdAt.toISOString()}|${id}`).toString('base64url');
+export function encodeCursor(createdAt: Date | string, id: string): string {
+  const iso = createdAt instanceof Date ? createdAt.toISOString() : new Date(createdAt).toISOString();
+  return Buffer.from(`${iso}|${id}`).toString('base64url');
 }
 
 /** Decode a cursor into { createdAt, id }. Returns null if invalid. */
