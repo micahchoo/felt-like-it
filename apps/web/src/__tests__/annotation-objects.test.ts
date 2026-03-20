@@ -96,27 +96,34 @@ describe('annotationService.list', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('returns annotations for a map', async () => {
-    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+    vi.mocked(db.execute)
+      .mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]))   // rows query
+      .mockResolvedValueOnce(mockExecuteResult([{ cnt: '1' }])); // count query
 
     const result = await annotationService.list({ userId: USER_ID, mapId: MAP_ID });
-    expect(result).toHaveLength(1);
-    expect(result[0]?.id).toBe(OBJ_ID);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.id).toBe(OBJ_ID);
+    expect(result.totalCount).toBe(1);
   });
 
   it('filters to roots only when rootsOnly is true', async () => {
-    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+    vi.mocked(db.execute)
+      .mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]))
+      .mockResolvedValueOnce(mockExecuteResult([{ cnt: '1' }]));
 
     const result = await annotationService.list({ userId: USER_ID, mapId: MAP_ID, rootsOnly: true });
-    expect(result).toHaveLength(1);
+    expect(result.items).toHaveLength(1);
     // Verify that requireMapAccess was called with 'viewer'
     expect(requireMapAccess).toHaveBeenCalledWith(USER_ID, MAP_ID, 'viewer');
   });
 
   it('does not filter to roots when rootsOnly is undefined', async () => {
-    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+    vi.mocked(db.execute)
+      .mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]))
+      .mockResolvedValueOnce(mockExecuteResult([{ cnt: '1' }]));
 
     const result = await annotationService.list({ userId: USER_ID, mapId: MAP_ID });
-    expect(result).toHaveLength(1);
+    expect(result.items).toHaveLength(1);
     // The default (undefined) should NOT filter for roots only
     expect(requireMapAccess).toHaveBeenCalledWith(USER_ID, MAP_ID, 'viewer');
   });
@@ -201,7 +208,9 @@ describe('annotationsRouter (tRPC adapter)', () => {
   beforeEach(() => vi.resetAllMocks());
 
   it('list calls service and returns results', async () => {
-    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+    vi.mocked(db.execute)
+      .mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]))
+      .mockResolvedValueOnce(mockExecuteResult([{ cnt: '1' }]));
 
     const result = await makeCaller().list({ mapId: MAP_ID });
     expect(result).toHaveLength(1);
