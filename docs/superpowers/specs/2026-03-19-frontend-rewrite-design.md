@@ -91,12 +91,12 @@ Components (ui/, features/)
 
 ```typescript
 // lib/contracts/dashboard.ts
-import type { Map, Layer } from '@felt-like-it/shared-types';
+import type { MapRecord, Layer } from '@felt-like-it/shared-types';
 
 export interface DashboardData {
-  maps: Map[];
-  collaboratingMaps: Map[];
-  templates: Map[];
+  maps: MapRecord[];
+  collaboratingMaps: MapRecord[];
+  templates: MapRecord[];
 }
 
 // Every screen action interface extends BaseActions
@@ -207,11 +207,12 @@ export interface PaginatedData<T> {
 
 ```typescript
 // lib/contracts/map-editor.ts
-import type { Map, Layer, Feature, Annotation, Comment, MapEvent } from '@felt-like-it/shared-types';
+import type { MapRecord, Layer, Feature, Comment } from '@felt-like-it/shared-types';
+import type { Annotation, MapEvent } from '@felt-like-it/shared-types';
 import type { PaginatedData } from './shared';
 
 export interface MapEditorData {
-  map: Map;
+  map: MapRecord;
   layers: Layer[];
   features: Record<string, Feature[]>;  // keyed by layerId
   annotations: Annotation[];
@@ -239,7 +240,7 @@ export interface MapEditorActions extends BaseActions {
   onCommentDelete: (id: string) => Promise<void>;
   onCommentResolve: (id: string) => Promise<void>;
   // Map mutations
-  onMapUpdate: (changes: Partial<Map>) => Promise<void>;
+  onMapUpdate: (changes: Partial<MapRecord>) => Promise<void>;
   onViewportSave: (viewport: { center: [number, number]; zoom: number; bearing: number; pitch: number }) => Promise<void>;
   // Geoprocessing
   onGeoprocessingRun: (op: Record<string, unknown>) => Promise<void>;
