@@ -52,9 +52,9 @@ function matchesFilter(properties: Record<string, unknown>, filter: UIFilter): b
 // ─── Store ──────────────────────────────────────────────────────────────────
 
 export const filterStore = {
-  /** Get active filters for a layer (returns [] when none). */
+  /** Get active filters for a layer (returns [] when none). Defensive copy — caller cannot mutate internal state. */
   get(layerId: string): UIFilter[] {
-    return _filters[layerId] ?? [];
+    return [...(_filters[layerId] ?? [])];
   },
 
   /** True when this layer has at least one active filter. */

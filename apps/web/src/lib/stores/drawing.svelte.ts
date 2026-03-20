@@ -41,8 +41,14 @@ export const drawingStore = {
   },
 
   stop() {
-    if (_state.status === 'ready') {
+    if (_state.status !== 'ready') {
+      _state = { status: 'stopped' };
+      return;
+    }
+    try {
       _state.instance.stop();
+    } catch (err) {
+      console.error('Drawing store stop() failed:', err);
     }
     _state = { status: 'stopped' };
   },
