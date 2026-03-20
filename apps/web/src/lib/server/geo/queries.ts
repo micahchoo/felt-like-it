@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import type { Geometry } from '@felt-like-it/shared-types';
 import { db } from '../db/index.js';
+import { invalidateLayer } from '../api/geojson-cache.js';
 
 /**
  * Execute raw SQL and return typed rows.
@@ -64,6 +65,7 @@ export async function insertFeatures(
   await db.execute(
     sql`INSERT INTO features (layer_id, geometry, properties) VALUES ${sql.join(valueClauses, sql`, `)}`
   );
+  invalidateLayer(layerId);
 }
 
 /**
@@ -101,6 +103,7 @@ export async function clearLayerFeatures(layerId: string): Promise<void> {
   await db.execute(sql`
     DELETE FROM features WHERE layer_id = ${layerId}
   `);
+  invalidateLayer(layerId);
 }
 
 /**
@@ -118,6 +121,7 @@ export async function countLayerFeatures(layerId: string): Promise<number> {
  * Used to clean up partial imports before a BullMQ retry.
  */
 export async function deleteLayer(layerId: string): Promise<void> {
+  invalidateLayer(layerId);
   await db.execute(sql`DELETE FROM layers WHERE id = ${layerId}`);
 }
 
@@ -161,6 +165,7 @@ export async function insertWkbFeatures(
   await db.execute(
     sql`INSERT INTO features (layer_id, geometry, properties) VALUES ${sql.join(valueClauses, sql`, `)}`
   );
+  invalidateLayer(layerId);
 }
 
 /**
