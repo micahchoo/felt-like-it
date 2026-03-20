@@ -1,5 +1,5 @@
 import { sql, eq } from 'drizzle-orm';
-import { resolveAuth, envelope, jsonResponse, rateLimit, assertMapAccess, requireScope } from '../../../middleware.js';
+import { resolveAuth, envelope, jsonResponse, rateLimit, assertMapAccess, requireScope, stripNullBytes } from '../../../middleware.js';
 import { toErrorResponse } from '../../../errors.js';
 import { requireMapAccess } from '$lib/server/geo/access.js';
 import { db, comments, users } from '$lib/server/db/index.js';
@@ -68,7 +68,7 @@ export const POST: RequestHandler = async ({ request, url, params }) => {
   try { await requireMapAccess(auth.userId, mapId, 'commenter'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
 
   let body: any;
-  try { body = await request.json(); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
+  try { body = stripNullBytes(await request.json()); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
 
   if (!body.body || typeof body.body !== 'string') {
     return toErrorResponse('VALIDATION_ERROR', 'body is required and must be a string');

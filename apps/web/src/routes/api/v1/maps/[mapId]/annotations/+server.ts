@@ -1,4 +1,4 @@
-import { resolveAuth, envelope, jsonResponse, rateLimit, assertMapAccess, requireScope } from '../../../middleware.js';
+import { resolveAuth, envelope, jsonResponse, rateLimit, assertMapAccess, requireScope, stripNullBytes } from '../../../middleware.js';
 import { toErrorResponse } from '../../../errors.js';
 import { requireMapAccess } from '$lib/server/geo/access.js';
 import { annotationService } from '$lib/server/annotations/service.js';
@@ -62,7 +62,7 @@ export const POST: RequestHandler = async ({ request, url, params }) => {
   try { await requireMapAccess(auth.userId, mapId, 'commenter'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
 
   let body: unknown;
-  try { body = await request.json(); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
+  try { body = stripNullBytes(await request.json()); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
 
   // TYPE_DEBT: body is validated by Zod immediately; cast needed to spread unknown
   const parsed = CreateAnnotationObjectSchema.safeParse({ ...(body as Record<string, unknown>), mapId });
@@ -88,6 +88,10 @@ export const POST: RequestHandler = async ({ request, url, params }) => {
   } catch (e: any) {
     if (e.code === 'PRECONDITION_FAILED' || e.message?.includes('Maximum')) {
       return toErrorResponse('LIMIT_EXCEEDED', 'Annotation limit reached for this map');
+    }
+    // FK violation (invalid parentId) or NOT_FOUND from service
+    if (e.code === 'NOT_FOUND' || e.code === '23503' || e.message?.includes('foreign key') || e.message?.includes('not found') || e.message?.includes('violates')) {
+      return toErrorResponse('VALIDATION_ERROR', 'Invalid parentId: referenced annotation does not exist');
     }
     throw e;
   }

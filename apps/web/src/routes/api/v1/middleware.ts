@@ -4,6 +4,23 @@ import { db, apiKeys, shares, users } from '$lib/server/db/index.js';
 import { toErrorResponse } from './errors.js';
 import type { RequestEvent } from '@sveltejs/kit';
 
+/**
+ * Recursively strip null bytes from all string values in an object.
+ * PostgreSQL text/jsonb columns reject \0 — sanitize at the API boundary.
+ */
+export function stripNullBytes<T>(value: T): T {
+  if (typeof value === 'string') return value.replaceAll('\0', '') as T;
+  if (Array.isArray(value)) return value.map(stripNullBytes) as T;
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = stripNullBytes(v);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 export interface ApiAuth {
   userId: string | null;
   scope: 'read' | 'read-write';

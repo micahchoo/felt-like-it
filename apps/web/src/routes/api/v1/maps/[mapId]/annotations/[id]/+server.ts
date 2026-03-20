@@ -1,4 +1,4 @@
-import { resolveAuth, envelope, jsonResponse, rateLimit, assertMapAccess, requireScope } from '../../../../middleware.js';
+import { resolveAuth, envelope, jsonResponse, rateLimit, assertMapAccess, requireScope, stripNullBytes } from '../../../../middleware.js';
 import { toErrorResponse } from '../../../../errors.js';
 import { requireMapAccess } from '$lib/server/geo/access.js';
 import { annotationService } from '$lib/server/annotations/service.js';
@@ -47,7 +47,7 @@ export const PATCH: RequestHandler = async ({ request, url, params }) => {
   try { await requireMapAccess(auth.userId, mapId, 'commenter'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
 
   let body: any;
-  try { body = await request.json(); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
+  try { body = stripNullBytes(await request.json()); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
 
   // Get user name for changelog
   const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, auth.userId));
@@ -60,6 +60,7 @@ export const PATCH: RequestHandler = async ({ request, url, params }) => {
     if (!isNaN(expectedVersion)) {
       try {
         const current = await annotationService.get({ userId: auth.userId, id });
+        if (current.mapId !== mapId) return toErrorResponse('ANNOTATION_NOT_FOUND');
         if (current.version !== expectedVersion) {
           return toErrorResponse('VERSION_CONFLICT', `Expected version ${expectedVersion}, found ${current.version}`);
         }
@@ -74,6 +75,8 @@ export const PATCH: RequestHandler = async ({ request, url, params }) => {
   if (currentVersion === undefined) {
     try {
       const current = await annotationService.get({ userId: auth.userId, id });
+      // IDOR guard: annotation must belong to the map in the URL
+      if (current.mapId !== mapId) return toErrorResponse('ANNOTATION_NOT_FOUND');
       currentVersion = current.version;
     } catch {
       return toErrorResponse('ANNOTATION_NOT_FOUND');
@@ -108,6 +111,14 @@ export const DELETE: RequestHandler = async ({ request, url, params }) => {
   const { mapId, id } = params;
   // DELETE is destructive — require editor role, not just commenter
   try { await requireMapAccess(auth.userId, mapId, 'editor'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
+
+  // IDOR guard: verify annotation belongs to this map before deleting
+  try {
+    const obj = await annotationService.get({ userId: auth.userId, id });
+    if (obj.mapId !== mapId) return toErrorResponse('ANNOTATION_NOT_FOUND');
+  } catch {
+    return toErrorResponse('ANNOTATION_NOT_FOUND');
+  }
 
   // Get user name for changelog
   const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, auth.userId));
