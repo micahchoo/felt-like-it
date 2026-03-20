@@ -1,4 +1,5 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
+import { mutation } from '$lib/debug/effect-tracker.js';
 
 export type InteractionMode = 'default' | 'draw-point' | 'draw-line' | 'draw-polygon' | 'select' | 'pan';
 
@@ -66,13 +67,16 @@ export const mapStore = {
     // Without these, the MapLibre center prop → moveend → setViewport → re-render
     // cycle creates an infinite loop (effect_update_depth_exceeded) because each
     // call assigns a new array/value even when coordinates are identical.
+    let changed = false;
     if (viewport.center !== undefined &&
         (viewport.center[0] !== _center[0] || viewport.center[1] !== _center[1])) {
       _center = viewport.center;
+      changed = true;
     }
-    if (viewport.zoom !== undefined && viewport.zoom !== _zoom) _zoom = viewport.zoom;
-    if (viewport.bearing !== undefined && viewport.bearing !== _bearing) _bearing = viewport.bearing;
-    if (viewport.pitch !== undefined && viewport.pitch !== _pitch) _pitch = viewport.pitch;
+    if (viewport.zoom !== undefined && viewport.zoom !== _zoom) { _zoom = viewport.zoom; changed = true; }
+    if (viewport.bearing !== undefined && viewport.bearing !== _bearing) { _bearing = viewport.bearing; changed = true; }
+    if (viewport.pitch !== undefined && viewport.pitch !== _pitch) { _pitch = viewport.pitch; changed = true; }
+    if (changed) mutation('mapStore', 'setViewport', { center: _center, zoom: _zoom });
   },
 
   setBasemap(id: BasemapId) {
@@ -84,6 +88,7 @@ export const mapStore = {
   },
 
   setMapInstance(map: MapLibreMap | undefined) {
+    mutation('mapStore', 'setMapInstance', map ? 'MapLibreMap' : 'undefined');
     _mapInstance = map;
   },
 

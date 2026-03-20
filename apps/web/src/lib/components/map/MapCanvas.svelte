@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { effectEnter, effectExit, mutation } from '$lib/debug/effect-tracker.js';
   import { MapLibre, GeoJSONSource, VectorTileSource, CircleLayer, LineLayer, FillLayer, SymbolLayer, Popup } from 'svelte-maplibre-gl';
   import maplibregl from 'maplibre-gl';
   import type { Map as MapLibreMap, MapMouseEvent, FillLayerSpecification, LineLayerSpecification, CircleLayerSpecification, SymbolLayerSpecification } from 'maplibre-gl';
@@ -97,7 +98,9 @@
 
   // Sync map instance to global store
   $effect(() => {
+    effectEnter('MC:syncMapInstance', { hasInstance: !!mapInstance });
     mapStore.setMapInstance(mapInstance);
+    effectExit('MC:syncMapInstance');
   });
 
   // ── Viewport sync via svelte-maplibre-gl's bidirectional binding ────────
@@ -126,25 +129,26 @@
     const z = mapStore.zoom;
     const b = mapStore.bearing;
     const p = mapStore.pitch;
-    // Only update if store values differ from what the library wrote.
-    // This prevents re-triggering the library's camera effect with the same values.
+    effectEnter('MC:storeToLocal', { lng: lng.toFixed(4), lat: lat.toFixed(4), z: z.toFixed(2) });
     untrack(() => {
       const cur = mapCenter as { lng: number; lat: number };
-      if (cur.lng !== lng || cur.lat !== lat) mapCenter = { lng, lat };
-      if (mapZoom !== z) mapZoom = z;
-      if (mapBearing !== b) mapBearing = b;
-      if (mapPitch !== p) mapPitch = p;
+      if (cur.lng !== lng || cur.lat !== lat) { mutation('MC', 'mapCenter'); mapCenter = { lng, lat }; }
+      if (mapZoom !== z) { mutation('MC', 'mapZoom'); mapZoom = z; }
+      if (mapBearing !== b) { mutation('MC', 'mapBearing'); mapBearing = b; }
+      if (mapPitch !== p) { mutation('MC', 'mapPitch'); mapPitch = p; }
     });
+    effectExit('MC:storeToLocal');
   });
 
   // Local → store (fires when the library's move handler updates bound values)
   $effect(() => {
     const c = mapCenter as { lng: number; lat: number };
     const z = mapZoom;
-    // Write to store (untracked to avoid circular dep)
+    effectEnter('MC:localToStore', { lng: c.lng.toFixed(4), lat: c.lat.toFixed(4), z: z.toFixed(2) });
     untrack(() => {
       mapStore.setViewport({ center: [c.lng, c.lat], zoom: z });
     });
+    effectExit('MC:localToStore');
   });
 
   /**
@@ -154,12 +158,18 @@
    */
   let firstLabelLayerId = $state<string | undefined>(undefined);
   $effect(() => {
-    if (!mapInstance) { firstLabelLayerId = undefined; return; }
+    effectEnter('MC:firstLabelLayer', { hasInstance: !!mapInstance });
+    if (!mapInstance) { firstLabelLayerId = undefined; effectExit('MC:firstLabelLayer'); return; }
     function updateFirstLabel() {
-      firstLabelLayerId = mapInstance!.getStyle()?.layers.find((l) => l.type === 'symbol')?.id;
+      const newId = mapInstance!.getStyle()?.layers.find((l) => l.type === 'symbol')?.id;
+      if (newId !== firstLabelLayerId) {
+        mutation('MC', 'firstLabelLayerId', newId);
+        firstLabelLayerId = newId;
+      }
     }
     updateFirstLabel();
     mapInstance.on('style.load', updateFirstLabel);
+    effectExit('MC:firstLabelLayer');
     return () => { mapInstance!.off('style.load', updateFirstLabel); };
   });
 
@@ -289,6 +299,7 @@
   }
 
   const layerRenderCache = $derived.by<Record<string, LayerRenderCache>>(() => {
+    mutation('MC', 'layerRenderCache→recompute', { layerCount: layersStore.all.length, selectedFeat: selectionStore.selectedFeature?.id });
     const result: Record<string, LayerRenderCache> = {};
     for (const layer of layersStore.all) {
       if (!layer.visible) continue;
@@ -446,6 +457,7 @@
   }
 
   function handleFeatureClick(feature: GeoJSONFeature, e: MapMouseEvent, layerStyle?: LayerStyle, layerId?: string) {
+    mutation('MC', 'handleFeatureClick', { featureId: feature.id, layerId, tool: selectionStore.activeTool });
     // Block feature clicks during active drawing operations only
     const tool = selectionStore.activeTool;
     if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
@@ -456,6 +468,7 @@
     // map layers — and exceed Svelte 5's 1000-iteration depth limit.
     const coords = { lng: e.lngLat.lng, lat: e.lngLat.lat };
     queueMicrotask(() => {
+      mutation('MC', 'handleFeatureClick→microtask', { featureId: feature.id });
       selectedLayerStyle = layerStyle;
       selectionStore.selectFeature(feature, coords, layerId);
     });

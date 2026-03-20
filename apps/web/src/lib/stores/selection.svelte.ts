@@ -1,4 +1,5 @@
 import type { GeoJSONFeature } from '@felt-like-it/shared-types';
+import { mutation } from '$lib/debug/effect-tracker.js';
 
 export type DrawTool = 'point' | 'line' | 'polygon' | 'select' | null;
 
@@ -17,6 +18,7 @@ export const selectionStore = {
   get hasSelection() { return _selectedFeatureIds.size > 0; },
 
   selectFeature(feature: GeoJSONFeature, coords?: { lng: number; lat: number }, layerId?: string) {
+    mutation('selectionStore', 'selectFeature', { featureId: feature.id, layerId });
     _selectedFeature = feature;
     _selectedFeatureIds = new Set([String(feature.id ?? '')]);
     _popupCoords = coords ?? null;
@@ -25,6 +27,7 @@ export const selectionStore = {
 
   clearSelection() {
     if (!_selectedFeature && _selectedFeatureIds.size === 0) return;
+    mutation('selectionStore', 'clearSelection');
     _selectedFeature = null;
     _selectedFeatureIds = new Set();
     _popupCoords = null;
@@ -32,6 +35,7 @@ export const selectionStore = {
   },
 
   setActiveTool(tool: DrawTool) {
+    mutation('selectionStore', 'setActiveTool', tool);
     _activeTool = tool;
     // Only clear selection when switching to a drawing tool (point/line/polygon).
     // 'select' tool preserves the selection — that's its purpose.
@@ -40,6 +44,7 @@ export const selectionStore = {
     // effect re-fires → transitionTo(idle) → layerRenderCache recomputes ×N layers.
     if (tool !== null && tool !== 'select') {
       if (_selectedFeature || _selectedFeatureIds.size > 0) {
+        mutation('selectionStore', 'setActiveTool→clearSelection', tool);
         _selectedFeature = null;
         _selectedFeatureIds = new Set();
         _popupCoords = null;
@@ -49,6 +54,7 @@ export const selectionStore = {
   },
 
   toggleFeatureId(id: string) {
+    mutation('selectionStore', 'toggleFeatureId', id);
     const next = new Set(_selectedFeatureIds);
     if (next.has(id)) {
       next.delete(id);

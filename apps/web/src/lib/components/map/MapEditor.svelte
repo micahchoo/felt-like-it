@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { effectEnter, effectExit, mutation } from '$lib/debug/effect-tracker.js';
   import { trpc } from '$lib/utils/trpc.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { mapStore } from '$lib/stores/map.svelte.js';
@@ -91,7 +92,9 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   // DOM element wrapping the map canvas + legend overlay — used for high-res PNG export
   let mapAreaEl = $state<HTMLDivElement | undefined>(undefined);
   $effect(() => {
+    effectEnter('ME:mapContainerEl', { hasEl: !!mapAreaEl });
     mapStore.setMapContainerEl(mapAreaEl);
+    effectExit('ME:mapContainerEl');
     return () => { mapStore.setMapContainerEl(undefined); };
   });
 
@@ -204,7 +207,9 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   const measureActive = $derived(activeSection === 'analysis' && analysisTab === 'measure' && !designMode);
 
   $effect(() => {
+    effectEnter('ME:measureActive', { measureActive });
     if (!measureActive) measureResult = null;
+    effectExit('ME:measureActive');
   });
 
   // ── Interaction state (discriminated union) ───────────────────────────────
@@ -244,6 +249,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
    *  Uses untrack() for the prev-state read so it's safe to call from $effect blocks. */
   function transitionTo(next: InteractionState) {
     const prev = untrack(() => interactionState);
+    mutation('MapEditor', `transitionTo(${prev.type}→${next.type})`);
     interactionState = next;
 
     // Entry actions: set the tool implied by the target mode
@@ -270,12 +276,10 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
 
   let scrollToAnnotationFeatureId = $state<string | null>(null);
 
-  // Clean up stale modes when sidebar section changes —
-  // if the user was in region-draw or feature-pick mode and navigates away,
-  // those modes must not persist and intercept future draws.
-  // Uses untrack() to avoid circular dependency (reads + writes interactionState).
+  // Clean up stale modes when sidebar section changes
   $effect(() => {
     const section = activeSection; // track
+    effectEnter('ME:sectionCleanup', { section });
     if (section !== 'annotations') {
       const currentType = untrack(() => interactionState.type);
       if (
@@ -286,24 +290,25 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
         transitionTo({ type: 'idle' });
       }
     }
+    effectExit('ME:sectionCleanup');
   });
 
-  // Clean up when design mode toggles — all interaction modes are irrelevant in style editor
+  // Clean up when design mode toggles
   $effect(() => {
+    effectEnter('ME:designModeCleanup', { designMode });
     if (designMode) {
       transitionTo({ type: 'idle' });
       selectionStore.clearSelection();
       selectionStore.setActiveTool('select');
     }
+    effectExit('ME:designModeCleanup');
   });
 
   // Track selection → featureSelected
-  // Only from idle or featureSelected — don't clobber other modes.
-  // Uses untrack() for interactionState reads to avoid circular dependency
-  // (this effect writes interactionState, so reading it tracked would cause infinite loops).
   $effect(() => {
     const feat = selectionStore.selectedFeature;
     const lid = selectionStore.selectedLayerId;
+    effectEnter('ME:selectionToFeature', { featId: feat?.id, lid });
     if (feat && lid) {
       const geom = feat.geometry as Geometry | undefined;
       const fid = resolveFeatureId(feat);
@@ -317,29 +322,30 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
         transitionTo({ type: 'idle' });
       }
     }
+    effectExit('ME:selectionToFeature');
   });
 
   // Dismiss featureSelected on drawing tool switch
-  // Uses untrack() to avoid circular dependency (reads + writes interactionState).
   $effect(() => {
     const tool = selectionStore.activeTool;
+    effectEnter('ME:toolDismissFeature', { tool });
     if (tool && tool !== 'select') {
       const currentType = untrack(() => interactionState.type);
       if (currentType === 'featureSelected') {
         transitionTo({ type: 'idle' });
       }
-      // Don't clear drawRegion when tool is 'polygon' (user is drawing the region)
       if (currentType === 'drawRegion' && tool !== 'polygon') {
         transitionTo({ type: 'idle' });
       }
     }
+    effectExit('ME:toolDismissFeature');
   });
 
-  // Feature pick capture — when in pickFeature mode and user clicks a feature
-  // Uses untrack() to avoid circular dependency (reads + writes interactionState).
+  // Feature pick capture
   $effect(() => {
     const feat = selectionStore.selectedFeature;
     const lid = selectionStore.selectedLayerId;
+    effectEnter('ME:featurePickCapture', { featId: feat?.id, lid });
     if (feat && lid) {
       const current = untrack(() => interactionState);
       if (current.type === 'pickFeature' && !current.picked) {
@@ -352,6 +358,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
         }
       }
     }
+    effectExit('ME:featurePickCapture');
   });
 
   // ── Annotation pin GeoJSON (derived from query cache) ──────────────────────
@@ -435,10 +442,10 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     return { type: 'FeatureCollection' as const, features: measurementFeatures };
   });
 
-  // Initialize layers — untrack the store write to prevent reading _activeLayerId
-  // inside set() from becoming a tracked dependency (causes effect_update_depth_exceeded).
+  // Initialize layers
   $effect(() => {
-    const layers = initialLayers; // tracked: re-runs if prop changes (SPA nav)
+    const layers = initialLayers;
+    effectEnter('ME:initLayers', { count: layers.length });
     untrack(() => {
       layersStore.set(layers);
       for (const layer of layers) {
@@ -447,18 +454,21 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
         }
       }
     });
+    effectExit('ME:initLayers');
   });
 
-  // Viewport-based loading for large layers: listen to moveend on the map
+  // Viewport-based loading for large layers
   $effect(() => {
     const map = mapStore.mapInstance;
     const activeLayer = layersStore.active;
-    if (!map || !activeLayer || !isLargeLayer(activeLayer)) return;
+    effectEnter('ME:viewportLoading', { hasMap: !!map, activeLayer: activeLayer?.id });
+    if (!map || !activeLayer || !isLargeLayer(activeLayer)) { effectExit('ME:viewportLoading'); return; }
 
     map.on('moveend', handleMoveEnd);
     // Initial fetch for current viewport
     fetchViewportFeatures();
 
+    effectExit('ME:viewportLoading');
     return () => {
       map.off('moveend', handleMoveEnd);
       clearTimeout(moveEndTimer);
@@ -592,6 +602,8 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
 
   // Clear hot overlay features on component unmount
   $effect(() => {
+    effectEnter('ME:hotOverlayCleanup');
+    effectExit('ME:hotOverlayCleanup');
     return () => {
       hotOverlay.clearHotFeatures();
     };

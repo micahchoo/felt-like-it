@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
+  import { effectEnter, effectExit } from '$lib/debug/effect-tracker.js';
   import exifr from 'exifr';
   import { trpc } from '$lib/utils/trpc.js';
   import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
@@ -94,6 +95,7 @@
   $effect(() => {
     const a = annotationList.length;
     const c = comments.length;
+    effectEnter('AP:countChange', { annotations: a, comments: c });
     untrack(() => {
       if (a !== _prevAnnotationCount || c !== _prevCommentCount) {
         _prevAnnotationCount = a;
@@ -101,6 +103,7 @@
         oncountchange?.(a, c);
       }
     });
+    effectExit('AP:countChange');
   });
 
   // ── Comment mutations (TanStack Query) ───────────────────────────────────
@@ -187,6 +190,8 @@
 
   // Cleanup blob URL on component unmount to prevent memory leaks
   $effect(() => {
+    effectEnter('AP:blobCleanup');
+    effectExit('AP:blobCleanup');
     return () => {
       if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
     };
@@ -267,44 +272,46 @@
   let formAnchorType = $state<'point' | 'region' | 'viewport' | 'feature'>('point');
 
   // Request feature pick mode when anchor type is 'feature' but no feature selected yet.
-  // untrack() the callback to avoid tracking the prop function reference as a dependency.
   $effect(() => {
+    effectEnter('AP:requestFeaturePick', { formAnchorType, hasPicked: !!pickedFeature });
     if (formAnchorType === 'feature' && !pickedFeature) {
       untrack(() => onrequestfeaturepick?.());
     }
+    effectExit('AP:requestFeaturePick');
   });
 
-  // Auto-open form when a picked feature arrives from external context
-  // (e.g. DrawActionRow "Annotate" button or direct feature pick).
-  // Only activates when the form is closed — never clobbers an in-progress form.
-  // Uses untrack() on showForm to avoid circular dependency (this effect writes showForm).
+  // Auto-open form when a picked feature arrives
   $effect(() => {
+    effectEnter('AP:autoOpenPicked', { hasPicked: !!pickedFeature });
     if (pickedFeature && !untrack(() => showForm)) {
       formAnchorType = 'feature';
       showForm = true;
     }
+    effectExit('AP:autoOpenPicked');
   });
 
-  // Auto-open form when a region geometry arrives from external drawing flow.
-  // Same guard: only when form is closed to avoid clobbering user input.
-  // Uses untrack() on showForm to avoid circular dependency (this effect writes showForm).
+  // Auto-open form when a region geometry arrives
   $effect(() => {
+    effectEnter('AP:autoOpenRegion', { hasRegion: !!regionGeometry });
     if (regionGeometry && !untrack(() => showForm)) {
       formAnchorType = 'region';
       showForm = true;
     }
+    effectExit('AP:autoOpenRegion');
   });
 
   // Track pending measurement data for the create flow
   let pendingMeasurementData = $state<typeof pendingMeasurement>(null);
 
   $effect(() => {
+    effectEnter('AP:pendingMeasurement', { hasPending: !!pendingMeasurement });
     if (pendingMeasurement) {
       pendingMeasurementData = pendingMeasurement;
       formType = 'measurement';
-      formAnchorType = 'viewport'; // measurement anchor bypasses the selector
+      formAnchorType = 'viewport';
       showForm = true;
     }
+    effectExit('AP:pendingMeasurement');
   });
 
   // formLng/formLat are initialized eagerly from mapStore.center at declaration
@@ -592,7 +599,8 @@
 
   // ── Scroll-to-feature support ───────────────────────────────────────────────
   $effect(() => {
-    if (!scrollToFeatureId) return;
+    effectEnter('AP:scrollToFeature', { scrollToFeatureId });
+    if (!scrollToFeatureId) { effectExit('AP:scrollToFeature'); return; }
     const match = annotationList.find(
       (a) => a.anchor.type === 'feature' && (a.anchor as { featureId: string }).featureId === scrollToFeatureId
     );
@@ -602,6 +610,7 @@
         document.getElementById(`annotation-${match.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
     }
+    effectExit('AP:scrollToFeature');
   });
 
   // ── Thread / reply state ────────────────────────────────────────────────────

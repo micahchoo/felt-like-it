@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Map as MapLibreMap } from 'maplibre-gl';
+  import { effectEnter, effectExit } from '$lib/debug/effect-tracker.js';
   import { selectionStore } from '$lib/stores/selection.svelte.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { undoStore } from '$lib/stores/undo.svelte.js';
@@ -53,7 +54,8 @@
   }));
 
   $effect(() => {
-    if (!map) return;
+    effectEnter('DT:initTerraDraw', { hasMap: !!map });
+    if (!map) { effectExit('DT:initTerraDraw'); return; }
 
     function startDraw() {
       drawingStore.reset();
@@ -110,6 +112,7 @@
     }
     map.on('style.load', onStyleLoad);
 
+    effectExit('DT:initTerraDraw');
     return () => {
       map.off('style.load', onStyleLoad);
       drawingStore.stop();
@@ -203,10 +206,12 @@
   // Sync external activeTool changes (e.g. annotation region request) to Terra Draw
   $effect(() => {
     const tool = selectionStore.activeTool;
-    if (!drawingStore.instance || !drawingStore.isReady) return;
+    effectEnter('DT:syncToolToTerraDraw', { tool, isReady: drawingStore.isReady });
+    if (!drawingStore.instance || !drawingStore.isReady) { effectExit('DT:syncToolToTerraDraw'); return; }
     const modeMap: Record<string, string> = { point: 'point', line: 'linestring', polygon: 'polygon', select: 'select' };
     const mode = tool ? modeMap[tool] ?? 'select' : 'select';
     if (drawingStore.instance.getMode() !== mode) drawingStore.instance.setMode(mode);
+    effectExit('DT:syncToolToTerraDraw');
   });
 
   /** Check whether Terra Draw is mid-draw (incomplete geometry in progress). */
