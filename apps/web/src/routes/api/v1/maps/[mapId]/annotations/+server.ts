@@ -26,9 +26,8 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
   const rootsOnly = url.searchParams.get('rootsOnly') === 'true';
   const { cursor, limit } = parsePaginationParams(url);
 
-  // For share token auth (no userId), use a nil UUID for the access check
   const result = await annotationService.list({
-    userId: auth.userId ?? '00000000-0000-0000-0000-000000000000',
+    userId: auth.userId,
     mapId,
     rootsOnly,
     ...(cursor !== null ? { cursor } : {}),
@@ -36,8 +35,9 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
   });
 
   const items = result.items.map(toAnnotation);
-  const nextCursor = items.length === limit && items.length > 0
-    ? encodeCursor(items[items.length - 1].createdAt, items[items.length - 1].id)
+  const last = items[items.length - 1];
+  const nextCursor = items.length === limit && last
+    ? encodeCursor(last.createdAt, last.id)
     : null;
   const basePath = `/api/v1/maps/${mapId}/annotations`;
 

@@ -150,13 +150,13 @@ export const annotationService = {
   },
 
   async list(params: {
-    userId: string;
+    userId: string | null;
     mapId: string;
     rootsOnly?: boolean;
     cursor?: { createdAt: Date; id: string };
     limit?: number;
   }): Promise<{ items: AnnotationObject[]; totalCount: number }> {
-    await requireMapAccess(params.userId, params.mapId, 'viewer');
+    if (params.userId) await requireMapAccess(params.userId, params.mapId, 'viewer');
 
     const rootFilter = params.rootsOnly === true ? sql`AND parent_id IS NULL` : sql``;
     const cursorFilter = params.cursor

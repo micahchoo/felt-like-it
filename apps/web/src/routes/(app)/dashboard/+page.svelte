@@ -58,6 +58,7 @@
     {#if data.user.isAdmin}
       <a href="/admin" class="text-sm text-slate-400 hover:text-white transition-colors">Admin</a>
     {/if}
+    <a href="/settings" class="text-sm text-slate-400 hover:text-white transition-colors">Settings</a>
     <span class="text-sm text-slate-400">{data.user.email}</span>
     <form method="POST" action="/auth/logout" use:enhance>
       <button type="submit" class="text-sm text-slate-400 hover:text-white transition-colors">

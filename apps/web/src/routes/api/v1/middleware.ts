@@ -15,52 +15,56 @@ export interface ApiAuth {
  * Returns null if no credentials provided (caller should return 401).
  */
 export async function resolveAuth(event: Pick<RequestEvent, 'request' | 'url'>): Promise<ApiAuth | null> {
-  // 1. Check Bearer API key
-  const authHeader = event.request.headers.get('authorization');
-  if (authHeader?.startsWith('Bearer flk_')) {
-    const rawKey = authHeader.slice(7);
-    const hash = createHash('sha256').update(rawKey).digest('hex');
+  try {
+    // 1. Check Bearer API key
+    const authHeader = event.request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer flk_')) {
+      const rawKey = authHeader.slice(7);
+      const hash = createHash('sha256').update(rawKey).digest('hex');
 
-    const [keyRow] = await db
-      .select({ id: apiKeys.id, userId: apiKeys.userId, scope: apiKeys.scope })
-      .from(apiKeys)
-      .where(eq(apiKeys.keyHash, hash));
+      const [keyRow] = await db
+        .select({ id: apiKeys.id, userId: apiKeys.userId, scope: apiKeys.scope })
+        .from(apiKeys)
+        .where(eq(apiKeys.keyHash, hash));
 
-    if (!keyRow) return null;
+      if (!keyRow) return null;
 
-    // Verify user exists and is not disabled
-    const [userRow] = await db
-      .select({ id: users.id, disabledAt: users.disabledAt })
-      .from(users)
-      .where(eq(users.id, keyRow.userId));
+      // Verify user exists and is not disabled
+      const [userRow] = await db
+        .select({ id: users.id, disabledAt: users.disabledAt })
+        .from(users)
+        .where(eq(users.id, keyRow.userId));
 
-    if (!userRow || userRow.disabledAt) return null;
+      if (!userRow || userRow.disabledAt) return null;
 
-    // Fire-and-forget: update last_used_at
-    void db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, keyRow.id));
+      // Fire-and-forget: update last_used_at
+      void db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, keyRow.id));
 
-    return {
-      userId: keyRow.userId,
-      scope: keyRow.scope as 'read' | 'read-write',
-      mapScope: null,
-    };
-  }
+      return {
+        userId: keyRow.userId,
+        scope: keyRow.scope as 'read' | 'read-write',
+        mapScope: null,
+      };
+    }
 
-  // 2. Check ?token share token
-  const token = event.url.searchParams.get('token');
-  if (token) {
-    const [shareRow] = await db
-      .select({ mapId: shares.mapId })
-      .from(shares)
-      .where(eq(shares.token, token));
+    // 2. Check ?token share token
+    const token = event.url.searchParams.get('token');
+    if (token) {
+      const [shareRow] = await db
+        .select({ mapId: shares.mapId })
+        .from(shares)
+        .where(eq(shares.token, token));
 
-    if (!shareRow) return null;
+      if (!shareRow) return null;
 
-    return {
-      userId: null,
-      scope: 'read',
-      mapScope: shareRow.mapId,
-    };
+      return {
+        userId: null,
+        scope: 'read',
+        mapScope: shareRow.mapId,
+      };
+    }
+  } catch {
+    return null;
   }
 
   return null;
