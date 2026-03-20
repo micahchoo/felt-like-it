@@ -117,4 +117,38 @@ export const mapStore = {
   getViewportSnapshot() {
     return { center: _center, zoom: _zoom, bearing: _bearing, pitch: _pitch };
   },
+
+  /**
+   * Persist current viewport to localStorage, keyed by mapId.
+   * Silently ignores storage errors (e.g. private browsing, quota exceeded).
+   */
+  saveViewportLocally(mapId: string) {
+    try {
+      const vp = { center: _center, zoom: _zoom, bearing: _bearing, pitch: _pitch };
+      localStorage.setItem(`felt-viewport-${mapId}`, JSON.stringify(vp));
+    } catch { /* silently ignore storage errors */ }
+  },
+
+  /**
+   * Restore viewport from localStorage for the given mapId.
+   * Returns the stored viewport, or null if absent or corrupt.
+   */
+  loadViewportLocally(mapId: string): { center: [number, number]; zoom: number; bearing: number; pitch: number } | null {
+    try {
+      const raw = localStorage.getItem(`felt-viewport-${mapId}`);
+      if (!raw) return null;
+      const vp = JSON.parse(raw) as { center: [number, number]; zoom: number; bearing: number; pitch: number };
+      // Basic shape validation
+      if (
+        Array.isArray(vp.center) && vp.center.length === 2 &&
+        typeof vp.zoom === 'number' &&
+        typeof vp.bearing === 'number' &&
+        typeof vp.pitch === 'number'
+      ) {
+        return vp;
+      }
+      return null;
+    } catch { /* silently ignore parse errors */ }
+    return null;
+  },
 };

@@ -22,6 +22,8 @@
   let pollTimedOut = $state(false);
   let pollStartTime = 0;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
+  let pollStartedAt: number | null = null;
+  const POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
   const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -73,6 +75,7 @@
       // Poll for progress
       pollStartTime = Date.now();
       pollInterval = setInterval(pollJob, 1500);
+      pollStartedAt = Date.now();
     } catch (err) {
       toastStore.error(String(err instanceof Error ? err.message : 'Upload failed'));
       uploading = false;
@@ -82,11 +85,11 @@
   async function pollJob() {
     if (!jobId) return;
 
-    if (Date.now() - pollStartTime > POLL_TIMEOUT_MS) {
+    if (pollStartedAt && Date.now() - pollStartedAt > POLL_TIMEOUT_MS) {
       clearInterval(pollInterval!);
       pollInterval = null;
-      pollTimedOut = true;
       uploading = false;
+      toastStore.error('Import is taking longer than expected. Check back later or try a smaller file.');
       return;
     }
 
@@ -124,7 +127,7 @@
     jobId = null;
     progress = 0;
     uploading = false;
-    pollTimedOut = false;
+    pollStartedAt = null;
     if (pollInterval) {
       clearInterval(pollInterval);
       pollInterval = null;

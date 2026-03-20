@@ -4,7 +4,7 @@
   import { trpc } from '$lib/utils/trpc.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { mapStore } from '$lib/stores/map.svelte.js';
-  import { filterStore } from '$lib/stores/filters.svelte.js';
+  import { filterStore, loadFilters, saveFilters } from '$lib/stores/filters.svelte.js';
   import { selectionStore } from '$lib/stores/selection.svelte.js';
   import { undoStore } from '$lib/stores/undo.svelte.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
@@ -28,9 +28,11 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   import AnnotationPanel from '$lib/components/annotations/AnnotationPanel.svelte';
   import SidePanel from './SidePanel.svelte';
   import type { SectionId } from './SidePanel.svelte';
-  import type { AnnotationPinCollection, AnnotationRegionCollection } from '$lib/components/map/MapCanvas.svelte';
-  import type { MeasurementResult, DistanceUnit, AreaUnit } from '@felt-like-it/geo-engine';
-  import { DISTANCE_UNITS, AREA_UNITS, formatDistance, formatArea, measureLine, measurePolygon } from '@felt-like-it/geo-engine';
+  import { createAnnotationGeoStore } from '$lib/stores/annotation-geo.svelte.js';
+  import { createViewportStore } from '$lib/stores/viewport.svelte.js';
+  import type { MeasurementResult } from '@felt-like-it/geo-engine';
+  import { measureLine, measurePolygon } from '@felt-like-it/geo-engine';
+  import MeasurementPanel from './MeasurementPanel.svelte';
   import DrawActionRow from './DrawActionRow.svelte';
   import type { Geometry } from 'geojson';
   import { PUBLIC_MARTIN_URL } from '$env/static/public';
@@ -38,6 +40,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { queryKeys } from '$lib/utils/query-keys.js';
   import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
+  import { type InteractionState, type SelectedFeature, type PickedFeatureRef, interactionModes } from '$lib/stores/interaction-modes.svelte.js';
 
   function isLargeLayer(layer: Layer): boolean {
     return PUBLIC_MARTIN_URL.length > 0 && (layer.featureCount ?? 0) > VECTOR_TILE_THRESHOLD;
@@ -74,9 +77,11 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     embed?: boolean;
     /** When true, show owner-only controls (collaborator management, etc.). */
     isOwner?: boolean;
+    /** Role of the current user — shown as a badge for non-owners to clarify permissions. */
+    userRole?: string;
   }
 
-  let { mapId, mapTitle, initialLayers, userId, readonly = false, embed = false, isOwner = false }: Props = $props();
+  let { mapId, mapTitle, initialLayers, userId, readonly = false, embed = false, isOwner = false, userRole }: Props = $props();
 
   const mapQueryClient = useQueryClient();
 
@@ -84,6 +89,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   const annotationPinsQuery = createQuery(() => ({
     queryKey: queryKeys.annotations.list({ mapId }),
     queryFn: () => trpc.annotations.list.query({ mapId }),
+    enabled: !!userId, // Skip for unauthenticated guests (share/embed pages)
   }));
 
   // embed implies readonly — illegal state prevented at the prop level.
@@ -98,6 +104,39 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     return () => { mapStore.setMapContainerEl(undefined); };
   });
 
+  // ── Filter persistence ────────────────────────────────────────────────────
+  // Load persisted filters once when the editor mounts (runs once: mapId is stable).
+  $effect(() => {
+    loadFilters(mapId);
+  });
+
+  // Save filters to localStorage whenever filter state changes for any layer.
+  $effect(() => {
+    // Access every layer's filters to create a reactive dependency on the full state.
+    for (const layer of layersStore.layers) {
+      filterStore.get(layer.id);
+    }
+    saveFilters(mapId);
+  });
+
+  // ── Viewport persistence ──────────────────────────────────────────────────
+  // Save viewport to localStorage on moveend so the user returns to the same
+  // position after navigating away and back. Fires for all maps regardless of
+  // layer type (the large-layer moveend handler is separate and conditional).
+  $effect(() => {
+    const map = mapStore.mapInstance;
+    if (!map) return;
+
+    function persistViewport() {
+      mapStore.saveViewportLocally(mapId);
+    }
+
+    map.on('moveend', persistViewport);
+    return () => {
+      map.off('moveend', persistViewport);
+    };
+  });
+
   // GeoJSON data cache per layer
   let layerData = $state<Record<string, { type: 'FeatureCollection'; features: GeoJSONFeature[] }>>({});
   let showDataTable = $state(false);
@@ -109,94 +148,21 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   let savingViewport = $state(false);
 
   // ── Viewport-based pagination state for large layers ─────────────────────
-  let viewportAbort: AbortController | null = null;
-  let viewportRows = $state<Array<{ id: string; properties: Record<string, unknown>; geometryType: string }>>([]);
-  let viewportTotal = $state(0);
-  let viewportPage = $state(1);
-  let viewportPageSize = $state(50);
-  let viewportSortBy = $state<'created_at' | 'updated_at' | 'id'>('created_at');
-  let viewportSortDir = $state<'asc' | 'desc'>('asc');
-  let viewportLoading = $state(false);
-
-  async function fetchViewportFeatures() {
-    const activeLayer = layersStore.active;
-    if (!activeLayer || !isLargeLayer(activeLayer)) return;
-
-    const map = mapStore.mapInstance;
-    if (!map) return;
-
-    const bounds = map.getBounds();
-    const bbox: [number, number, number, number] = [
-      bounds.getWest(),
-      bounds.getSouth(),
-      bounds.getEast(),
-      bounds.getNorth(),
-    ];
-
-    viewportAbort?.abort();
-    const controller = new AbortController();
-    viewportAbort = controller;
-
-    viewportLoading = true;
-    try {
-      const result = await trpc.features.listPaged.query({
-        layerId: activeLayer.id,
-        bbox,
-        limit: viewportPageSize,
-        offset: (viewportPage - 1) * viewportPageSize,
-        sortBy: viewportSortBy,
-        sortDir: viewportSortDir,
-      });
-      if (!controller.signal.aborted) {
-        viewportRows = result.rows;
-        viewportTotal = result.total;
-      }
-    } catch (err) {
-      if (controller.signal.aborted) return;
+  const viewportStore = createViewportStore({
+    fetchFn: (params) => trpc.features.listPaged.query(params),
+    getActiveLayer: () => layersStore.active,
+    isLargeLayer,
+    getMap: () => mapStore.mapInstance ?? undefined,
+    onError: (err) => {
       console.error('[fetchViewportFeatures] failed:', err);
       toastStore.error('Failed to load features for viewport');
-    } finally {
-      viewportLoading = false;
-    }
-  }
-
-  let moveEndTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function handleMoveEnd() {
-    clearTimeout(moveEndTimer);
-    moveEndTimer = setTimeout(() => {
-      viewportPage = 1;
-      fetchViewportFeatures();
-    }, 300);
-  }
-
-  function handleViewportPageChange(page: number) {
-    viewportPage = page;
-    fetchViewportFeatures();
-  }
-
-  function handleViewportPageSizeChange(size: number) {
-    viewportPageSize = size;
-    viewportPage = 1;
-    fetchViewportFeatures();
-  }
-
-  function handleViewportSortChange(sortBy: string, sortDir: 'asc' | 'desc') {
-    viewportSortBy = sortBy as 'created_at' | 'updated_at' | 'id';
-    viewportSortDir = sortDir;
-    viewportPage = 1;
-    fetchViewportFeatures();
-  }
+    },
+  });
 
   // ── Design mode + unified sidebar ──────────────────────────────────────────
   let designMode = $state(false);
   let activeSection = $state<SectionId | null>('annotations');
   let analysisTab = $state<'measure' | 'process'>('process');
-
-  // Measurement state (moved from MeasurementPanel)
-  let distUnit = $state<DistanceUnit>('km');
-  let areaUnit = $state<AreaUnit>('km2');
-  let periUnit = $state<DistanceUnit>('km');
 
   // Count tracking for sidebar badges
   let annotationCount = $state(0);
@@ -213,66 +179,10 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   });
 
   // ── Interaction state (discriminated union) ───────────────────────────────
-  // Replaces: annotationRegionMode, annotationRegionGeometry, featurePickMode,
-  // pickedFeature, activeFeature, pendingMeasurementAnnotation.
-  // Compiler enforces mutual exclusivity — no invalid flag combinations.
-  type SelectedFeature = {
-    featureId: string;
-    layerId: string;
-    geometry: Geometry;
-  };
-
-  type PickedFeatureRef = {
-    featureId: string;
-    layerId: string;
-  };
-
-  type InteractionState =
-    | { type: 'idle' }
-    | { type: 'featureSelected'; feature: SelectedFeature }
-    | { type: 'drawRegion'; geometry?: { type: 'Polygon'; coordinates: number[][][] } }
-    | { type: 'pickFeature'; picked?: PickedFeatureRef }
-    | { type: 'pendingMeasurement'; anchor: {
-        type: 'measurement';
-        geometry: { type: 'LineString'; coordinates: [number, number][] } | { type: 'Polygon'; coordinates: [number, number][][] };
-      }; content: {
-        type: 'measurement';
-        measurementType: 'distance' | 'area';
-        value: number;
-        unit: string;
-        displayValue: string;
-      } };
-
-  let interactionState: InteractionState = $state({ type: 'idle' });
-
-  /** Centralized mode transition — atomically sets interactionState and implied tool.
-   *  Uses untrack() for the prev-state read so it's safe to call from $effect blocks. */
-  function transitionTo(next: InteractionState) {
-    const prev = untrack(() => interactionState);
-    mutation('MapEditor', `transitionTo(${prev.type}→${next.type})`);
-    interactionState = next;
-
-    // Entry actions: set the tool implied by the target mode
-    switch (next.type) {
-      case 'featureSelected':
-        // Reset to select tool so the drawing tool doesn't stay active
-        // (e.g. after handleFeatureDrawn where tool was 'polygon'/'point')
-        selectionStore.setActiveTool('select');
-        break;
-      case 'drawRegion':
-        selectionStore.setActiveTool('polygon');
-        break;
-      case 'pickFeature':
-        selectionStore.setActiveTool('select');
-        break;
-      case 'idle':
-        // Reset tool when leaving annotation-capture modes
-        if (prev.type === 'drawRegion' || prev.type === 'pickFeature' || prev.type === 'pendingMeasurement') {
-          selectionStore.setActiveTool('select');
-        }
-        break;
-    }
-  }
+  // Types and transitionTo() live in $lib/stores/interaction-modes.svelte.ts.
+  // This component binds a local accessor for brevity; the store owns the state.
+  const { transitionTo } = interactionModes;
+  const interactionState = $derived(interactionModes.state);
 
   let scrollToAnnotationFeatureId = $state<string | null>(null);
 
@@ -365,82 +275,9 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   // Annotations are stored as tRPC records but rendered via MapCanvas as a
   // dedicated GeoJSON source. Content is embedded in feature properties so the
   // popup can render without a second fetch.
-  // These $derived values auto-update when any annotation mutation invalidates
+  // These derived values auto-update when any annotation mutation invalidates
   // the shared query cache — no manual refresh needed.
-  const annotationRows = $derived(annotationPinsQuery.data ?? []);
-
-  const annotationPins: AnnotationPinCollection = $derived({
-    type: 'FeatureCollection',
-    features: annotationRows
-      .filter((a) => a.anchor.type === 'point' && !('parentId' in a && a.parentId))
-      .map((a) => ({
-        type: 'Feature' as const,
-        id: a.id,
-        geometry: a.anchor.type === 'point'
-          ? { type: 'Point' as const, coordinates: a.anchor.geometry.coordinates.slice(0, 2) as [number, number] }
-          : { type: 'Point' as const, coordinates: [0, 0] as [number, number] },
-        properties: {
-          authorName: a.authorName,
-          createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
-          contentJson: JSON.stringify(a.content),
-          anchorType: a.anchor.type,
-        },
-      })),
-  });
-
-  const annotationRegions: AnnotationRegionCollection = $derived({
-    type: 'FeatureCollection',
-    features: annotationRows
-      .filter((a) => a.anchor.type === 'region' && !('parentId' in a && a.parentId))
-      .map((a) => ({
-        type: 'Feature' as const,
-        id: a.id,
-        geometry: a.anchor.type === 'region'
-          ? a.anchor.geometry
-          : { type: 'Polygon' as const, coordinates: [] },
-        properties: {
-          authorName: a.authorName,
-          createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
-          contentJson: JSON.stringify(a.content),
-          anchorType: a.anchor.type,
-        },
-      })),
-  });
-
-  const annotatedFeaturesIndex: Map<string, { layerId: string; count: number }> = $derived.by(() => {
-    const featureAnchored = annotationRows.filter(
-      (a: { anchor: { type: string } }) => a.anchor.type === 'feature'
-    );
-    const featureMap = new Map<string, { layerId: string; count: number }>();
-    for (const ann of featureAnchored) {
-      const anchor = ann.anchor as { type: 'feature'; featureId: string; layerId: string };
-      const key = anchor.featureId;
-      const existing = featureMap.get(key);
-      if (existing) {
-        existing.count++;
-      } else {
-        featureMap.set(key, { layerId: anchor.layerId, count: 1 });
-      }
-    }
-    return featureMap;
-  });
-
-  const measurementAnnotationData: { type: 'FeatureCollection'; features: { type: 'Feature'; geometry: unknown; properties: Record<string, unknown> }[] } = $derived.by(() => {
-    const measurementAnchored = annotationRows.filter(
-      (a: { anchor: { type: string } }) => a.anchor.type === 'measurement'
-    );
-    const measurementFeatures = measurementAnchored.map((ann) => {
-      const anchor = ann.anchor as { type: 'measurement'; geometry: { type: string; coordinates: unknown } };
-      const body = ann.content.kind === 'single' ? ann.content.body : null;
-      const label = body?.type === 'measurement' ? (body as { displayValue: string }).displayValue : '';
-      return {
-        type: 'Feature' as const,
-        geometry: anchor.geometry,
-        properties: { id: ann.id, label, annotationId: ann.id },
-      };
-    });
-    return { type: 'FeatureCollection' as const, features: measurementFeatures };
-  });
+  const annotationGeo = createAnnotationGeoStore(() => annotationPinsQuery.data ?? []);
 
   // Initialize layers
   $effect(() => {
@@ -464,15 +301,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     effectEnter('ME:viewportLoading', { hasMap: !!map, activeLayer: activeLayer?.id });
     if (!map || !activeLayer || !isLargeLayer(activeLayer)) { effectExit('ME:viewportLoading'); return; }
 
-    map.on('moveend', handleMoveEnd);
-    // Initial fetch for current viewport
-    fetchViewportFeatures();
-
-    effectExit('ME:viewportLoading');
-    return () => {
-      map.off('moveend', handleMoveEnd);
-      clearTimeout(moveEndTimer);
-    };
+    return viewportStore.bindMap(map);
   });
 
   async function loadLayerData(layerId: string) {
@@ -590,13 +419,25 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     }
 
     const mod = e.metaKey || e.ctrlKey;
-    if (!mod || e.key.toLowerCase() !== 'z') return;
 
-    e.preventDefault();
-    if (e.shiftKey) {
-      undoStore.redo();
-    } else {
-      undoStore.undo();
+    if (mod && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        undoStore.redo();
+      } else {
+        undoStore.undo();
+      }
+      return;
+    }
+
+    // 1/2/3 — switch drawing tools (only in editing mode, no modifier keys, not in text inputs)
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (!designMode && !mod && !e.shiftKey && !e.altKey && tag !== 'INPUT' && tag !== 'TEXTAREA' && !(e.target as HTMLElement)?.isContentEditable) {
+      switch (e.key) {
+        case '1': selectionStore.setActiveTool('select'); break;
+        case '2': selectionStore.setActiveTool('point'); break;
+        case '3': selectionStore.setActiveTool('polygon'); break;
+      }
     }
   }
 
@@ -626,6 +467,11 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     {#if !embed}
     <div class="flex items-center gap-1 px-3 py-2 bg-slate-800 border-b border-white/10 shrink-0">
       <span class="text-sm font-medium text-white truncate mr-auto">{mapTitle}</span>
+      {#if userRole && userRole !== 'owner'}
+        <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/80 text-slate-300 capitalize">
+          {userRole}
+        </span>
+      {/if}
 
       {#if !effectiveReadonly}
         <!-- Design mode toggle -->
@@ -745,12 +591,12 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
         readonly={effectiveReadonly}
         {layerData}
         onfeaturedrawn={handleFeatureDrawn}
-        {annotationPins}
-        {annotationRegions}
+        annotationPins={annotationGeo.pins}
+        annotationRegions={annotationGeo.regions}
         {...(measureActive ? { onmeasured: (r: MeasurementResult) => { measureResult = r; } } : {})}
         {...(interactionState.type === 'drawRegion' && !interactionState.geometry ? { onregiondrawn: (g: { type: 'Polygon'; coordinates: number[][][] }) => { transitionTo({ type: 'drawRegion', geometry: g }); } } : {})}
-        annotatedFeatures={annotatedFeaturesIndex}
-        measurementAnnotations={measurementAnnotationData}
+        annotatedFeatures={annotationGeo.index}
+        measurementAnnotations={annotationGeo.measurements}
         onbadgeclick={(featureId) => {
           activeSection = 'annotations';
           scrollToAnnotationFeatureId = featureId;
@@ -820,7 +666,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
             <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span>Large layer ({(activeLayer.featureCount ?? 0).toLocaleString()} features) — rendered via vector tiles. {viewportLoading ? 'Loading…' : 'Use the table to inspect features in the current viewport.'}</span>
+            <span>Large layer ({(activeLayer.featureCount ?? 0).toLocaleString()} features) — rendered via vector tiles. {viewportStore.loading ? 'Loading…' : 'Use the table to inspect features in the current viewport.'}</span>
           </div>
         {:else if showFilterPanel}
           <FilterPanel layerId={activeLayer.id} features={rawFeatures} />
@@ -829,13 +675,13 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
           {#if isLargeLayer(activeLayer)}
             <DataTable
               mode="server"
-              serverRows={viewportRows}
-              serverTotal={viewportTotal}
-              serverPage={viewportPage}
-              serverPageSize={viewportPageSize}
-              onPageChange={handleViewportPageChange}
-              onPageSizeChange={handleViewportPageSizeChange}
-              onSortChange={handleViewportSortChange}
+              serverRows={viewportStore.rows}
+              serverTotal={viewportStore.total}
+              serverPage={viewportStore.page}
+              serverPageSize={viewportStore.pageSize}
+              onPageChange={(p) => viewportStore.changePage(p)}
+              onPageSizeChange={(s) => viewportStore.changePageSize(s)}
+              onSortChange={(by, dir) => viewportStore.changeSortBy(by, dir)}
             />
           {:else}
             <DataTable
@@ -907,105 +753,14 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       </div>
 
       {#if analysisTab === 'measure'}
-        <div class="p-4 flex-1">
-          {#if measureResult === null}
-            <div class="flex flex-col items-center justify-center py-8 text-center">
-              <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                <path d="M.5 14.5a.5.5 0 0 1-.354-.854l13-13a.5.5 0 0 1 .708.708l-13 13A.5.5 0 0 1 .5 14.5zM11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM8 3.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM5 .5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1A.5.5 0 0 1 5 .5z"/>
-              </svg>
-              <p class="text-sm text-slate-400">Draw a line to measure distance, or a polygon for area and perimeter.</p>
-              <p class="text-xs text-slate-500 mt-1">Use the drawing tools on the left. Click to add points, double-click to finish. You can also select an existing feature and click "Measure" to measure it.</p>
-            </div>
-          {:else if measureResult.type === 'distance'}
-            <div class="space-y-2">
-              <span class="text-slate-400 text-xs uppercase tracking-wide">Distance</span>
-              <p class="text-2xl font-mono font-semibold text-cyan-300 tabular-nums">
-                {formatDistance(measureResult.distanceKm, distUnit)}
-              </p>
-              <div class="flex items-center gap-2">
-                <select bind:value={distUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white" aria-label="Distance unit">
-                  {#each DISTANCE_UNITS as u (u.value)}
-                    <option value={u.value}>{u.label}</option>
-                  {/each}
-                </select>
-                <span class="text-xs text-slate-500">{measureResult.vertexCount} {measureResult.vertexCount === 1 ? 'vertex' : 'vertices'}</span>
-              </div>
-            </div>
-          {:else}
-            <div class="space-y-2">
-              <span class="text-slate-400 text-xs uppercase tracking-wide">Area</span>
-              <p class="text-2xl font-mono font-semibold text-cyan-300 tabular-nums">
-                {formatArea(measureResult.areaM2, areaUnit)}
-              </p>
-              <select bind:value={areaUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white" aria-label="Area unit">
-                {#each AREA_UNITS as u (u.value)}
-                  <option value={u.value}>{u.label}</option>
-                {/each}
-              </select>
-              <div class="mt-2">
-                <span class="text-slate-400 text-xs uppercase tracking-wide">Perimeter</span>
-                <p class="text-lg font-mono font-semibold text-emerald-300 tabular-nums">
-                  {formatDistance(measureResult.perimeterKm, periUnit)}
-                </p>
-                <select bind:value={periUnit} class="bg-slate-700 border border-white/10 rounded px-2 py-0.5 text-xs text-white" aria-label="Perimeter unit">
-                  {#each DISTANCE_UNITS as u (u.value)}
-                    <option value={u.value}>{u.label}</option>
-                  {/each}
-                </select>
-              </div>
-              <span class="text-xs text-slate-500">{measureResult.vertexCount} {measureResult.vertexCount === 1 ? 'vertex' : 'vertices'}</span>
-            </div>
-          {/if}
-          {#if measureResult !== null}
-            <div class="flex items-center gap-3 mt-3">
-              <button onclick={() => { measureResult = null; }} class="text-xs text-slate-400 hover:text-white transition-colors">
-                Clear measurement
-              </button>
-              <button
-                type="button"
-                class="text-xs px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white"
-                onclick={() => {
-                  if (!measureResult) return;
-                  const mr = measureResult;
-                  if (mr.type === 'distance') {
-                    transitionTo({
-                      type: 'pendingMeasurement',
-                      anchor: {
-                        type: 'measurement',
-                        geometry: { type: 'LineString', coordinates: mr.coordinates as [number, number][] },
-                      },
-                      content: {
-                        type: 'measurement',
-                        measurementType: 'distance',
-                        value: mr.distanceKm * 1000,
-                        unit: distUnit,
-                        displayValue: formatDistance(mr.distanceKm, distUnit),
-                      },
-                    });
-                  } else {
-                    transitionTo({
-                      type: 'pendingMeasurement',
-                      anchor: {
-                        type: 'measurement',
-                        geometry: { type: 'Polygon', coordinates: mr.coordinates as [number, number][][] },
-                      },
-                      content: {
-                        type: 'measurement',
-                        measurementType: 'area',
-                        value: mr.areaM2,
-                        unit: areaUnit,
-                        displayValue: formatArea(mr.areaM2, areaUnit),
-                      },
-                    });
-                  }
-                  activeSection = 'annotations';
-                }}
-              >
-                Save as annotation
-              </button>
-            </div>
-          {/if}
-        </div>
+        <MeasurementPanel
+          {measureResult}
+          onclear={() => { measureResult = null; }}
+          onsaveasannotation={(payload) => {
+            transitionTo(payload);
+            activeSection = 'annotations';
+          }}
+        />
       {:else}
         <GeoprocessingPanel
           {mapId}

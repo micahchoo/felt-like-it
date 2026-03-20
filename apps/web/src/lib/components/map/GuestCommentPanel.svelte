@@ -1,6 +1,7 @@
 <script lang="ts">
   import { trpc } from '$lib/utils/trpc.js';
   import Button from '$lib/components/ui/Button.svelte';
+  import { toastStore } from '$lib/components/ui/Toast.svelte';
 
   interface Props {
     shareToken: string;
@@ -51,6 +52,7 @@
     try {
       await trpc.comments.createForShare.mutate({ shareToken, authorName: name, body });
       newBody = '';
+      toastStore.success('Comment posted.');
       await loadComments();
     } catch {
       error = 'Failed to post comment.';
@@ -113,7 +115,7 @@
     />
     <textarea
       bind:value={newBody}
-      placeholder="Leave a comment…"
+      placeholder="Write a comment..."
       rows={3}
       class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
     ></textarea>

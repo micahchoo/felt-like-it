@@ -51,6 +51,11 @@
     {embedCopied ? 'Copied!' : 'Embed'}
   </button>
 
+  <!-- Map title — centered between the two action buttons -->
+  <div class="absolute top-[2.875rem] left-1/2 -translate-x-1/2 z-10 max-w-xs pointer-events-none">
+    <h1 class="text-sm font-medium text-white truncate drop-shadow">{data.map.title}</h1>
+  </div>
+
   <!-- Floating comments toggle -->
   <button
     class="absolute top-[2.875rem] right-3 z-10 flex items-center gap-1.5 rounded bg-slate-800/90 border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 hover:text-white transition-colors backdrop-blur-sm"

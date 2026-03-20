@@ -206,6 +206,11 @@
       }
       console.error('[DrawingToolbar] saveFeature failed:', err);
       toastStore.error('Failed to save drawn feature.');
+      try {
+        drawingStore.instance?.removeFeatures([f.id]);
+      } catch (cleanupErr) {
+        console.warn('[DrawingToolbar] cleanup after failed save:', cleanupErr);
+      }
     }
   }
 
@@ -216,8 +221,54 @@
     if (!drawingStore.instance || !drawingStore.isReady) { effectExit('DT:syncToolToTerraDraw'); return; }
     const modeMap: Record<string, string> = { point: 'point', line: 'linestring', polygon: 'polygon', select: 'select' };
     const mode = tool ? modeMap[tool] ?? 'select' : 'select';
-    if (drawingStore.instance.getMode() !== mode) drawingStore.instance.setMode(mode);
+    if (drawingStore.instance.getMode() !== mode) {
+      // Before switching modes, check for in-progress (unsaved) geometry
+      const snapshot = drawingStore.instance.getSnapshot() ?? [];
+      // TYPE_DEBT: terra-draw GeoJSONStoreFeatures properties are typed as Record<string,unknown>
+      const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
+      if (inProgress.length > 0) {
+        // Schedule confirm outside reactive cycle to avoid blocking $effect
+        const instance = drawingStore.instance;
+        setTimeout(() => {
+          const confirmed = window.confirm('You have an unfinished drawing. Discard it?');
+          if (!confirmed) return;
+          try {
+            instance.removeFeatures(inProgress.map((f: any) => f.id!));
+          } catch (e) {
+            console.warn('[DrawingToolbar] removeFeatures during tool switch failed:', e);
+          }
+          instance.setMode(mode);
+        }, 0);
+        effectExit('DT:syncToolToTerraDraw');
+        return;
+      }
+      drawingStore.instance.setMode(mode);
+    }
     effectExit('DT:syncToolToTerraDraw');
+  });
+
+  // Cancel in-progress drawing on Escape key
+  $effect(() => {
+    if (!drawingStore.isReady) return;
+    function handleKeydown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        const snapshot = drawingStore.instance?.getSnapshot();
+        if (snapshot) {
+          // TYPE_DEBT: terra-draw GeoJSONStoreFeatures properties are typed as Record<string,unknown>
+          const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
+          if (inProgress.length > 0) {
+            try {
+              drawingStore.instance?.removeFeatures(inProgress.map((f: any) => f.id!));
+            } catch (e) {
+              console.warn('[DrawingToolbar] removeFeatures on Escape failed:', e);
+            }
+          }
+        }
+        selectionStore.setActiveTool('select');
+      }
+    }
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
   });
 
   /** Check whether Terra Draw is mid-draw (incomplete geometry in progress). */

@@ -40,6 +40,7 @@
   let loading = $state(false);
   let creating = $state(false);
   let deleting = $state(false);
+  let copiedKey = $state<string | null>(null);
 
   const shareUrl = $derived(
     share ? `${window.location.origin}/share/${share.token}` : ''
@@ -100,6 +101,7 @@
   }
 
   async function deleteShare(): Promise<void> {
+    if (!window.confirm('Remove the public share link? Anyone using it will lose access.')) return;
     deleting = true;
     try {
       await trpc.shares.delete.mutate({ mapId });
@@ -112,10 +114,12 @@
     }
   }
 
-  async function copyToClipboard(text: string, label: string): Promise<void> {
+  async function copyToClipboard(text: string, label: string, key: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(text);
       toastStore.success(`${label} copied!`);
+      copiedKey = key;
+      setTimeout(() => { copiedKey = null; }, 2000);
     } catch {
       toastStore.error('Failed to copy to clipboard.');
     }
@@ -145,6 +149,7 @@
       await trpc.collaborators.invite.mutate({ mapId, email, role: inviteRole });
       inviteEmail = '';
       await loadCollaborators();
+      toastStore.success('Invitation sent.');
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message;
       collabError = msg ?? 'Failed to invite collaborator.';
@@ -154,10 +159,14 @@
   }
 
   async function handleRemove(collabUserId: string): Promise<void> {
+    const collab = collaborators.find((c) => c.userId === collabUserId);
+    const name = collab?.name ?? collab?.email ?? 'this collaborator';
+    if (!window.confirm(`Remove ${name} from this map?`)) return;
     collabError = null;
     try {
       await trpc.collaborators.remove.mutate({ mapId, userId: collabUserId });
       collaborators = collaborators.filter((c) => c.userId !== collabUserId);
+      toastStore.success('Collaborator removed.');
     } catch {
       collabError = 'Failed to remove collaborator.';
     }
@@ -172,6 +181,7 @@
         role: role as 'viewer' | 'commenter' | 'editor',
       });
       collaborators = collaborators.map((c) => (c.userId === collabUserId ? { ...c, role } : c));
+      toastStore.success('Role updated.');
     } catch {
       collabError = 'Failed to update role.';
     }
@@ -202,8 +212,8 @@
             value={shareUrl}
             class="flex-1 rounded bg-slate-700 border border-white/10 px-3 py-2 text-sm text-slate-200 select-all focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-          <Button size="sm" onclick={() => copyToClipboard(shareUrl, 'Share link')}>
-            Copy
+          <Button size="sm" onclick={() => copyToClipboard(shareUrl, 'Share link', 'url')}>
+            {copiedKey === 'url' ? 'Copied!' : 'Copy'}
           </Button>
         </div>
       </div>
@@ -219,8 +229,8 @@
             value={embedSnippet}
             class="flex-1 rounded bg-slate-700 border border-white/10 px-3 py-2 text-sm text-slate-200 font-mono select-all focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-          <Button size="sm" onclick={() => copyToClipboard(embedSnippet, 'Embed code')}>
-            Copy
+          <Button size="sm" onclick={() => copyToClipboard(embedSnippet, 'Embed code', 'embed')}>
+            {copiedKey === 'embed' ? 'Copied!' : 'Copy'}
           </Button>
         </div>
       </div>
@@ -240,7 +250,7 @@
   {:else}
     <div class="flex flex-col items-center gap-4 py-4">
       <p class="text-sm text-slate-300 text-center">
-        Create a public share link so anyone can view this map without signing in.
+        Create a public link to share this map with anyone — no login required.
       </p>
       <Button variant="primary" onclick={createShare} loading={creating}>
         Create share link
@@ -312,9 +322,9 @@
             bind:value={inviteRole}
             class="flex-1 rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            <option value="viewer">Viewer — read-only</option>
-            <option value="commenter">Commenter — can comment</option>
-            <option value="editor">Editor — can edit</option>
+            <option value="viewer">Viewer — can view the map and all data (read-only)</option>
+            <option value="commenter">Commenter — can view and add comments/annotations</option>
+            <option value="editor">Editor — can view, comment, draw, import data, and edit features</option>
           </select>
           <Button type="submit" size="sm" loading={inviting} disabled={!inviteEmail.trim()}>
             Invite

@@ -9,6 +9,9 @@ domains:
   - tanstack-query
   - shared-types
   - terra-draw
+  - annotations
+  - svelte
+  - ux
 governance:
   max_entries: 100
   warn_entries: 150

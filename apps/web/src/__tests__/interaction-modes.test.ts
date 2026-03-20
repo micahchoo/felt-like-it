@@ -11,6 +11,11 @@
  * preserves all behavioral contracts before applying to MapEditor.svelte.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
+// SelectedFeature and PickedFeatureRef are imported from the store — single source of truth.
+// InteractionState is redeclared locally with a simplified pendingMeasurement shape
+// (measurement: PendingMeasurementAnnotation) so this pure-logic test suite can run
+// without the geojson/anchor/content detail that only matters at the UI boundary.
+import type { SelectedFeature, PickedFeatureRef } from '$lib/stores/interaction-modes.svelte.js';
 
 // ── Extracted state machine ─────────────────────────────────────────────────
 // Mirrors the state variables, effects, and handlers from MapEditor.svelte,
@@ -25,16 +30,10 @@ interface Geometry {
 	coordinates: unknown;
 }
 
-interface ActiveFeature {
-	featureId: string;
-	layerId: string;
-	geometry: Geometry;
-}
-
-interface PickedFeature {
-	featureId: string;
-	layerId: string;
-}
+// SelectedFeature and PickedFeatureRef re-exported from $lib/stores/interaction-modes.svelte.ts
+// ActiveFeature is a test-local alias for SelectedFeature (same shape).
+type ActiveFeature = SelectedFeature;
+type PickedFeature = PickedFeatureRef;
 
 interface MeasurementResult {
 	type: string;
@@ -47,6 +46,8 @@ interface PendingMeasurementAnnotation {
 	result: MeasurementResult;
 }
 
+// Local InteractionState: pendingMeasurement uses a simplified shape for pure-logic tests.
+// The store's InteractionState uses anchor/content — structurally compatible at the type level.
 type InteractionState =
 	| { type: 'idle' }
 	| { type: 'featureSelected'; feature: ActiveFeature }

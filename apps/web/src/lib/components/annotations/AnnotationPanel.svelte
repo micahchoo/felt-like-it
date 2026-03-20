@@ -56,6 +56,7 @@
   const annotationsQuery = createQuery(() => ({
     queryKey: queryKeys.annotations.list({ mapId }),
     queryFn: () => trpc.annotations.list.query({ mapId }),
+    enabled: !!userId, // Skip for unauthenticated guests (share/embed pages)
   }));
 
   const annotationList = $derived(annotationsQuery.data ?? []);
@@ -83,6 +84,18 @@
   }));
 
   const comments = $derived(commentsQuery.data ?? []);
+
+  const canSubmit = $derived(!(
+    creating || uploading
+    || (formType === 'text' && !formText.trim())
+    || (formType === 'emoji' && !formEmoji.trim())
+    || (formType === 'gif' && !formGifUrl.trim())
+    || (formType === 'image' && !formImageUrl && !selectedImageFile)
+    || (formType === 'link' && !formLinkUrl.trim())
+    || (formType === 'iiif' && !formManifestUrl.trim())
+    || (formAnchorType === 'region' && !regionGeometry)
+    || (formAnchorType === 'feature' && !pickedFeature)
+  ));
   let commentBody = $state('');
   let submittingComment = $state(false);
 
@@ -501,6 +514,17 @@
     },
   }));
 
+  const convertToPointMutation = createMutation(() => ({
+    mutationFn: (input: { mapId: string; annotationId: string; coordinates: [number, number] }) =>
+      trpc.annotations.convertToPoint.mutate(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
+    },
+    onError: (_err: unknown) => {
+      toastStore.error('Failed to convert annotation to point.');
+    },
+  }));
+
   async function handleCreate(e: Event) {
     e.preventDefault();
     creating = true;
@@ -544,6 +568,9 @@
       showForm = false;
       resetForm();
       onannotationsaved('created');
+      toastStore.success('Annotation saved.');
+      // Scroll list to top so the newly created annotation is visible when the query refetches
+      tick().then(() => { listContainerEl?.scrollTo({ top: 0, behavior: 'smooth' }); });
     } catch (err: unknown) {
       createError = (err as { message?: string })?.message ?? 'Failed to create annotation.';
     } finally {
@@ -553,9 +580,11 @@
   }
 
   async function handleDelete(id: string) {
+    if (!window.confirm('Delete this annotation? This cannot be undone.')) return;
     try {
       await deleteAnnotationMutation.mutateAsync({ id });
       onannotationsaved('deleted');
+      toastStore.success('Annotation deleted.');
     } catch (err: unknown) {
       toastStore.error((err as { message?: string })?.message ?? 'Failed to delete annotation.');
     }
@@ -615,6 +644,7 @@
 
   // ── Thread / reply state ────────────────────────────────────────────────────
 
+  let listContainerEl = $state<HTMLDivElement | undefined>(undefined);
   let expandedAnnotationId = $state<string | null>(null);
   let replyingTo = $state<string | null>(null);
   let replyText = $state('');
@@ -634,6 +664,7 @@
       replyingTo = null;
       expandedAnnotationId = parentId; // keep thread open
       onannotationsaved('created');
+      toastStore.success('Reply posted.');
     } catch (err: unknown) {
       toastStore.error((err as { message?: string })?.message ?? 'Failed to post reply.');
     }
@@ -996,23 +1027,22 @@
       >
         {#if uploading}Uploading…{:else}Save annotation{/if}
       </Button>
-
-      {#if !creating && !uploading
-        && ((formType === 'text' && !formText.trim())
-          || (formType === 'emoji' && !formEmoji.trim())
-          || (formType === 'gif' && !formGifUrl.trim())
-          || (formType === 'image' && !formImageUrl && !selectedImageFile)
-          || (formType === 'link' && !formLinkUrl.trim())
-          || (formType === 'iiif' && !formManifestUrl.trim())
-          || (formAnchorType === 'region' && !regionGeometry)
-          || (formAnchorType === 'feature' && !pickedFeature))}
-        <p class="text-xs text-neutral-500">Add text, emoji, or image to save.</p>
+      {#if !canSubmit && showForm}
+        <p class="text-xs text-slate-500 mt-1">
+          {#if formAnchorType === 'feature' && !pickedFeature}
+            Pick a feature on the map to anchor this annotation.
+          {:else if formType === 'text' && !formText.trim()}
+            Write some text to save this annotation.
+          {:else}
+            Add content (text, emoji, image, or link) to save.
+          {/if}
+        </p>
       {/if}
     </form>
   {/if}
 
   <!-- Annotation list -->
-  <div class="flex-1 overflow-y-auto">
+  <div class="flex-1 overflow-y-auto" bind:this={listContainerEl}>
     {#if listLoading}
       <p class="text-xs text-slate-500 text-center py-6">Loading…</p>
     {:else if listError}
@@ -1022,7 +1052,7 @@
         <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z"/>
         </svg>
-        <p class="text-sm text-slate-400">Pin notes, images, and links to locations on your map, or leave a comment.</p>
+        <p class="text-sm text-slate-400">No annotations yet. Click the map to add a note, or pick a feature to annotate it.</p>
       </div>
     {:else}
       {#each annotationList as annotation (annotation.id)}
@@ -1032,6 +1062,15 @@
             authorName={annotation.authorName}
             createdAt={annotation.createdAt}
             featureDeleted={annotation.anchor.type === 'feature' && annotation.anchor.featureDeleted === true}
+            onconverttopoint={annotation.anchor.type === 'feature' && annotation.anchor.featureDeleted === true
+              ? () => {
+                  const coords: [number, number] =
+                    annotation.anchor.type === 'feature' && 'geometry' in annotation.anchor && annotation.anchor.geometry
+                      ? (annotation.anchor.geometry as { type: string; coordinates: [number, number] }).coordinates
+                      : [0, 0];
+                  convertToPointMutation.mutate({ mapId, annotationId: annotation.id, coordinates: coords });
+                }
+              : undefined}
           />
 
           {#if annotation.anchor.type === 'viewport'}

@@ -10,11 +10,13 @@
     anchorType?: string;
     /** Whether the anchored feature has been deleted. */
     featureDeleted?: boolean;
+    /** Called when the user clicks "Convert to point" on an orphaned annotation. */
+    onconverttopoint?: () => void;
     /** Compact mode — used for hover tooltips (hides full content, shows preview). */
     compact?: boolean;
   }
 
-  let { content, authorName, createdAt, anchorType, featureDeleted = false, compact = false }: Props = $props();
+  let { content, authorName, createdAt, anchorType, featureDeleted = false, onconverttopoint, compact = false }: Props = $props();
 
   function formatDate(value: Date | string): string {
     const d = value instanceof Date ? value : new Date(value);
@@ -45,7 +47,10 @@
 <div class="text-sm text-slate-200 space-y-2{featureDeleted ? ' opacity-60' : ''}" style="max-width: 22rem">
   {#if featureDeleted}
     <div class="flex items-center gap-1.5 rounded bg-red-500/10 px-2 py-1 text-[11px] text-red-400">
-      <span>Feature deleted — convert to map pin to preserve</span>
+      <span>Feature deleted</span>
+      {#if onconverttopoint}
+        <button class="underline hover:text-amber-300 text-xs" onclick={onconverttopoint}>Convert to point</button>
+      {/if}
     </div>
   {/if}
   <!-- Author + timestamp + anchor type header -->

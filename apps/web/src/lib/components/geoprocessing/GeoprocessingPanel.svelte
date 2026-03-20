@@ -53,6 +53,7 @@
   let aggField      = $state('');
   let aggOutputField = $state('');
   let outputName  = $state('');
+  let abortController: AbortController | null = null;
   let running     = $state(false);
   let error       = $state<string | null>(null);
   let success     = $state<string | null>(null);
@@ -128,6 +129,7 @@
     e.preventDefault();
     if (!layerIdA) return;
     if (TWO_LAYER_OPS.has(opType) && !layerIdB) return;
+    abortController = new AbortController();
     running = true;
     error = null;
     success = null;
@@ -137,12 +139,19 @@
         op: buildOp(),
         outputLayerName: outputName.trim() || defaultName,
       });
-      success = `Created layer "${result.layerName}"`;
-      onlayercreated(result.layerId);
+      if (!abortController.signal.aborted) {
+        success = `Created layer "${result.layerName}"`;
+        onlayercreated(result.layerId);
+      }
     } catch (err: unknown) {
-      error = (err as { message?: string })?.message ?? 'Geoprocessing failed.';
+      if (abortController?.signal.aborted) {
+        error = null; // User cancelled
+      } else {
+        error = (err as { message?: string })?.message ?? 'Geoprocessing failed.';
+      }
     } finally {
       running = false;
+      abortController = null;
     }
   }
 </script>
@@ -307,17 +316,26 @@
       <p class="text-xs text-green-400">{success}</p>
     {/if}
 
-    <!-- Run -->
-    <Button
-      type="submit"
-      size="sm"
-      loading={running}
-      disabled={!layerIdA
-        || (TWO_LAYER_OPS.has(opType) && !layerIdB)
-        || (AGG_OPS.has(opType) && aggregation !== 'count' && !aggField.trim())}
-    >
-      Run
-    </Button>
+    <!-- Run / Cancel -->
+    <div class="flex gap-2">
+      <Button
+        type="submit"
+        size="sm"
+        loading={running}
+        disabled={!layerIdA
+          || (TWO_LAYER_OPS.has(opType) && !layerIdB)
+          || (AGG_OPS.has(opType) && aggregation !== 'count' && !aggField.trim())}
+      >
+        Run
+      </Button>
+      {#if running}
+        <Button
+          variant="ghost"
+          size="sm"
+          onclick={() => { abortController?.abort(); running = false; abortController = null; }}
+        >Cancel</Button>
+      {/if}
+    </div>
   </form>
   {/if}
 </div>

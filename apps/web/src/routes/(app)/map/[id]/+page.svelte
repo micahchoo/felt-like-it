@@ -7,9 +7,12 @@
 
   let { data }: { data: PageData } = $props();
 
-  // Initialize map viewport from saved state — onMount since server data is stable
+  // Initialize map viewport from saved state — onMount since server data is stable.
+  // localStorage takes precedence: if the user previously panned/zoomed, restore that
+  // position rather than the server default so they don't lose their place on navigation.
   onMount(() => {
-    mapStore.loadViewport(data.map.viewport);
+    const local = mapStore.loadViewportLocally(data.map.id);
+    mapStore.loadViewport(local ?? data.map.viewport);
     mapStore.setBasemap(data.map.basemap as Parameters<typeof mapStore.setBasemap>[0]);
   });
 </script>
@@ -25,4 +28,5 @@
   userId={data.userId}
   readonly={data.userRole === 'viewer' || data.userRole === 'commenter'}
   isOwner={data.userRole === 'owner'}
+  userRole={data.userRole}
 />
