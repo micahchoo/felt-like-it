@@ -103,15 +103,17 @@
     effectExit('MC:syncMapInstance');
   });
 
-  // ── Viewport sync via svelte-maplibre-gl's bidirectional binding ────────
-  // The library uses $bindable() props + an internal 'move' handler:
-  //   if (center) → only writes when values change (safe, no churn)
-  //   else        → writes center = tr.center on EVERY frame (dangerous)
-  // By always providing bound values, we stay on the safe 'if' branch.
+  // ── Viewport sync: unidirectional during interaction, push on loadViewport ─
+  // Data flow during user pan/zoom (unidirectional, no cycle):
+  //   MapLibre move handler → bound local $state (mapCenter, mapZoom, …)
+  //   → MC:localToStore effect → mapStore.setViewport()        [terminal]
   //
-  // Local $state vars are bound to <MapLibre> via bind:center/zoom/bearing/pitch.
-  // The library's move handler updates them. We sync to mapStore via $effect
-  // with untrack on the callback to avoid circular deps.
+  // Data flow on programmatic change (loadViewport):
+  //   mapStore.loadViewport() increments viewportVersion
+  //   → MC:storeToLocal effect → local $state → library binding updates map
+  //
+  // MC:storeToLocal tracks ONLY viewportVersion (not center/zoom/bearing/pitch)
+  // so setViewport() calls from MC:localToStore never re-trigger it.
   //
   // IMPORTANT: Initialize from mapStore — NOT undefined. The library's internal
   // move handler has two branches: if (center) writes only on change (safe),
@@ -123,14 +125,20 @@
   let mapBearing = $state<number>(mapStore.bearing);
   let mapPitch = $state<number>(mapStore.pitch);
 
-  // Store → local (only fires when loadViewport changes the store)
+  // Store → local (only fires when loadViewport increments viewportVersion)
+  // IMPORTANT: We track ONLY viewportVersion here, NOT center/zoom/bearing/pitch.
+  // Reading the actual values is done inside untrack() to avoid creating a
+  // reactive dependency on them. This prevents the MC:localToStore ↔ MC:storeToLocal
+  // cycle: setViewport (called by localToStore) does NOT increment viewportVersion,
+  // so this effect stays dormant during normal map pan/zoom animations.
   $effect(() => {
-    const [lng, lat] = mapStore.center;
-    const z = mapStore.zoom;
-    const b = mapStore.bearing;
-    const p = mapStore.pitch;
-    effectEnter('MC:storeToLocal', { lng: lng.toFixed(4), lat: lat.toFixed(4), z: z.toFixed(2) });
+    const _version = mapStore.viewportVersion; // sole tracked dependency
+    effectEnter('MC:storeToLocal', { version: _version });
     untrack(() => {
+      const [lng, lat] = mapStore.center;
+      const z = mapStore.zoom;
+      const b = mapStore.bearing;
+      const p = mapStore.pitch;
       const cur = mapCenter as { lng: number; lat: number };
       if (cur.lng !== lng || cur.lat !== lat) { mutation('MC', 'mapCenter'); mapCenter = { lng, lat }; }
       if (mapZoom !== z) { mutation('MC', 'mapZoom'); mapZoom = z; }

@@ -38,6 +38,13 @@ let _basemapId = $state<BasemapId>('osm');
 let _interactionMode = $state<InteractionMode>('default');
 let _mapInstance = $state<MapLibreMap | undefined>(undefined);
 /**
+ * Viewport version counter — incremented ONLY by loadViewport().
+ * Used by MapCanvas to distinguish external (programmatic) viewport changes
+ * from map-driven changes flowing through setViewport(), preventing the
+ * MC:localToStore ↔ MC:storeToLocal effect cycle during pan/zoom animations.
+ */
+let _viewportVersion = $state(0);
+/**
  * The DOM element wrapping the map canvas + overlay controls (e.g. Legend).
  * Set by MapEditor.svelte so ExportDialog can capture the full visible map area
  * via html-to-image (preserveDrawingBuffer must be true on the MapLibre canvas).
@@ -56,6 +63,7 @@ export const mapStore = {
   get interactionMode() { return _interactionMode; },
   get mapInstance() { return _mapInstance; },
   get mapContainerEl() { return _mapContainerEl; },
+  get viewportVersion() { return _viewportVersion; },
 
   setViewport(viewport: {
     center?: [number, number];
@@ -96,12 +104,13 @@ export const mapStore = {
     _mapContainerEl = el;
   },
 
-  /** Sync from saved map viewport data */
+  /** Sync from saved map viewport data (external/programmatic changes) */
   loadViewport(viewport: { center: [number, number]; zoom: number; bearing: number; pitch: number }) {
     _center = viewport.center;
     _zoom = viewport.zoom;
     _bearing = viewport.bearing ?? 0;
     _pitch = viewport.pitch ?? 0;
+    _viewportVersion++;
   },
 
   /** Get current viewport as a plain object for saving */
