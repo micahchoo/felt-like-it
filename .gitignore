@@ -27,3 +27,4 @@ uploads/
 
 # Worktrees
 .worktrees/
+.claude/anti-pattern-report.txt
