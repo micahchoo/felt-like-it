@@ -133,7 +133,7 @@ export const actions: Actions = {
 
     const [record] = await db
       .insert(apiKeys)
-      .values({ userId: locals.user.id, name, keyHash: hash, prefix })
+      .values({ userId: locals.user.id, name, keyHash: hash, prefix, scope: 'read-write' })
       .returning({ id: apiKeys.id });
 
     if (!record) {
