@@ -8,7 +8,6 @@ import type { RequestHandler } from './$types.js';
 
 const DEFAULT_LIMIT = 5_000;
 const MAX_LIMIT = 50_000;
-const STREAM_THRESHOLD = 1_000;
 
 export const GET: RequestHandler = async ({ request, url, params }) => {
   const auth = await resolveAuth({ request, url });
@@ -77,41 +76,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
     LIMIT ${limit}
   `);
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/geo+json',
-    'X-Total-Features': String(totalFeatures),
-  };
-
-  if (rows.length >= STREAM_THRESHOLD) {
-    // Streamed responses bypass the ETag cache (can't hash without buffering).
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
-    const encoder = new TextEncoder();
-
-    (async () => {
-      try {
-        await writer.write(encoder.encode('{"type":"FeatureCollection","features":['));
-        for (let i = 0; i < rows.length; i++) {
-          const r = rows[i];
-          const feature = JSON.stringify({
-            type: 'Feature',
-            id: r.id,
-            geometry: r.geometry,
-            properties: r.properties,
-          });
-          await writer.write(encoder.encode(i > 0 ? ',' + feature : feature));
-        }
-        await writer.write(encoder.encode(']}'));
-        await writer.close();
-      } catch (err) {
-        writer.abort(err instanceof Error ? err : new Error(String(err)));
-      }
-    })();
-
-    return new Response(readable, { headers });
-  }
-
-  // Small result: buffer, cache, return with ETag
+  // Always buffer + cache (the DB query is the bottleneck, not serialization)
   const body = JSON.stringify({
     type: 'FeatureCollection',
     features: rows.map((r: any) => ({
@@ -123,8 +88,13 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
   });
 
   const etag = setCachedGeoJSON(key, body);
-  headers['ETag'] = `"${etag}"`;
-  headers['Cache-Control'] = 'private, max-age=10';
 
-  return new Response(body, { headers });
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'application/geo+json',
+      'X-Total-Features': String(totalFeatures),
+      'ETag': `"${etag}"`,
+      'Cache-Control': 'private, max-age=10',
+    },
+  });
 };
