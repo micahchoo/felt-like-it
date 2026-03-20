@@ -48,6 +48,7 @@ export const drawingStore = {
   },
 
   reset() {
+    if (_state.status === 'idle') return; // no-op guard — prevents reactive churn
     if (_state.status === 'ready') {
       _state.instance.stop();
     }

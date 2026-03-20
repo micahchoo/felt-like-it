@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { Map as MapLibreMap } from 'maplibre-gl';
   import { effectEnter, effectExit } from '$lib/debug/effect-tracker.js';
   import { selectionStore } from '$lib/stores/selection.svelte.js';
@@ -58,7 +59,12 @@
     if (!map) { effectExit('DT:initTerraDraw'); return; }
 
     function startDraw() {
-      drawingStore.reset();
+      // untrack: reset()/init() read _state internally (for guards) but this
+      // effect should only track the `map` prop — not drawingStore reactive state.
+      // Without untrack, reset()'s `if (_state.status === 'ready')` check creates
+      // a tracked dependency on _state, and each new { status: 'idle' } object
+      // re-triggers this effect → infinite loop with syncToolToTerraDraw.
+      untrack(() => drawingStore.reset());
       drawingStore.init(map).then((draw) => {
         if (!draw) return;
 
@@ -115,7 +121,7 @@
     effectExit('DT:initTerraDraw');
     return () => {
       map.off('style.load', onStyleLoad);
-      drawingStore.stop();
+      untrack(() => drawingStore.stop());
     };
   });
 
