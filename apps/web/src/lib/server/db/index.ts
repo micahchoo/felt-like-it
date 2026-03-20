@@ -6,9 +6,10 @@ import { logger } from '../logger.js';
 
 const pool = new pg.Pool({
   connectionString: env.DATABASE_URL ?? 'postgresql://felt:felt@localhost:5432/felt',
-  max: 10,
+  max: parseInt(env.DB_POOL_MAX ?? '20', 10),
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
+  statement_timeout: parseInt(env.DB_STATEMENT_TIMEOUT_MS ?? '10000', 10),
 });
 
 pool.on('error', (err) => {
