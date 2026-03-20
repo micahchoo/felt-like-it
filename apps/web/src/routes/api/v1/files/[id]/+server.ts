@@ -16,7 +16,7 @@ const MIME_MAP: Record<string, string> = {
 };
 
 export const GET: RequestHandler = async ({ request, url, params }) => {
-  const auth = await resolveAuth({ request, url } as any);
+  const auth = await resolveAuth({ request, url });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);

@@ -9,14 +9,14 @@ import { eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types.js';
 
 export const GET: RequestHandler = async ({ request, url, params }) => {
-  const auth = await resolveAuth({ request, url } as any);
+  const auth = await resolveAuth({ request, url });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);
   if (rateLimited) return rateLimited;
 
   const { mapId, id } = params;
-  assertMapAccess(auth, mapId);
+  try { assertMapAccess(auth, mapId); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
   if (auth.userId) {
     try { await requireMapAccess(auth.userId, mapId, 'viewer'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
   }
@@ -34,7 +34,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
 };
 
 export const PATCH: RequestHandler = async ({ request, url, params }) => {
-  const auth = await resolveAuth({ request, url } as any);
+  const auth = await resolveAuth({ request, url });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);
@@ -96,7 +96,7 @@ export const PATCH: RequestHandler = async ({ request, url, params }) => {
 };
 
 export const DELETE: RequestHandler = async ({ request, url, params }) => {
-  const auth = await resolveAuth({ request, url } as any);
+  const auth = await resolveAuth({ request, url });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);

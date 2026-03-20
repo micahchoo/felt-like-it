@@ -8,7 +8,7 @@ import { typedExecute } from '$lib/server/geo/queries.js';
 import type { RequestHandler } from './$types.js';
 
 export const GET: RequestHandler = async ({ request, url }) => {
-  const auth = await resolveAuth({ request, url } as any);
+  const auth = await resolveAuth({ request, url });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);

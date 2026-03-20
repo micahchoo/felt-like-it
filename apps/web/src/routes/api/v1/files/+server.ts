@@ -9,7 +9,7 @@ import type { RequestHandler } from './$types.js';
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 export const POST: RequestHandler = async ({ request, url }) => {
-  const auth = await resolveAuth({ request, url } as any);
+  const auth = await resolveAuth({ request, url });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);

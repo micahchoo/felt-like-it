@@ -1,3 +1,7 @@
+// TYPE_DEBT: Serializers accept `any` because they normalize both raw SQL rows (snake_case)
+// and Drizzle ORM results (camelCase). A union type or branded row types would be better
+// but the dual-casing fallback pattern (row.mapId ?? row.map_id) makes strict typing noisy.
+
 export function toMapSummary(row: any) {
   return {
     id: row.id,

@@ -11,14 +11,14 @@ import { eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types.js';
 
 export const GET: RequestHandler = async ({ request, url, params }) => {
-  const auth = await resolveAuth({ request, url } as any);
+  const auth = await resolveAuth({ request, url });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);
   if (rateLimited) return rateLimited;
 
   const { mapId } = params;
-  assertMapAccess(auth, mapId);
+  try { assertMapAccess(auth, mapId); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
   if (auth.userId) {
     try { await requireMapAccess(auth.userId, mapId, 'viewer'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
   }
@@ -49,7 +49,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
 };
 
 export const POST: RequestHandler = async ({ request, url, params }) => {
-  const auth = await resolveAuth({ request, url } as any);
+  const auth = await resolveAuth({ request, url });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);
@@ -64,7 +64,8 @@ export const POST: RequestHandler = async ({ request, url, params }) => {
   let body: unknown;
   try { body = await request.json(); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
 
-  const parsed = CreateAnnotationObjectSchema.safeParse({ ...(body as any), mapId });
+  // TYPE_DEBT: body is validated by Zod immediately; cast needed to spread unknown
+  const parsed = CreateAnnotationObjectSchema.safeParse({ ...(body as Record<string, unknown>), mapId });
   if (!parsed.success) return toErrorResponse('VALIDATION_ERROR', parsed.error.issues[0]?.message);
 
   // Get user name for denormalized authorName

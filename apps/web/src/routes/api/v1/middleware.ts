@@ -14,7 +14,7 @@ export interface ApiAuth {
  * Resolve auth from Bearer header or ?token query param.
  * Returns null if no credentials provided (caller should return 401).
  */
-export async function resolveAuth(event: RequestEvent): Promise<ApiAuth | null> {
+export async function resolveAuth(event: Pick<RequestEvent, 'request' | 'url'>): Promise<ApiAuth | null> {
   // 1. Check Bearer API key
   const authHeader = event.request.headers.get('authorization');
   if (authHeader?.startsWith('Bearer flk_')) {
@@ -127,7 +127,13 @@ export function rateLimit(auth: ApiAuth): Response | null {
 
   entry.count++;
   if (entry.count > limit) {
-    return toErrorResponse('RATE_LIMITED', 'Too many requests');
+    const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+    const res = toErrorResponse('RATE_LIMITED', 'Too many requests');
+    // Clone to add Retry-After header (toErrorResponse returns immutable headers)
+    return new Response(res.body, {
+      status: res.status,
+      headers: { ...Object.fromEntries(res.headers.entries()), 'Retry-After': String(retryAfter || 1) },
+    });
   }
   return null;
 }
