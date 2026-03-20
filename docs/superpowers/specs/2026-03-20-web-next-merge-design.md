@@ -39,7 +39,13 @@ Big-bang replacement. Copy all web-next UI artifacts into `apps/web/src/lib/`, r
 
 | Path | Reason |
 |------|--------|
-| Old UI components replaced by web-next | Superseded |
+| `components/ui/` (existing primitives — replaced by web-next versions) | Superseded |
+| `components/annotations/` (existing — replaced by web-next versions) | Superseded |
+| `components/data/` (existing DataTable, ImportDialog — replaced) | Superseded |
+| `components/sidebar/` (existing unified sidebar — replaced by screen-level panels) | Superseded |
+| `components/map/GuestCommentPanel.svelte` | Superseded by ShareViewer screen |
+| Old route `+page.svelte` files (replaced with new screen wiring) | Superseded |
+| `(app)/admin/audit/`, `(app)/admin/storage/`, `(app)/admin/jobs/` sub-routes | Consolidated into single AdminScreen |
 | `apps/web-next/` | Entire app deleted after merge |
 | web-next `mock/` directory | Not copied — real data replaces mocks |
 | web-next `stores/mock-*.svelte.ts` | Not copied — real stores used instead |
@@ -106,9 +112,29 @@ The tRPC `annotations.list` returns full W3C Annotation Objects. The route's `+p
 - `content` from `body` (simplified)
 - `anchor` from `target` (simplified)
 
+### DashboardData Shape Mismatches
+
+The `DashboardData` contract types all three arrays as `MapRecord[]`, but the tRPC routers return different shapes:
+
+- **`maps.list`** — returns `MapRecord` fields + `layerCount` (extra field)
+- **`maps.listCollaborating`** — returns `{id, title, description, basemap, createdAt, updatedAt, role}` — no `viewport`, no `layerCount`, adds `role`
+- **`maps.listTemplates`** — returns `{id, title, description, viewport, basemap}` — no `createdAt`, `updatedAt`, no `layerCount`
+
+**Resolution:** The dashboard route `+page.server.ts` normalizes all three into `MapRecord[]` by:
+1. Spreading the tRPC result and filling missing fields with defaults (`layerCount: 0`, `viewport: null`, etc.)
+2. Dropping extra fields (`role` from collaborating maps — not needed for card display)
+3. If `MapCard.svelte` needs `layerCount`, extend the contract to `MapRecord & { layerCount?: number }` or pass a separate counts map
+
 ### User.isAdmin / disabledAt
 
-`shared-types` `User` type does not include `isAdmin` or `disabledAt`. The admin route passes the full user object from `locals.user` (which includes these fields from the DB query in `hooks.server.ts`). AdminScreen already has a workaround for this.
+`shared-types` `User` type does not include `isAdmin` or `disabledAt`. **Resolution:** Add a local `AdminUser` type in `contracts/admin.ts` that extends `User` with these fields:
+```typescript
+export interface AdminUser extends User {
+  isAdmin: boolean;
+  disabledAt: Date | null;
+}
+```
+The admin route's `+page.server.ts` passes `AdminUser[]` (sourced from the DB query which includes these columns). The `AdminData` contract changes `users: PaginatedData<AdminUser>`. This avoids polluting the shared-types package with admin-only fields.
 
 ### Date Serialization
 
@@ -116,11 +142,40 @@ The tRPC `annotations.list` returns full W3C Annotation Objects. The route's `+p
 - `+page.server.ts` loads using Drizzle return Date objects — SvelteKit serializes these through `devalue`
 - No special handling needed in either case
 
+### ShareViewer / Embed Data Mapping
+
+The `ShareViewerData` contract expects:
+```typescript
+interface ShareViewerData {
+  map: MapRecord;
+  layers: Layer[];
+  features: Record<string, Feature[]>; // keyed by layerId
+  comments: Comment[];
+  shareToken: string;
+  accessLevel: 'public' | 'unlisted' | 'password';
+}
+```
+
+The `shares.resolve` router returns the share record + map metadata but not the full data tree. The route `+page.server.ts` must:
+1. Resolve the share token to get `mapId` and `accessLevel`
+2. Fetch map + layers (like the map editor route)
+3. Fetch features per layer via `features.listByLayer` (or direct Drizzle query)
+4. Fetch non-resolved comments via `comments.list`
+5. Assemble into `ShareViewerData`
+
+This is comparable in complexity to the AnnotationSummary mapping and requires a dedicated mapper function.
+
 ### MapRecord.layerCount
 
-tRPC `maps.list` returns `layerCount` (computed field not in `MapRecord` type). Options:
-1. Extend `MapRecord` in shared-types (preferred — it's useful data)
-2. Pass as a separate map in the route's data return
+tRPC `maps.list` returns `layerCount` (computed field not in `MapRecord` type). Handled as part of the DashboardData normalization above.
+
+### Screen Store Dependencies
+
+The prototype screens import mock stores and inject them via `setContext`. During merge, these imports must be replaced with real store imports. Specifically:
+- `MapEditorScreen` → uses `mapStore`, `drawingStore`, `selectionStore`, `filterStore` (real module singletons, no interface needed — import directly)
+- Other screens don't use stores (data comes through props)
+
+The prototype's `stores/interfaces.ts` and `stores/context-keys.ts` are **not copied**. Any screen that referenced mock store interfaces gets rewritten to import real stores directly. This is a per-screen edit during the merge, not a deferred task.
 
 ## Styling
 
@@ -159,13 +214,12 @@ The existing app splits admin across 4 routes: `/admin`, `/admin/audit`, `/admin
 
 ### Near-term (next few sessions)
 5. **MapEditor decomposition** — the 800-line MapEditor wrapped inside MapEditorScreen is a tech debt seam. Break it into smaller components that conform to the screen contract pattern.
-6. **Store interface alignment** — real stores don't implement web-next's `interfaces.ts`. Either adapt stores to a shared interface or accept the current module-singleton pattern.
-7. **PWA wiring** — web-next has PWA components (InstallPrompt, UpdateBanner, OfflineBanner). Wire to real service worker or remove if not needed yet.
+6. **PWA wiring** — web-next has PWA components (InstallPrompt, UpdateBanner, OfflineBanner). Wire to real service worker or remove if not needed yet.
 
 ### Later
-8. **Light mode** — CSS custom properties are ready. Add light theme values and a toggle.
-9. **E2E tests** — add Playwright tests for new UI flows. Existing unit tests cover server code and should pass unchanged.
-10. **Performance audit** — verify no regressions from new component tree (bundle size, render performance).
+7. **Light mode** — CSS custom properties are ready. Add light theme values and a toggle.
+8. **E2E tests** — add Playwright tests for new UI flows. Existing unit tests cover server code and should pass unchanged.
+9. **Performance audit** — verify no regressions from new component tree (bundle size, render performance).
 
 ## Locked Decisions
 
