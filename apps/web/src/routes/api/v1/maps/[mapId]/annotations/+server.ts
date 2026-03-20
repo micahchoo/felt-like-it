@@ -31,7 +31,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
     userId: auth.userId ?? '00000000-0000-0000-0000-000000000000',
     mapId,
     rootsOnly,
-    cursor: cursor ?? undefined,
+    ...(cursor !== null ? { cursor } : {}),
     limit,
   });
 
@@ -75,7 +75,7 @@ export const POST: RequestHandler = async ({ request, url, params }) => {
       userId: auth.userId,
       userName: user?.name ?? 'Unknown',
       mapId,
-      parentId: parsed.data.parentId,
+      ...(parsed.data.parentId !== undefined ? { parentId: parsed.data.parentId } : {}),
       anchor: parsed.data.anchor,
       content: parsed.data.content,
     });
