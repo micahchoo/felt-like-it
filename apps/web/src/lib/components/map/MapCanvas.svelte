@@ -322,9 +322,11 @@
 
     // Only return paint properties relevant to this layer type — skip null/undefined
     // values that can leak from JSONB storage and crash MapLibre ("Expected number, found null").
+    // Also sanitize MapLibre expressions: replace null fallback values with the property's
+    // default so MapLibre doesn't warn (e.g. ["case", pred, val, null] → ["case", pred, val, default]).
     const filtered: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(paint)) {
-      if (key.startsWith(paintType + '-') && value !== null && value !== undefined) {
+      if (key.startsWith(paintType + '-') && value != null) {
         filtered[key] = value;
       }
     }
@@ -338,9 +340,10 @@
     // in a MapLibre 'case' expression so the selected feature renders in highlightColor.
     // Uses ['id'] (top-level GeoJSON feature id — UUID string) for the equality check;
     // no setFeatureState needed since features already carry their UUID at the top level.
+    // Guard: JSONB can store null for highlightColor — treat null as absent.
     const highlightColor = style?.['highlightColor'] as string | undefined;
     const selectedFeature = selectionStore.selectedFeature;
-    if (highlightColor !== undefined && selectedFeature !== null && selectedFeature.id !== undefined) {
+    if (highlightColor != null && selectedFeature !== null && selectedFeature.id !== undefined) {
       const colorKey = `${paintType}-color`;
       const baseColor = result[colorKey] ?? (PAINT_DEFAULTS[paintType] as Record<string, unknown>)[colorKey];
       result[colorKey] = ['case', ['==', ['id'], selectedFeature.id], highlightColor, baseColor];
