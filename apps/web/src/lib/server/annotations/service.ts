@@ -153,21 +153,37 @@ export const annotationService = {
     userId: string;
     mapId: string;
     rootsOnly?: boolean;
-  }): Promise<AnnotationObject[]> {
+    cursor?: { createdAt: Date; id: string };
+    limit?: number;
+  }): Promise<{ items: AnnotationObject[]; totalCount: number }> {
     await requireMapAccess(params.userId, params.mapId, 'viewer');
 
-    const whereClause = params.rootsOnly === true
-      ? sql`WHERE map_id = ${params.mapId}::uuid AND parent_id IS NULL`
-      : sql`WHERE map_id = ${params.mapId}::uuid`;
+    const rootFilter = params.rootsOnly === true ? sql`AND parent_id IS NULL` : sql``;
+    const cursorFilter = params.cursor
+      ? sql`AND (created_at, id) > (${params.cursor.createdAt}, ${params.cursor.id}::uuid)`
+      : sql``;
+    const limitClause = params.limit != null ? sql`LIMIT ${params.limit + 1}` : sql``;
 
-    const rows = await typedExecute<RawObjectRow>(sql`
-      SELECT ${OBJECT_COLS}
-      FROM annotation_objects
-      ${whereClause}
-      ORDER BY created_at ASC
-    `);
+    const [rows, countRows] = await Promise.all([
+      typedExecute<RawObjectRow>(sql`
+        SELECT ${OBJECT_COLS}
+        FROM annotation_objects
+        WHERE map_id = ${params.mapId}::uuid ${rootFilter} ${cursorFilter}
+        ORDER BY created_at ASC, id ASC
+        ${limitClause}
+      `),
+      typedExecute<{ cnt: string }>(sql`
+        SELECT COUNT(*)::text AS cnt FROM annotation_objects
+        WHERE map_id = ${params.mapId}::uuid ${rootFilter}
+      `),
+    ]);
 
-    return rows.map(rowToObject);
+    const totalCount = parseInt(countRows[0]?.cnt ?? '0', 10);
+    const items = params.limit != null && rows.length > params.limit
+      ? rows.slice(0, params.limit)
+      : rows;
+
+    return { items: items.map(rowToObject), totalCount };
   },
 
   async get(params: {

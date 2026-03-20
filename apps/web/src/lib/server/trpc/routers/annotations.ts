@@ -16,11 +16,12 @@ export const annotationsRouter = router({
       rootsOnly: z.boolean().optional(),
     }))
     .query(async ({ ctx, input }) => {
-      return annotationService.list({
+      const { items } = await annotationService.list({
         userId: ctx.user.id,
         mapId: input.mapId,
         ...(input.rootsOnly !== undefined ? { rootsOnly: input.rootsOnly } : {}),
       });
+      return items;
     }),
 
   get: protectedProcedure
