@@ -209,13 +209,19 @@
       // TYPE_DEBT: terra-draw GeoJSONStoreFeatures properties are typed as Record<string,unknown>
       const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
       if (inProgress.length > 0) {
-        const confirmed = window.confirm('You have an unfinished drawing. Discard it?');
-        if (!confirmed) return;
-        try {
-          drawingStore.instance.removeFeatures(inProgress.map((f: any) => f.id!));
-        } catch (e) {
-          console.warn('[DrawingToolbar] removeFeatures during tool switch failed:', e);
-        }
+        // Schedule confirm outside reactive cycle to avoid blocking $effect
+        const instance = drawingStore.instance;
+        setTimeout(() => {
+          const confirmed = window.confirm('You have an unfinished drawing. Discard it?');
+          if (!confirmed) return;
+          try {
+            instance.removeFeatures(inProgress.map((f: any) => f.id!));
+          } catch (e) {
+            console.warn('[DrawingToolbar] removeFeatures during tool switch failed:', e);
+          }
+          instance.setMode(mode);
+        }, 0);
+        return;
       }
       drawingStore.instance.setMode(mode);
     }

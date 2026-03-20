@@ -39,7 +39,7 @@
     a.download = filename;
     a.click();
     // Delay revocation to ensure browser has time to start the download
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    setTimeout(() => URL.revokeObjectURL(url), 1_000);
   }
 
   async function exportGeoJSON(): Promise<void> {
@@ -116,7 +116,7 @@
       a.download = filename;
       a.click();
       // Delay revocation to ensure browser has time to start the download
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setTimeout(() => URL.revokeObjectURL(url), 1_000);
 
       toastStore.success('PDF exported.');
     } catch {

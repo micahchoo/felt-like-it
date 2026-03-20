@@ -421,8 +421,9 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       return;
     }
 
-    // 1/2/3 — switch drawing tools (only in editing mode, no modifier keys)
-    if (!designMode && !mod && !e.shiftKey && !e.altKey) {
+    // 1/2/3 — switch drawing tools (only in editing mode, no modifier keys, not in text inputs)
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (!designMode && !mod && !e.shiftKey && !e.altKey && tag !== 'INPUT' && tag !== 'TEXTAREA' && !(e.target as HTMLElement)?.isContentEditable) {
       switch (e.key) {
         case '1': selectionStore.setActiveTool('select'); break;
         case '2': selectionStore.setActiveTool('point'); break;
