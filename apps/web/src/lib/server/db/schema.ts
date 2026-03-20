@@ -360,6 +360,7 @@ export const apiKeys = pgTable(
      * The plaintext is never stored — only returned once at creation time.
      */
     keyHash: text('key_hash').notNull(),
+    scope: text('scope').notNull().default('read'),
     /** First 12 characters of the raw key (e.g. "flk_a1b2c3d4") — displayed in the UI. */
     prefix: text('prefix').notNull(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
