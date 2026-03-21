@@ -1,40 +1,144 @@
+/* === Font loading === */
+@font-face {
+  font-family: 'Kode Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/kode-mono-latin-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Kode Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/kode-mono-latin-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Kode Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/kode-mono-latin-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Kode Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/kode-mono-latin-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-latin-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/inter-latin-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter-latin-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/inter-latin-700.woff2') format('woff2');
+}
+
+/* === Tailwind 4 === */
 @import 'tailwindcss';
-@import 'maplibre-gl/dist/maplibre-gl.css';
 
+/* === Design system tokens === */
 @theme {
-  --color-brand-50: oklch(0.97 0.01 240);
-  --color-brand-100: oklch(0.93 0.03 240);
-  --color-brand-200: oklch(0.86 0.06 240);
-  --color-brand-300: oklch(0.77 0.10 240);
-  --color-brand-400: oklch(0.66 0.14 240);
-  --color-brand-500: oklch(0.55 0.17 240);
-  --color-brand-600: oklch(0.46 0.18 240);
-  --color-brand-700: oklch(0.38 0.16 240);
-  --color-brand-800: oklch(0.31 0.13 240);
-  --color-brand-900: oklch(0.24 0.10 240);
+  /* Surface hierarchy (5-tier tonal elevation) */
+  --color-surface: #081425;
+  --color-surface-lowest: #040e1f;
+  --color-surface-low: #0d1c2f;
+  --color-surface-container: #152031;
+  --color-surface-high: #1f2a3c;
+  --color-surface-highest: #2a3548;
 
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  /* Primary (amber FLI accent) */
+  --color-primary: #ffc174;
+  --color-primary-container: #f59e0b;
+  --color-on-primary-container: #613b00;
+  --color-inverse-primary: #855300;
 
+  /* Tertiary (info blue) */
+  --color-tertiary: #8ed5ff;
+  --color-tertiary-dim: #7bd0ff;
+
+  /* Text */
+  --color-on-surface: #d8e3fb;
+  --color-on-surface-variant: #d8c3ad;
+
+  /* Error */
+  --color-error: #ffb4ab;
+
+  /* Typography */
+  --font-display: 'Kode Mono', monospace;
+  --font-body: 'Inter', system-ui, sans-serif;
+
+  /* Spacing (8-point hybrid) */
+  --spacing-panel: 0.6rem;
+  --spacing-layout: 1.1rem;
+
+  /* Radii */
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
 }
 
-/* Map canvas fills its container */
-.maplibregl-map {
-  width: 100%;
-  height: 100%;
+/* === Signature classes === */
+.glass-panel {
+  @apply bg-surface-container/70 backdrop-blur-[12px];
 }
 
-/* Ensure map controls are above panel overlays */
-.maplibregl-ctrl-top-right {
-  top: 0.5rem;
-  right: 0.5rem;
+.tonal-elevation {
+  box-shadow: 0 12px 40px rgba(4, 14, 31, 0.4);
 }
 
-/* Custom scrollbar for dark panels */
+.signature-gradient {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-container));
+}
+
+.surface-well {
+  @apply bg-surface-low;
+}
+
+.map-pattern {
+  background-color: var(--color-surface);
+  background-image: radial-gradient(var(--color-surface-high) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.status-glow {
+  animation: glow 2s ease-in-out infinite alternate;
+}
+@keyframes glow {
+  from { box-shadow: 0 0 4px rgba(255, 193, 116, 0.2); }
+  to { box-shadow: 0 0 12px rgba(255, 193, 116, 0.5); }
+}
+
+/* === Global base styles === */
+html {
+  @apply bg-surface text-on-surface;
+  font-family: var(--font-body);
+}
+
+/* Custom scrollbar */
 .scrollbar-thin::-webkit-scrollbar {
   width: 4px;
 }
@@ -42,6 +146,12 @@
   background: transparent;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background-color: rgb(71 85 105 / 0.5);
+  background-color: rgb(42 53 72 / 0.5);
   border-radius: 2px;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .status-glow { animation: none; }
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
