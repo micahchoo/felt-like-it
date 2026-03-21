@@ -496,10 +496,10 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       <button
         class="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-full {activePanelIcon === 'processing' ? 'bg-surface-high text-primary' : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'}"
         onclick={() => { activePanelIcon = activePanelIcon === 'processing' ? null : 'processing'; activeSection = 'analysis'; }}
-        title="Processing"
+        title="Analysis"
       >
         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
-        <span class="text-[8px] font-display uppercase tracking-wider">Process</span>
+        <span class="text-[8px] font-display uppercase tracking-wider">Analysis</span>
       </button>
       <button
         class="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-full {showDataTable ? 'bg-surface-high text-primary' : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'}"

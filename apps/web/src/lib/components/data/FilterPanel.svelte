@@ -46,6 +46,7 @@
       value:    newValue.trim(),
     } satisfies UIFilter);
     newValue = '';
+    newField = availableFields[0] ?? '';
   }
 
   function handleKeydown(e: KeyboardEvent) {

@@ -79,7 +79,7 @@
         {#each DISTANCE_UNITS as u (u.value)}
           <button
             type="button"
-            class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-colors {distUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-container-low border-white/5 text-on-surface-variant hover:border-white/20'}"
+            class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-all duration-150 {distUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-container-low border-white/5 text-on-surface-variant hover:border-white/20'}"
             onclick={() => { distUnit = u.value; }}
           >{u.label}</button>
         {/each}
@@ -117,7 +117,7 @@
           {#each AREA_UNITS as u (u.value)}
             <button
               type="button"
-              class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-colors {areaUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-container-low border-white/5 text-on-surface-variant hover:border-white/20'}"
+              class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-all duration-150 {areaUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-container-low border-white/5 text-on-surface-variant hover:border-white/20'}"
               onclick={() => { areaUnit = u.value; }}
             >{u.label}</button>
           {/each}
@@ -127,7 +127,7 @@
           {#each DISTANCE_UNITS as u (u.value)}
             <button
               type="button"
-              class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-colors {periUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-container-low border-white/5 text-on-surface-variant hover:border-white/20'}"
+              class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-all duration-150 {periUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-container-low border-white/5 text-on-surface-variant hover:border-white/20'}"
               onclick={() => { periUnit = u.value; }}
             >{u.label}</button>
           {/each}
@@ -140,7 +140,7 @@
       <div class="flex items-center gap-2 mt-auto pt-2 border-t border-white/5">
         <button
           type="button"
-          onclick={onclear}
+          onclick={() => { if (!window.confirm('Clear this measurement?')) return; onclear(); }}
           class="flex-1 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded bg-surface-container-low border border-white/5 text-on-surface-variant hover:text-on-surface hover:border-white/20 transition-colors"
         >
           Clear

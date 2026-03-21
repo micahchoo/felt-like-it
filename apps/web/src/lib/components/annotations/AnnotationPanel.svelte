@@ -992,6 +992,8 @@
             Lng
             {#if gpsExtracted && formType === 'image'}
               <span class="text-[10px] text-green-400 font-medium">EXIF</span>
+            {:else if formLng !== 0}
+              <span class="text-[10px] text-on-surface-variant/50 ml-1">(from map center)</span>
             {/if}
           </label>
           <input
@@ -1009,6 +1011,8 @@
             Lat
             {#if gpsExtracted && formType === 'image'}
               <span class="text-[10px] text-green-400 font-medium">EXIF</span>
+            {:else if formLat !== 0}
+              <span class="text-[10px] text-on-surface-variant/50 ml-1">(from map center)</span>
             {/if}
           </label>
           <input
@@ -1178,7 +1182,7 @@
     <!-- Comments sub-section -->
     <div class="border-t border-white/5 mt-2">
       <div class="px-3 py-2 flex items-center gap-2">
-        <span class="text-xs font-semibold text-on-surface-variant uppercase tracking-wide flex-1">Comments</span>
+        <span class="text-xs font-semibold text-on-surface-variant uppercase tracking-wide flex-1">Comments<span class="text-[10px] text-on-surface-variant/70 font-normal normal-case tracking-normal ml-2">General discussion</span></span>
         {#if comments.length > 0}
           <span class="text-xs text-on-surface-variant/70">{comments.length}</span>
         {/if}

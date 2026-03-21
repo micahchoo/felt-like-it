@@ -78,7 +78,7 @@
 						</div>
 						<div class="flex flex-col gap-1">
 							<label for="settings-email" class="text-xs text-on-surface-variant">
-								Email
+								Email <span class="text-[10px] text-on-surface-variant/50">(cannot be changed)</span>
 							</label>
 							<Input
 								id="settings-email"

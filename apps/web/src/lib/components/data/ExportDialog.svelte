@@ -89,6 +89,7 @@
       let screenshot: string | undefined;
       if (container) {
         try {
+              // TODO: check map.areTilesLoaded() before capture to prevent incomplete screenshots
           screenshot = await toPng(container, { pixelRatio: 2 });
         } catch {
           // Best effort — PDF will be generated without map image
