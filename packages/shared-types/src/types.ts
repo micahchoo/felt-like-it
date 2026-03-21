@@ -25,6 +25,7 @@ import type {
   JobStatusSchema,
   ImportJobPayloadSchema,
 } from './schemas/job.js';
+import type { AuditLogEntrySchema } from './schemas/audit-log.js';
 
 export type User = z.infer<typeof UserSchema>;
 export type CreateUser = z.infer<typeof CreateUserSchema>;
@@ -56,3 +57,5 @@ export type AccessLevel = z.infer<typeof AccessLevelSchema>;
 export type ImportJob = z.infer<typeof ImportJobSchema>;
 export type JobStatus = z.infer<typeof JobStatusSchema>;
 export type ImportJobPayload = z.infer<typeof ImportJobPayloadSchema>;
+
+export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;

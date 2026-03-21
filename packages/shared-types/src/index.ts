@@ -8,5 +8,6 @@ export * from './schemas/job.js';
 export * from './schemas/geoprocessing.js';
 export * from './schemas/annotation.js';
 export * from './schemas/annotation-object.js';
+export * from './schemas/audit-log.js';
 export * from './types.js';
 export { type FeatureUUID, toFeatureUUID, isFeatureUUID } from './branded.js';
