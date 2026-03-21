@@ -453,7 +453,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="flex h-screen w-full overflow-hidden bg-slate-900">
+<div class="flex h-screen w-full overflow-hidden bg-surface">
   <!-- Left: Layer Panel -->
   {#if !effectiveReadonly && !designMode}
     <div class="w-56 shrink-0 flex flex-col">
@@ -465,10 +465,10 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   <div class="flex-1 relative flex flex-col min-w-0">
     <!-- Top toolbar — hidden in embed mode (bare map canvas only) -->
     {#if !embed}
-    <div class="flex items-center gap-1 px-3 py-2 bg-slate-800 border-b border-white/10 shrink-0">
-      <span class="text-sm font-medium text-white truncate mr-auto">{mapTitle}</span>
+    <div class="flex items-center gap-1 px-3 py-2 bg-surface-container border-b border-surface-high shrink-0">
+      <span class="text-sm font-medium font-display text-on-surface truncate mr-auto">{mapTitle}</span>
       {#if userRole && userRole !== 'owner'}
-        <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/80 text-slate-300 capitalize">
+        <span class="text-[10px] px-1.5 py-0.5 rounded bg-surface-high/80 text-on-surface-variant capitalize">
           {userRole}
         </span>
       {/if}
@@ -510,7 +510,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
           </Tooltip>
 
           <Tooltip content="Data table — view and browse all features in the active layer as rows">
-            <Button variant="ghost" size="sm" class={showDataTable ? 'bg-slate-700 text-white' : ''} onclick={() => (showDataTable = !showDataTable)}>
+            <Button variant="ghost" size="sm" class={showDataTable ? 'bg-surface-high text-on-surface' : ''} onclick={() => (showDataTable = !showDataTable)}>
               <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 001-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 001 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/>
               </svg>
@@ -545,7 +545,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
             </Button>
           </Tooltip>
 
-          <div class="mx-0.5 h-5 w-px bg-white/10"></div>
+          <div class="mx-0.5 h-5 w-px bg-surface-high"></div>
 
           <Tooltip content={undoStore.undoLabel ? `Undo: ${undoStore.undoLabel}` : 'Undo (Ctrl+Z)'}>
             <Button variant="ghost" size="sm" onclick={() => undoStore.undo()} disabled={!undoStore.canUndo} aria-label="Undo">
@@ -660,7 +660,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       {@const activeLayer = layersStore.active}
       {@const rawFeatures = layerData[activeLayer.id]?.features ?? []}
       {@const filteredFeatures = filterStore.applyToFeatures(activeLayer.id, rawFeatures)}
-      <div class="border-t border-white/10 shrink-0 flex flex-col overflow-hidden" style="height: {showFilterPanel && !isLargeLayer(activeLayer) ? '22rem' : '16rem'}">
+      <div class="border-t border-surface-high shrink-0 flex flex-col overflow-hidden" style="height: {showFilterPanel && !isLargeLayer(activeLayer) ? '22rem' : '16rem'}">
         {#if isLargeLayer(activeLayer)}
           <div class="px-3 py-1.5 bg-blue-900/30 border-b border-blue-500/20 text-xs text-blue-300 flex items-center gap-2 shrink-0">
             <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -731,21 +731,21 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   {#snippet analysisContent()}
     <div class="flex flex-col h-full">
       <!-- Sub-tab switcher -->
-      <div class="flex border-b border-white/10 shrink-0">
+      <div class="flex border-b border-surface-high shrink-0">
         <button
-          class="flex-1 py-2 text-xs font-medium text-center transition-colors
+          class="flex-1 py-2 text-xs font-display uppercase tracking-wide font-medium text-center transition-colors
                  {analysisTab === 'measure'
                    ? 'text-blue-400 border-b-2 border-blue-400'
-                   : 'text-slate-400 hover:text-slate-200'}"
+                   : 'text-on-surface-variant hover:text-on-surface'}"
           onclick={() => { analysisTab = 'measure'; }}
         >
           Measure
         </button>
         <button
-          class="flex-1 py-2 text-xs font-medium text-center transition-colors
+          class="flex-1 py-2 text-xs font-display uppercase tracking-wide font-medium text-center transition-colors
                  {analysisTab === 'process'
                    ? 'text-blue-400 border-b-2 border-blue-400'
-                   : 'text-slate-400 hover:text-slate-200'}"
+                   : 'text-on-surface-variant hover:text-on-surface'}"
           onclick={() => { analysisTab = 'process'; }}
         >
           Process

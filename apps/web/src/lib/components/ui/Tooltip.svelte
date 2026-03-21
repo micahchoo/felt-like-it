@@ -31,7 +31,7 @@
   {#if visible && content}
     <div
       class="absolute {posClasses[position]} z-50 pointer-events-none whitespace-nowrap
-             rounded bg-slate-900 px-2 py-1 text-xs text-white shadow-md ring-1 ring-white/10"
+             rounded bg-surface-lowest px-2 py-1 text-xs text-on-surface-variant shadow-md ring-1 ring-surface-high"
       role="tooltip"
     >
       {content}

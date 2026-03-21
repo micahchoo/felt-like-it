@@ -322,7 +322,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div
-  class="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-1 bg-slate-800/90 backdrop-blur-sm rounded-lg p-1 shadow-xl ring-1 ring-white/10"
+  class="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-1 glass-panel rounded-lg p-1 shadow-xl ring-1 ring-surface-high"
   role="toolbar"
   aria-label="Drawing tools"
 >
@@ -332,12 +332,12 @@
       <button
         onclick={() => setTool(tool.id)}
         disabled={!drawingStore.isReady || noLayer}
-        class="h-9 w-9 rounded-md flex items-center justify-center text-base transition-colors
+        class="h-9 w-9 rounded-md flex items-center justify-center text-base transition-colors font-display
                {!drawingStore.isReady || noLayer
-                 ? 'opacity-50 cursor-not-allowed text-slate-500'
+                 ? 'opacity-50 cursor-not-allowed text-on-surface-variant/50'
                  : selectionStore.activeTool === tool.id
-                   ? 'bg-blue-600 text-white'
-                   : 'text-slate-300 hover:bg-slate-700 hover:text-white'}"
+                   ? 'bg-primary text-on-primary-container'
+                   : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'}"
         aria-label={tool.label}
         aria-pressed={selectionStore.activeTool === tool.id}
       >
