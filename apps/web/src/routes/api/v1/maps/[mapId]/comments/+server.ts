@@ -49,7 +49,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
 
   return jsonResponse(envelope(
     items.map(toComment),
-    { totalCount: parseInt(countRow.cnt, 10), limit, nextCursor },
+    { totalCount: parseInt(countRow?.cnt ?? '0', 10), limit, nextCursor },
     listLinks(basePath, nextCursor),
   ));
 };
@@ -87,7 +87,7 @@ export const POST: RequestHandler = async ({ request, url, params }) => {
     .returning();
 
   return jsonResponse(
-    envelope(toComment(created), {}, commentLinks(mapId, created.id)),
+    envelope(toComment(created!), {}, commentLinks(mapId, created!.id)),
     201,
   );
 };

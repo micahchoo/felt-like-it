@@ -6,6 +6,7 @@
   import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { queryKeys } from '$lib/utils/query-keys.js';
   import Button from '$lib/components/ui/Button.svelte';
+  import { Type, Smile, Film, ImageIcon, Link2, Waypoints } from 'lucide-svelte';
   import AnnotationContent from './AnnotationContent.svelte';
   import AnnotationThread from './AnnotationThread.svelte';
   import { mapStore } from '$lib/stores/map.svelte.js';
@@ -85,17 +86,6 @@
 
   const comments = $derived(commentsQuery.data ?? []);
 
-  const canSubmit = $derived(!(
-    creating || uploading
-    || (formType === 'text' && !formText.trim())
-    || (formType === 'emoji' && !formEmoji.trim())
-    || (formType === 'gif' && !formGifUrl.trim())
-    || (formType === 'image' && !formImageUrl && !selectedImageFile)
-    || (formType === 'link' && !formLinkUrl.trim())
-    || (formType === 'iiif' && !formManifestUrl.trim())
-    || (formAnchorType === 'region' && !regionGeometry)
-    || (formAnchorType === 'feature' && !pickedFeature)
-  ));
   let commentBody = $state('');
   let submittingComment = $state(false);
 
@@ -131,14 +121,14 @@
 
   const deleteCommentMutation = createMutation(() => ({
     mutationFn: (input: { id: string }) => trpc.comments.delete.mutate(input),
-    onMutate: async ({ id }) => {
+    onMutate: async ({ id }: { id: string }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.comments.list({ mapId }) });
       const previous = queryClient.getQueryData<CommentEntry[]>(queryKeys.comments.list({ mapId }));
       queryClient.setQueryData<CommentEntry[]>(
         queryKeys.comments.list({ mapId }),
         (old) => old?.filter((c) => c.id !== id) ?? []
       );
-      return { previous };
+      return { previous } as { previous?: CommentEntry[] };
     },
     onError: (_err: unknown, _vars: { id: string }, context: { previous?: CommentEntry[] } | undefined) => {
       if (context?.previous) {
@@ -152,14 +142,14 @@
 
   const resolveCommentMutation = createMutation(() => ({
     mutationFn: (input: { id: string }) => trpc.comments.resolve.mutate(input),
-    onMutate: async ({ id }) => {
+    onMutate: async ({ id }: { id: string }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.comments.list({ mapId }) });
       const previous = queryClient.getQueryData<CommentEntry[]>(queryKeys.comments.list({ mapId }));
       queryClient.setQueryData<CommentEntry[]>(
         queryKeys.comments.list({ mapId }),
         (old) => old?.map((c) => c.id === id ? { ...c, resolved: !c.resolved } : c) ?? []
       );
-      return { previous };
+      return { previous } as { previous?: CommentEntry[] };
     },
     onError: (_err: unknown, _vars: { id: string }, context: { previous?: CommentEntry[] } | undefined) => {
       if (context?.previous) {
@@ -217,13 +207,17 @@
   const CONTENT_TYPES: ContentType[] = ['text', 'emoji', 'gif', 'image', 'link', 'iiif'];
 
   const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
-    text:  'Text note',
-    emoji: 'Emoji pin',
+    text:  'Text',
+    emoji: 'Emoji',
     gif:   'GIF',
     image: 'Image',
-    link:  'Link card',
-    iiif:  'IIIF Manifest',
+    link:  'Link',
+    iiif:  'IIIF',
     measurement: 'Measurement',
+  };
+
+  const CONTENT_TYPE_ICONS: Record<string, typeof Type> = {
+    text: Type, emoji: Smile, gif: Film, image: ImageIcon, link: Link2, iiif: Waypoints,
   };
 
   let showForm = $state(false);
@@ -283,6 +277,18 @@
 
   // Anchor type selector
   let formAnchorType = $state<'point' | 'region' | 'viewport' | 'feature'>('point');
+
+  const canSubmit = $derived(!(
+    creating || uploading
+    || (formType === 'text' && !formText.trim())
+    || (formType === 'emoji' && !formEmoji.trim())
+    || (formType === 'gif' && !formGifUrl.trim())
+    || (formType === 'image' && !formImageUrl && !selectedImageFile)
+    || (formType === 'link' && !formLinkUrl.trim())
+    || (formType === 'iiif' && !formManifestUrl.trim())
+    || (formAnchorType === 'region' && !regionGeometry)
+    || (formAnchorType === 'feature' && !pickedFeature)
+  ));
 
   // Request feature pick mode when anchor type is 'feature' but no feature selected yet.
   $effect(() => {
@@ -476,14 +482,14 @@
 
   const deleteAnnotationMutation = createMutation(() => ({
     mutationFn: (input: { id: string }) => trpc.annotations.delete.mutate(input),
-    onMutate: async ({ id }) => {
+    onMutate: async ({ id }: { id: string }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
       const previous = queryClient.getQueryData<AnnotationObject[]>(queryKeys.annotations.list({ mapId }));
       queryClient.setQueryData<AnnotationObject[]>(
         queryKeys.annotations.list({ mapId }),
         (old) => old?.filter((a) => a.id !== id) ?? []
       );
-      return { previous };
+      return { previous } as { previous?: AnnotationObject[] };
     },
     onError: (_err: unknown, _vars: { id: string }, context: { previous?: AnnotationObject[] } | undefined) => {
       if (context?.previous) {
@@ -498,16 +504,16 @@
   }));
 
   const updateAnnotationMutation = createMutation(() => ({
-    mutationFn: (input: { id: string; content?: { kind: 'single'; body: AC }; anchor?: Anchor; version?: number }) =>
-      trpc.annotations.update.mutate(input),
+    mutationFn: ((input: { id: string; content?: { kind: 'single'; body: AC }; anchor?: Anchor; version?: number }) =>
+      trpc.annotations.update.mutate(input)) as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
     },
   }));
 
   const replyAnnotationMutation = createMutation(() => ({
-    mutationFn: (input: { mapId: string; parentId: string; anchor: Anchor; content: { kind: 'single'; body: AC } }) =>
-      trpc.annotations.create.mutate(input),
+    mutationFn: ((input: { mapId: string; parentId: string; anchor: Anchor; content: { kind: 'single'; body: AC } }) =>
+      trpc.annotations.create.mutate(input)) as any,
     onSuccess: (_data: unknown, variables: { parentId: string }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
       queryClient.invalidateQueries({ queryKey: queryKeys.annotations.thread({ annotationId: variables.parentId }) });
@@ -538,6 +544,11 @@
         formImageUrl = '';
         try {
           formImageUrl = await uploadImageFile(selectedImageFile);
+        } catch (uploadErr) {
+          uploading = false;
+          createError = `Image upload failed: ${(uploadErr as { message?: string })?.message ?? 'unknown error'}`;
+          creating = false;
+          return;
         } finally {
           uploading = false;
         }
@@ -671,11 +682,11 @@
   }
 </script>
 
-<div class="flex flex-col h-full {embedded !== true ? 'bg-slate-800 border-l border-white/10' : ''}">
+<div class="flex flex-col h-full {embedded !== true ? 'bg-surface-container border-l border-white/5' : ''}">
   {#if embedded !== true}
   <!-- Header -->
-  <div class="px-3 py-2 border-b border-white/10 shrink-0 flex items-center justify-between">
-    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Annotations</span>
+  <div class="px-3 py-2 border-b border-white/5 shrink-0 flex items-center justify-between">
+    <span class="text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Annotations</span>
     <Button
       variant="ghost"
       size="sm"
@@ -701,83 +712,89 @@
   {#if showForm}
     <form
       onsubmit={handleCreate}
-      class="border-b border-white/10 p-3 flex flex-col gap-2 shrink-0"
+      class="border-b border-white/5 p-3 flex flex-col gap-2 shrink-0"
     >
-      <!-- Content type selector -->
-      <div class="flex flex-col gap-1">
-        <label class="text-xs text-slate-400" for="ann-type">Type</label>
-        <select
-          id="ann-type"
-          bind:value={formType}
-          class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        >
-          {#each CONTENT_TYPES as t (t)}
-            <option value={t}>{CONTENT_TYPE_LABELS[t]}</option>
-          {/each}
-        </select>
+      <!-- Content type grid -->
+      <div class="grid grid-cols-3 gap-1.5">
+        {#each CONTENT_TYPES as t (t)}
+          {@const Icon = CONTENT_TYPE_ICONS[t]}
+          <button
+            type="button"
+            onclick={() => { formType = t; }}
+            class="flex flex-col items-center justify-center p-2.5 rounded-lg transition-all
+                   {formType === t
+                     ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                     : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-high'}"
+          >
+            {#if Icon}
+              <Icon size={18} strokeWidth={formType === t ? 2.5 : 1.5} />
+            {/if}
+            <span class="text-[9px] font-bold uppercase tracking-wider mt-1">{CONTENT_TYPE_LABELS[t]}</span>
+          </button>
+        {/each}
       </div>
 
       <!-- Per-type fields -->
       {#if formType === 'text'}
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-text">Note</label>
+          <label class="text-xs text-on-surface-variant" for="ann-text">Note</label>
           <textarea
             id="ann-text"
             bind:value={formText}
             rows={3}
             placeholder="Write your note…"
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
           ></textarea>
         </div>
 
       {:else if formType === 'emoji'}
         <div class="flex gap-2">
           <div class="flex flex-col gap-1 w-20">
-            <label class="text-xs text-slate-400" for="ann-emoji">Emoji</label>
+            <label class="text-xs text-on-surface-variant" for="ann-emoji">Emoji</label>
             <input
               id="ann-emoji"
               type="text"
               bind:value={formEmoji}
               placeholder="🌊"
               maxlength={10}
-              class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
           <div class="flex flex-col gap-1 flex-1">
-            <label class="text-xs text-slate-400" for="ann-emoji-label">
-              Label <span class="text-slate-500">(optional)</span>
+            <label class="text-xs text-on-surface-variant" for="ann-emoji-label">
+              Label <span class="text-on-surface-variant/70">(optional)</span>
             </label>
             <input
               id="ann-emoji-label"
               type="text"
               bind:value={formEmojiLabel}
               placeholder="Short label"
-              class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
         </div>
 
       {:else if formType === 'gif'}
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-gif-url">GIF URL</label>
+          <label class="text-xs text-on-surface-variant" for="ann-gif-url">GIF URL</label>
           <input
             id="ann-gif-url"
             type="url"
             bind:value={formGifUrl}
             placeholder="https://media.tenor.com/…"
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-alt">
-            Alt text <span class="text-slate-500">(optional)</span>
+          <label class="text-xs text-on-surface-variant" for="ann-alt">
+            Alt text <span class="text-on-surface-variant/70">(optional)</span>
           </label>
           <input
             id="ann-alt"
             type="text"
             bind:value={formAltText}
             placeholder="Accessible description"
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
 
@@ -789,16 +806,16 @@
           The file takes precedence when both are provided.
         -->
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-image-file">
+          <label class="text-xs text-on-surface-variant" for="ann-image-file">
             Upload image
-            <span class="text-slate-500 font-normal">(JPEG · PNG · WebP · GIF · max 10 MB)</span>
+            <span class="text-on-surface-variant/70 font-normal">(JPEG · PNG · WebP · GIF · max 10 MB)</span>
           </label>
           <input
             id="ann-image-file"
             type="file"
             accept="image/jpeg,image/png,image/webp,image/gif"
             onchange={handleImageFileSelect}
-            class="w-full text-xs text-slate-300 file:mr-2 file:rounded file:border-0 file:bg-slate-600 file:px-2 file:py-1 file:text-xs file:text-slate-200 hover:file:bg-slate-500"
+            class="w-full text-xs text-on-surface file:mr-2 file:rounded file:border-0 file:bg-surface-container-low file:px-2 file:py-1 file:text-xs file:text-on-surface hover:file:bg-surface-high"
           />
         </div>
 
@@ -808,7 +825,7 @@
             <img
               src={imagePreviewUrl}
               alt="Selected file preview"
-              class="rounded w-full object-contain bg-slate-900"
+              class="rounded w-full object-contain bg-surface-lowest"
               style="max-height: 8rem"
             />
             {#if gpsExtracted}
@@ -829,7 +846,7 @@
 
         <!-- Manual URL fallback (or primary when no file is chosen) -->
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-image-url">
+          <label class="text-xs text-on-surface-variant" for="ann-image-url">
             {selectedImageFile ? 'Or paste URL instead' : 'Image URL'}
           </label>
           <input
@@ -837,92 +854,92 @@
             type="url"
             bind:value={formImageUrl}
             placeholder="https://example.com/photo.jpg"
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
 
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-caption">
-            Caption <span class="text-slate-500">(optional)</span>
+          <label class="text-xs text-on-surface-variant" for="ann-caption">
+            Caption <span class="text-on-surface-variant/70">(optional)</span>
           </label>
           <input
             id="ann-caption"
             type="text"
             bind:value={formCaption}
             placeholder="Caption"
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
 
       {:else if formType === 'link'}
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-link-url">URL</label>
+          <label class="text-xs text-on-surface-variant" for="ann-link-url">URL</label>
           <input
             id="ann-link-url"
             type="url"
             bind:value={formLinkUrl}
             placeholder="https://example.com"
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-link-title">
-            Title <span class="text-slate-500">(optional)</span>
+          <label class="text-xs text-on-surface-variant" for="ann-link-title">
+            Title <span class="text-on-surface-variant/70">(optional)</span>
           </label>
           <input
             id="ann-link-title"
             type="text"
             bind:value={formLinkTitle}
             placeholder="Link title"
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-link-desc">
-            Description <span class="text-slate-500">(optional)</span>
+          <label class="text-xs text-on-surface-variant" for="ann-link-desc">
+            Description <span class="text-on-surface-variant/70">(optional)</span>
           </label>
           <input
             id="ann-link-desc"
             type="text"
             bind:value={formLinkDesc}
             placeholder="Brief description"
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
 
       {:else if formType === 'iiif'}
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-manifest">Manifest URL</label>
+          <label class="text-xs text-on-surface-variant" for="ann-manifest">Manifest URL</label>
           <input
             id="ann-manifest"
             type="url"
             bind:value={formManifestUrl}
             placeholder="https://example.org/iiif/manifest.json"
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="ann-iiif-label">
-            Label <span class="text-slate-500">(optional)</span>
+          <label class="text-xs text-on-surface-variant" for="ann-iiif-label">
+            Label <span class="text-on-surface-variant/70">(optional)</span>
           </label>
           <input
             id="ann-iiif-label"
             type="text"
             bind:value={formIiifLabel}
             placeholder="Manuscript title"
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
-        <p class="text-xs text-slate-500 italic">NavPlace will be fetched automatically after saving.</p>
+        <p class="text-xs text-on-surface-variant/70 italic">NavPlace will be fetched automatically after saving.</p>
       {/if}
 
       <!-- Anchor type selector -->
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-slate-400" for="ann-anchor-type">Anchor</label>
+        <label class="text-xs text-on-surface-variant" for="ann-anchor-type">Anchor</label>
         <select
           id="ann-anchor-type"
           bind:value={formAnchorType}
-          class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
         >
           <option value="point">Pin (Point)</option>
           <option value="region">Region (Polygon)</option>
@@ -939,7 +956,7 @@
             <button
               type="button"
               onclick={() => onrequestregion?.()}
-              class="text-xs text-blue-400 hover:text-blue-300 underline text-left"
+              class="text-xs text-primary hover:text-primary/80 underline text-left"
             >
               Redraw region
             </button>
@@ -947,11 +964,11 @@
             <button
               type="button"
               onclick={() => onrequestregion?.()}
-              class="w-full rounded bg-blue-600 hover:bg-blue-500 px-2 py-1.5 text-xs text-white font-medium transition-colors"
+              class="w-full rounded bg-primary-container hover:bg-primary px-2 py-1.5 text-xs text-on-primary-container font-medium transition-colors"
             >
               Draw region on map
             </button>
-            <p class="text-xs text-slate-500 italic">Click the map to draw a polygon boundary.</p>
+            <p class="text-xs text-on-surface-variant/70 italic">Click the map to draw a polygon boundary.</p>
           {/if}
         </div>
       {/if}
@@ -959,11 +976,11 @@
       <!-- Feature anchor -->
       {#if formAnchorType === 'feature'}
         {#if pickedFeature}
-          <div class="text-xs text-slate-300 bg-slate-700 rounded px-2 py-1 mt-1">
+          <div class="text-xs text-on-surface bg-surface-container-low rounded px-2 py-1 mt-1">
             Attached to feature <span class="font-mono text-amber-400">{pickedFeature.featureId.slice(0, 8)}…</span>
           </div>
         {:else}
-          <p class="text-xs text-slate-400 italic mt-1">Click a feature on the map to attach this annotation.</p>
+          <p class="text-xs text-on-surface-variant italic mt-1">Click a feature on the map to attach this annotation.</p>
         {/if}
       {/if}
 
@@ -971,10 +988,12 @@
       {#if formAnchorType === 'point'}
       <div class="flex gap-2 items-end">
         <div class="flex flex-col gap-1 flex-1">
-          <label class="text-xs text-slate-400 flex items-center gap-1" for="ann-lng">
+          <label class="text-xs text-on-surface-variant flex items-center gap-1" for="ann-lng">
             Lng
             {#if gpsExtracted && formType === 'image'}
               <span class="text-[10px] text-green-400 font-medium">EXIF</span>
+            {:else if formLng !== 0}
+              <span class="text-[10px] text-on-surface-variant/50 ml-1">(from map center)</span>
             {/if}
           </label>
           <input
@@ -984,14 +1003,16 @@
             max="180"
             step="0.000001"
             bind:value={formLng}
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <div class="flex flex-col gap-1 flex-1">
-          <label class="text-xs text-slate-400 flex items-center gap-1" for="ann-lat">
+          <label class="text-xs text-on-surface-variant flex items-center gap-1" for="ann-lat">
             Lat
             {#if gpsExtracted && formType === 'image'}
               <span class="text-[10px] text-green-400 font-medium">EXIF</span>
+            {:else if formLat !== 0}
+              <span class="text-[10px] text-on-surface-variant/50 ml-1">(from map center)</span>
             {/if}
           </label>
           <input
@@ -1001,7 +1022,7 @@
             max="90"
             step="0.000001"
             bind:value={formLat}
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
       </div>
@@ -1027,9 +1048,11 @@
       >
         {#if uploading}Uploading…{:else}Save annotation{/if}
       </Button>
-      {#if !canSubmit && showForm}
-        <p class="text-xs text-slate-500 mt-1">
-          {#if formAnchorType === 'feature' && !pickedFeature}
+      {#if !canSubmit}
+        <p class="text-xs text-on-surface-variant/70 mt-1">
+          {#if formAnchorType === 'region' && !regionGeometry}
+            Draw a region on the map to anchor this annotation.
+          {:else if formAnchorType === 'feature' && !pickedFeature}
             Pick a feature on the map to anchor this annotation.
           {:else if formType === 'text' && !formText.trim()}
             Write some text to save this annotation.
@@ -1044,19 +1067,19 @@
   <!-- Annotation list -->
   <div class="flex-1 overflow-y-auto" bind:this={listContainerEl}>
     {#if listLoading}
-      <p class="text-xs text-slate-500 text-center py-6">Loading…</p>
+      <p class="text-xs text-on-surface-variant/70 text-center py-6">Loading…</p>
     {:else if listError}
       <p class="text-xs text-red-400 px-3 py-4">{listError}</p>
     {:else if annotationList.length === 0 && comments.length === 0}
       <div class="flex flex-col items-center justify-center py-12 px-4 text-center">
-        <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <svg class="h-6 w-6 text-on-surface-variant/70 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z"/>
         </svg>
-        <p class="text-sm text-slate-400">No annotations yet. Click the map to add a note, or pick a feature to annotate it.</p>
+        <p class="text-sm text-on-surface-variant">No annotations yet. Click the map to add a note, or pick a feature to annotate it.</p>
       </div>
     {:else}
       {#each annotationList as annotation (annotation.id)}
-        <div id="annotation-{annotation.id}" class="px-3 py-3 border-b border-white/10 space-y-2">
+        <div id="annotation-{annotation.id}" class="px-3 py-3 border-b border-white/5 space-y-2">
           <AnnotationContent
             content={annotation.content}
             authorName={annotation.authorName}
@@ -1076,21 +1099,21 @@
           {#if annotation.anchor.type === 'viewport'}
             <span class="text-[10px] bg-amber-100/10 text-amber-400 px-1.5 py-0.5 rounded">Map-level</span>
           {:else if annotation.anchor.type === 'region'}
-            <span class="text-[10px] bg-blue-100/10 text-blue-400 px-1.5 py-0.5 rounded">Region</span>
+            <span class="text-[10px] bg-tertiary/10 text-tertiary px-1.5 py-0.5 rounded">Region</span>
           {/if}
 
           <!-- Thread controls -->
           <div class="flex gap-2 text-xs">
             <button
               onclick={() => { expandedAnnotationId = expandedAnnotationId === annotation.id ? null : annotation.id; }}
-              class="text-slate-400 hover:text-slate-300"
+              class="text-on-surface-variant hover:text-on-surface"
             >
               {expandedAnnotationId === annotation.id ? 'Collapse' : 'Replies'}
             </button>
             {#if annotation.authorId === userId || userId}
               <button
                 onclick={() => { replyingTo = replyingTo === annotation.id ? null : annotation.id; replyText = ''; }}
-                class="text-blue-400 hover:text-blue-300"
+                class="text-primary hover:text-primary/80"
               >
                 Reply
               </button>
@@ -1113,7 +1136,7 @@
                 bind:value={replyText}
                 placeholder="Write a reply..."
                 rows={2}
-                class="flex-1 rounded bg-slate-700 border border-white/10 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+                class="flex-1 rounded bg-surface-container-low border border-white/5 px-2 py-1 text-xs text-on-surface placeholder-on-surface-variant/50 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
               ></textarea>
               <Button
                 size="sm"
@@ -1157,38 +1180,38 @@
     {/if}
 
     <!-- Comments sub-section -->
-    <div class="border-t border-white/10 mt-2">
+    <div class="border-t border-white/5 mt-2">
       <div class="px-3 py-2 flex items-center gap-2">
-        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide flex-1">Comments</span>
+        <span class="text-xs font-semibold text-on-surface-variant uppercase tracking-wide flex-1">Comments<span class="text-[10px] text-on-surface-variant/70 font-normal normal-case tracking-normal ml-2">General discussion</span></span>
         {#if comments.length > 0}
-          <span class="text-xs text-slate-500">{comments.length}</span>
+          <span class="text-xs text-on-surface-variant/70">{comments.length}</span>
         {/if}
       </div>
 
       {#if comments.length === 0}
-        <p class="text-xs text-slate-400 text-center py-3 px-4">No comments yet.</p>
+        <p class="text-xs text-on-surface-variant text-center py-3 px-4">No comments yet.</p>
       {:else}
         <ul class="divide-y divide-white/5">
           {#each comments as comment (comment.id)}
             <li class="px-3 py-2 {comment.resolved ? 'opacity-50' : ''}">
               <div class="flex items-center gap-1 mb-1">
-                <span class="text-xs font-medium text-slate-300 truncate flex-1">{comment.authorName}</span>
+                <span class="text-xs font-medium text-on-surface truncate flex-1">{comment.authorName}</span>
                 {#if comment.resolved}
                   <span class="text-xs text-green-500 shrink-0">resolved</span>
                 {/if}
               </div>
-              <p class="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap break-words">{comment.body}</p>
+              <p class="text-xs text-on-surface leading-relaxed whitespace-pre-wrap break-words">{comment.body}</p>
               {#if userId}
                 <div class="flex gap-2 mt-1">
                   <button
-                    class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                    class="text-xs text-on-surface-variant/70 hover:text-on-surface transition-colors"
                     onclick={() => handleCommentResolve(comment.id)}
                   >
                     {comment.resolved ? 'Unresolve' : 'Resolve'}
                   </button>
                   {#if comment.userId === userId}
                     <button
-                      class="text-xs text-slate-500 hover:text-red-400 transition-colors"
+                      class="text-xs text-on-surface-variant/70 hover:text-red-400 transition-colors"
                       onclick={() => handleCommentDelete(comment.id)}
                     >
                       Delete
@@ -1209,12 +1232,12 @@
         <input
           bind:value={commentBody}
           placeholder="Leave a comment..."
-          class="flex-1 rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="flex-1 rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <button
           type="submit"
           disabled={!commentBody.trim() || submittingComment}
-          class="text-xs text-blue-400 hover:text-blue-300 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors px-2"
+          class="text-xs text-primary hover:text-primary/80 disabled:text-on-surface-variant/70 disabled:cursor-not-allowed transition-colors px-2"
         >
           Post
         </button>

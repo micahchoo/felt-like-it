@@ -23,7 +23,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 export const actions: Actions = {
   default: async ({ request, cookies, url, getClientAddress }) => {
     if (!checkRateLimit(getClientAddress())) {
-      return fail(429, { field: '', message: 'Too many attempts. Please wait a minute.' });
+      return fail(429, { field: '', message: 'Too many login attempts. Please wait a few minutes before trying again.' });
     }
 
     const formData = await request.formData();
@@ -52,7 +52,7 @@ export const actions: Actions = {
     }
 
     if (user.disabledAt) {
-      return fail(403, { field: '', message: 'This account has been disabled.' });
+      return fail(403, { field: '', message: 'This account has been disabled. Contact support at admin@feltlikei.it for assistance.' });
     }
 
     const session = await lucia.createSession(user.id, {});

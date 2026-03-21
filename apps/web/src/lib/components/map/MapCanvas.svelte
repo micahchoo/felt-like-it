@@ -270,16 +270,16 @@
   };
   const BADGE_LABEL_LAYOUT = {
     'text-field': ['to-string', ['get', 'count']], 'text-size': 10, 'text-allow-overlap': true,
-  };
+  } as any;
   const BADGE_LABEL_PAINT = { 'text-color': '#ffffff' };
   const MEASURE_LINE_PAINT = { 'line-color': '#f59e0b', 'line-width': 2, 'line-dasharray': [4, 2], 'line-opacity': 0.8 };
   const MEASURE_FILL_PAINT = { 'fill-color': '#f59e0b', 'fill-opacity': 0.1 };
   const MEASURE_LABEL_LAYOUT = {
     'text-field': ['get', 'label'], 'text-size': 12, 'text-offset': [0, -1.5], 'text-allow-overlap': false,
-  };
+  } as any;
   const MEASURE_LABEL_PAINT = { 'text-color': '#f59e0b', 'text-halo-color': '#1e293b', 'text-halo-width': 1.5 };
-  const LINESTRING_FILTER = ['==', '$type', 'LineString'];
-  const POLYGON_FILTER = ['==', '$type', 'Polygon'];
+  const LINESTRING_FILTER = ['==', '$type', 'LineString'] as any;
+  const POLYGON_FILTER = ['==', '$type', 'Polygon'] as any;
 
   // ── Memoized per-layer render props ───────────────────────────────────────
   // CRITICAL: function calls in the template (getLayerPaint, getLayerFilter, etc.)

@@ -40,7 +40,7 @@
 
   <!-- Embed button — top-[2.875rem] clears the MapEditor toolbar (~46px tall) -->
   <button
-    class="absolute top-[2.875rem] left-3 z-10 flex items-center gap-1.5 rounded bg-slate-800/90 border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 hover:text-white transition-colors backdrop-blur-sm"
+    class="absolute top-[2.875rem] left-3 z-10 flex items-center gap-1.5 rounded glass-panel border border-white/5 px-2.5 py-1.5 text-xs text-on-surface-variant hover:text-on-surface transition-colors"
     onclick={copyEmbedCode}
     title="Copy iframe embed code to clipboard"
     aria-label="Copy embed code"
@@ -58,7 +58,7 @@
 
   <!-- Floating comments toggle -->
   <button
-    class="absolute top-[2.875rem] right-3 z-10 flex items-center gap-1.5 rounded bg-slate-800/90 border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 hover:text-white transition-colors backdrop-blur-sm"
+    class="absolute top-[2.875rem] right-3 z-10 flex items-center gap-1.5 rounded glass-panel border border-white/5 px-2.5 py-1.5 text-xs text-on-surface-variant hover:text-on-surface transition-colors"
     onclick={() => (showComments = !showComments)}
   >
     <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">

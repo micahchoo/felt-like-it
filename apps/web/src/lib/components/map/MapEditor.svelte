@@ -113,7 +113,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   // Save filters to localStorage whenever filter state changes for any layer.
   $effect(() => {
     // Access every layer's filters to create a reactive dependency on the full state.
-    for (const layer of layersStore.layers) {
+    for (const layer of layersStore.all) {
       filterStore.get(layer.id);
     }
     saveFilters(mapId);
@@ -140,6 +140,10 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   // GeoJSON data cache per layer
   let layerData = $state<Record<string, { type: 'FeatureCollection'; features: GeoJSONFeature[] }>>({});
   let showDataTable = $state(false);
+  let activePanelIcon = $state<'layers' | 'processing' | 'tables' | 'export' | null>('layers');
+  let cursorLat = $state<number | null>(null);
+  let cursorLng = $state<number | null>(null);
+  let currentZoom = $state(0);
   let showFilterPanel = $state(false);
   let showImportDialog = $state(false);
   let showExportDialog = $state(false);
@@ -151,7 +155,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   const viewportStore = createViewportStore({
     fetchFn: (params) => trpc.features.listPaged.query(params),
     getActiveLayer: () => layersStore.active,
-    isLargeLayer,
+    isLargeLayer: isLargeLayer as (layer: { id: string }) => boolean,
     getMap: () => mapStore.mapInstance ?? undefined,
     onError: (err) => {
       console.error('[fetchViewportFeatures] failed:', err);
@@ -221,7 +225,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     effectEnter('ME:selectionToFeature', { featId: feat?.id, lid });
     if (feat && lid) {
       const geom = feat.geometry as Geometry | undefined;
-      const fid = resolveFeatureId(feat);
+      const fid = resolveFeatureId(feat as any);
       const currentType = untrack(() => interactionState.type);
       if (geom && fid && (currentType === 'idle' || currentType === 'featureSelected')) {
         transitionTo({ type: 'featureSelected', feature: { featureId: fid, layerId: lid, geometry: geom } });
@@ -259,7 +263,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     if (feat && lid) {
       const current = untrack(() => interactionState);
       if (current.type === 'pickFeature' && !current.picked) {
-        const fid = resolveFeatureId(feat);
+        const fid = resolveFeatureId(feat as any);
         if (fid) {
           transitionTo({
             type: 'pickFeature',
@@ -431,8 +435,8 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     }
 
     // 1/2/3 — switch drawing tools (only in editing mode, no modifier keys, not in text inputs)
-    const tag = (e.target as HTMLElement)?.tagName;
-    if (!designMode && !mod && !e.shiftKey && !e.altKey && tag !== 'INPUT' && tag !== 'TEXTAREA' && !(e.target as HTMLElement)?.isContentEditable) {
+    const tag2 = (e.target as HTMLElement)?.tagName;
+    if (!designMode && !mod && !e.shiftKey && !e.altKey && tag2 !== 'INPUT' && tag2 !== 'TEXTAREA' && !(e.target as HTMLElement)?.isContentEditable) {
       switch (e.key) {
         case '1': selectionStore.setActiveTool('select'); break;
         case '2': selectionStore.setActiveTool('point'); break;
@@ -449,26 +453,87 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       hotOverlay.clearHotFeatures();
     };
   });
+
+  // ── Status bar: cursor position + zoom level ───────────────────────────────
+  $effect(() => {
+    const map = mapStore.mapInstance;
+    if (!map) return;
+
+    const onMouseMove = (e: { lngLat: { lat: number; lng: number } }) => {
+      cursorLat = e.lngLat.lat;
+      cursorLng = e.lngLat.lng;
+    };
+    const onZoom = () => {
+      currentZoom = map.getZoom();
+    };
+
+    currentZoom = map.getZoom();
+    map.on('mousemove', onMouseMove);
+    map.on('zoom', onZoom);
+
+    return () => {
+      map.off('mousemove', onMouseMove);
+      map.off('zoom', onZoom);
+    };
+  });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="flex h-screen w-full overflow-hidden bg-slate-900">
-  <!-- Left: Layer Panel -->
+<div class="flex h-screen w-full overflow-hidden bg-surface">
+  <!-- Left: Icon rail + LayerPanel flyout -->
   {#if !effectiveReadonly && !designMode}
-    <div class="w-56 shrink-0 flex flex-col">
-      <LayerPanel {mapId} onlayerchange={handleLayerChange} />
+    <!-- Icon rail -->
+    <div class="w-[52px] shrink-0 flex flex-col items-center pt-2 gap-1 bg-surface-container border-r border-surface-high">
+      <button
+        class="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-full {activePanelIcon === 'layers' ? 'bg-surface-high text-primary' : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'}"
+        onclick={() => { activePanelIcon = activePanelIcon === 'layers' ? null : 'layers'; }}
+        title="Layers"
+      >
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <span class="text-[8px] font-display uppercase tracking-wider">Layers</span>
+      </button>
+      <button
+        class="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-full {activePanelIcon === 'processing' ? 'bg-surface-high text-primary' : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'}"
+        onclick={() => { activePanelIcon = activePanelIcon === 'processing' ? null : 'processing'; activeSection = 'analysis'; }}
+        title="Analysis"
+      >
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+        <span class="text-[8px] font-display uppercase tracking-wider">Analysis</span>
+      </button>
+      <button
+        class="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-full {showDataTable ? 'bg-surface-high text-primary' : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'}"
+        onclick={() => { showDataTable = !showDataTable; }}
+        title="Tables"
+      >
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+        <span class="text-[8px] font-display uppercase tracking-wider">Tables</span>
+      </button>
+      <button
+        class="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-full text-on-surface-variant hover:bg-surface-high hover:text-on-surface"
+        onclick={() => { showExportDialog = true; }}
+        title="Export"
+      >
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        <span class="text-[8px] font-display uppercase tracking-wider">Export</span>
+      </button>
     </div>
+    <!-- LayerPanel flyout -->
+    {#if activePanelIcon === 'layers'}
+      <div class="w-56 shrink-0 flex flex-col bg-surface-container border-r border-surface-high">
+        <LayerPanel {mapId} onlayerchange={handleLayerChange} />
+      </div>
+    {/if}
   {/if}
 
   <!-- Center: Map + toolbar -->
   <div class="flex-1 relative flex flex-col min-w-0">
     <!-- Top toolbar — hidden in embed mode (bare map canvas only) -->
     {#if !embed}
-    <div class="flex items-center gap-1 px-3 py-2 bg-slate-800 border-b border-white/10 shrink-0">
-      <span class="text-sm font-medium text-white truncate mr-auto">{mapTitle}</span>
+    <div class="flex items-center gap-1 px-3 py-2 bg-surface-container border-b border-surface-high shrink-0">
+      <span class="text-sm font-medium font-display text-on-surface truncate mr-auto">{mapTitle}</span>
       {#if userRole && userRole !== 'owner'}
-        <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/80 text-slate-300 capitalize">
+        <span class="text-[10px] px-1.5 py-0.5 rounded bg-surface-high/80 text-on-surface-variant capitalize">
           {userRole}
         </span>
       {/if}
@@ -510,7 +575,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
           </Tooltip>
 
           <Tooltip content="Data table — view and browse all features in the active layer as rows">
-            <Button variant="ghost" size="sm" class={showDataTable ? 'bg-slate-700 text-white' : ''} onclick={() => (showDataTable = !showDataTable)}>
+            <Button variant="ghost" size="sm" class={showDataTable ? 'bg-surface-high text-on-surface' : ''} onclick={() => (showDataTable = !showDataTable)}>
               <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 001-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 001 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/>
               </svg>
@@ -529,7 +594,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
               </svg>
               Filter
               {#if layersStore.active && filterStore.hasFilters(layersStore.active.id)}
-                <span class="rounded-full bg-blue-500 px-1 text-xs font-semibold leading-tight">
+                <span class="rounded-full bg-primary px-1 text-xs font-semibold leading-tight">
                   {filterStore.get(layersStore.active.id).length}
                 </span>
               {/if}
@@ -545,7 +610,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
             </Button>
           </Tooltip>
 
-          <div class="mx-0.5 h-5 w-px bg-white/10"></div>
+          <div class="mx-0.5 h-5 w-px bg-surface-high"></div>
 
           <Tooltip content={undoStore.undoLabel ? `Undo: ${undoStore.undoLabel}` : 'Undo (Ctrl+Z)'}>
             <Button variant="ghost" size="sm" onclick={() => undoStore.undo()} disabled={!undoStore.canUndo} aria-label="Undo">
@@ -604,7 +669,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       />
 
       {#if interactionState.type === 'drawRegion' && !interactionState.geometry}
-        <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
+        <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-primary-container text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
           Draw a polygon to define the annotation region ·
           <button class="underline ml-1" onclick={() => { transitionTo({ type: 'idle' }); }}>Cancel (Esc)</button>
         </div>
@@ -655,14 +720,32 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       <Legend />
     </div>
 
+    <!-- Status bar -->
+    <div class="flex items-center gap-4 px-3 py-1 bg-surface-lowest text-[10px] font-display uppercase tracking-wider text-on-surface-variant shrink-0 border-t border-surface-high">
+      {#if cursorLat !== null && cursorLng !== null}
+        <span>LAT {cursorLat.toFixed(4)}</span>
+        <span>LNG {cursorLng.toFixed(4)}</span>
+      {:else}
+        <span>LAT —</span>
+        <span>LNG —</span>
+      {/if}
+      <span class="text-on-surface-variant/50">|</span>
+      <span>CRS EPSG:4326</span>
+      <span>ZOOM {currentZoom.toFixed(1)}</span>
+      <span class="ml-auto flex items-center gap-1.5">
+        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 status-glow"></span>
+        CONNECTED
+      </span>
+    </div>
+
     <!-- Data table + filter panel (collapsible bottom panel) -->
     {#if showDataTable && layersStore.active}
       {@const activeLayer = layersStore.active}
       {@const rawFeatures = layerData[activeLayer.id]?.features ?? []}
       {@const filteredFeatures = filterStore.applyToFeatures(activeLayer.id, rawFeatures)}
-      <div class="border-t border-white/10 shrink-0 flex flex-col overflow-hidden" style="height: {showFilterPanel && !isLargeLayer(activeLayer) ? '22rem' : '16rem'}">
+      <div class="border-t border-surface-high shrink-0 flex flex-col overflow-hidden" style="height: {showFilterPanel && !isLargeLayer(activeLayer) ? '22rem' : '16rem'}">
         {#if isLargeLayer(activeLayer)}
-          <div class="px-3 py-1.5 bg-blue-900/30 border-b border-blue-500/20 text-xs text-blue-300 flex items-center gap-2 shrink-0">
+          <div class="px-3 py-1.5 bg-tertiary/10 border-b border-white/5 text-xs text-primary/80 flex items-center gap-2 shrink-0">
             <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -731,21 +814,21 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   {#snippet analysisContent()}
     <div class="flex flex-col h-full">
       <!-- Sub-tab switcher -->
-      <div class="flex border-b border-white/10 shrink-0">
+      <div class="flex border-b border-surface-high shrink-0">
         <button
-          class="flex-1 py-2 text-xs font-medium text-center transition-colors
+          class="flex-1 py-2 text-xs font-display uppercase tracking-wide font-medium text-center transition-colors
                  {analysisTab === 'measure'
-                   ? 'text-blue-400 border-b-2 border-blue-400'
-                   : 'text-slate-400 hover:text-slate-200'}"
+                   ? 'text-primary border-b-2 border-primary'
+                   : 'text-on-surface-variant hover:text-on-surface'}"
           onclick={() => { analysisTab = 'measure'; }}
         >
           Measure
         </button>
         <button
-          class="flex-1 py-2 text-xs font-medium text-center transition-colors
+          class="flex-1 py-2 text-xs font-display uppercase tracking-wide font-medium text-center transition-colors
                  {analysisTab === 'process'
-                   ? 'text-blue-400 border-b-2 border-blue-400'
-                   : 'text-slate-400 hover:text-slate-200'}"
+                   ? 'text-primary border-b-2 border-primary'
+                   : 'text-on-surface-variant hover:text-on-surface'}"
           onclick={() => { analysisTab = 'process'; }}
         >
           Process

@@ -1,90 +1,93 @@
 <script lang="ts" module>
-  export type ToastType = 'success' | 'error' | 'info' | 'warning';
+	export interface ToastItem {
+		id: string;
+		variant: 'success' | 'error' | 'info' | 'warning';
+		message: string;
+		duration: number;
+	}
 
-  export interface Toast {
-    id: string;
-    type: ToastType;
-    message: string;
-    duration?: number;
-  }
+	function createToastStore() {
+		let items = $state<ToastItem[]>([]);
 
-  let _toasts = $state<Toast[]>([]);
+		function add(variant: ToastItem['variant'], message: string, duration = 4000) {
+			const id = crypto.randomUUID();
+			items = [...items, { id, variant, message, duration }];
+		}
 
-  export const toastStore = {
-    get toasts() { return _toasts; },
+		function dismiss(id: string) {
+			items = items.filter((t) => t.id !== id);
+		}
 
-    show(message: string, type: ToastType = 'info', duration = 4000) {
-      const id = Math.random().toString(36).slice(2);
-      const toast: Toast = { id, type, message, duration };
-      _toasts = [..._toasts, toast];
+		return {
+			get items() {
+				return items;
+			},
+			success: (message: string) => add('success', message),
+			error: (message: string) => add('error', message),
+			info: (message: string) => add('info', message),
+			warning: (message: string) => add('warning', message),
+			dismiss
+		};
+	}
 
-      if (duration > 0) {
-        setTimeout(() => toastStore.dismiss(id), duration);
-      }
-
-      return id;
-    },
-
-    success(message: string, duration?: number) {
-      return this.show(message, 'success', duration);
-    },
-
-    error(message: string, duration?: number) {
-      return this.show(message, 'error', duration ?? 6000);
-    },
-
-    info(message: string, duration?: number) {
-      return this.show(message, 'info', duration);
-    },
-
-    warning(message: string, duration?: number) {
-      return this.show(message, 'warning', duration);
-    },
-
-    dismiss(id: string) {
-      _toasts = _toasts.filter((t) => t.id !== id);
-    },
-  };
+	export const toastStore = createToastStore();
 </script>
 
 <script lang="ts">
-  import { fly } from 'svelte/transition';
+	const variantBorder: Record<ToastItem['variant'], string> = {
+		success: 'border-l-4 border-primary',
+		error: 'border-l-4 border-error',
+		info: 'border-l-4 border-tertiary',
+		warning: 'border-l-4 border-primary-container'
+	};
 
-  const icons = {
-    success: '✓',
-    error: '✕',
-    info: 'ℹ',
-    warning: '⚠',
-  };
+	const variantText: Record<ToastItem['variant'], string> = {
+		success: 'text-primary',
+		error: 'text-error',
+		info: 'text-tertiary',
+		warning: 'text-primary-container'
+	};
 
-  const colors = {
-    success: 'bg-green-600 border-green-500',
-    error: 'bg-red-700 border-red-600',
-    info: 'bg-blue-700 border-blue-600',
-    warning: 'bg-amber-700 border-amber-600',
-  };
+	$effect(() => {
+		const timers: ReturnType<typeof setTimeout>[] = [];
+		for (const toast of toastStore.items) {
+			const timer = setTimeout(() => toastStore.dismiss(toast.id), toast.duration);
+			timers.push(timer);
+		}
+		return () => timers.forEach(clearTimeout);
+	});
 </script>
 
-<div
-  class="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none"
-  aria-live="polite"
-  aria-atomic="false"
->
-  {#each toastStore.toasts as toast (toast.id)}
-    <div
-      class="pointer-events-auto flex items-start gap-3 rounded-lg border px-4 py-3 text-sm text-white shadow-xl max-w-sm {colors[toast.type]}"
-      transition:fly={{ y: 20, duration: 200 }}
-      role="alert"
-    >
-      <span class="mt-0.5 font-bold" aria-hidden="true">{icons[toast.type]}</span>
-      <span class="flex-1">{toast.message}</span>
-      <button
-        onclick={() => toastStore.dismiss(toast.id)}
-        class="ml-2 opacity-70 hover:opacity-100 transition-opacity"
-        aria-label="Dismiss notification"
-      >
-        ✕
-      </button>
-    </div>
-  {/each}
-</div>
+{#if toastStore.items.length > 0}
+	<div class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none">
+		{#each toastStore.items as toast (toast.id)}
+			<button
+				class="glass-panel tonal-elevation max-w-sm rounded-lg px-4 py-3 font-body text-sm text-on-surface
+					pointer-events-auto cursor-pointer toast-enter
+					{variantBorder[toast.variant]}"
+				onclick={() => toastStore.dismiss(toast.id)}
+				aria-label="Dismiss notification"
+			>
+				<span class={variantText[toast.variant]}>{toast.message}</span>
+			</button>
+		{/each}
+	</div>
+{/if}
+
+<style>
+	@media (prefers-reduced-motion: no-preference) {
+		.toast-enter {
+			animation: slide-in 200ms ease-out;
+		}
+	}
+	@keyframes slide-in {
+		from {
+			opacity: 0;
+			transform: translateX(1rem);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(0);
+		}
+	}
+</style>

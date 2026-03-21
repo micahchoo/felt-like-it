@@ -20,7 +20,7 @@
 
 {#if visible}
   <div
-    class="flex items-center gap-1 bg-slate-800 border border-white/10 rounded-lg px-2 py-1 shadow-lg"
+    class="flex items-center gap-1 glass-panel border-surface-high rounded-lg px-2 py-1 shadow-lg"
     role="toolbar"
     aria-label="Feature actions"
   >
@@ -33,14 +33,14 @@
     </button>
     <button
       type="button"
-      class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+      class="text-xs px-2 py-1 rounded bg-surface-high hover:bg-surface-highest text-on-surface transition-colors"
       onclick={onmeasure}
     >
       Measure
     </button>
     <button
       type="button"
-      class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-400 transition-colors"
+      class="text-xs px-2 py-1 rounded bg-surface-high hover:bg-surface-highest text-on-surface-variant transition-colors"
       onclick={() => { visible = false; ondismiss(); }}
       aria-label="Dismiss"
     >

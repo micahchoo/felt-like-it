@@ -18,9 +18,9 @@
   }));
 </script>
 
-<div class="ml-4 mt-2 space-y-2 border-l border-white/10 pl-3">
+<div class="ml-4 mt-2 space-y-2 border-l border-white/5 pl-3">
   {#if threadQuery.isLoading}
-    <p class="text-xs text-slate-500">Loading replies…</p>
+    <p class="text-xs text-on-surface-variant/70">Loading replies…</p>
   {:else if threadQuery.isError}
     <p class="text-xs text-red-400">Failed to load replies.</p>
   {:else if threadQuery.data?.replies.length}
@@ -45,6 +45,6 @@
       </div>
     {/each}
   {:else}
-    <p class="text-xs text-slate-500 italic">No replies yet.</p>
+    <p class="text-xs text-on-surface-variant/70 italic">No replies yet.</p>
   {/if}
 </div>

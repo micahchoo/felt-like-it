@@ -79,15 +79,15 @@
     <!-- Modal content -->
     <div
       bind:this={dialogEl}
-      class="relative z-10 w-full max-w-lg rounded-xl bg-slate-800 shadow-2xl ring-1 ring-white/10"
+      class="relative z-10 w-full max-w-lg rounded-xl bg-surface-container shadow-2xl ring-1 ring-white/10"
     >
       {#if title}
-        <div class="flex items-center justify-between px-5 py-4 border-b border-white/10">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-white/5">
           <h2 id="modal-title" class="text-base font-semibold text-white">{title}</h2>
           {#if dismissible}
             <button
               onclick={close}
-              class="text-slate-400 hover:text-white transition-colors"
+              class="text-on-surface-variant hover:text-white transition-colors"
               aria-label="Close dialog"
             >
               <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -103,7 +103,7 @@
       </div>
 
       {#if footer}
-        <div class="px-5 py-4 border-t border-white/10 flex justify-end gap-2">
+        <div class="px-5 py-4 border-t border-white/5 flex justify-end gap-2">
           {@render footer()}
         </div>
       {/if}

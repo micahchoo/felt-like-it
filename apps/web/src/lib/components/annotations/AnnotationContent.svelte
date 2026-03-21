@@ -44,7 +44,7 @@
   Accepts both raw AnnotationContent (legacy) and the AnnotationObjectContent
   wrapper (single/slotted) — the latter is unwrapped before rendering.
 -->
-<div class="text-sm text-slate-200 space-y-2{featureDeleted ? ' opacity-60' : ''}" style="max-width: 22rem">
+<div class="text-sm text-on-surface space-y-2{featureDeleted ? ' opacity-60' : ''}" style="max-width: 22rem">
   {#if featureDeleted}
     <div class="flex items-center gap-1.5 rounded bg-red-500/10 px-2 py-1 text-[11px] text-red-400">
       <span>Feature deleted</span>
@@ -54,8 +54,8 @@
     </div>
   {/if}
   <!-- Author + timestamp + anchor type header -->
-  <div class="flex items-center gap-1.5 text-xs text-slate-400 flex-wrap">
-    <span class="font-medium text-slate-300">{authorName}</span>
+  <div class="flex items-center gap-1.5 text-xs text-on-surface-variant flex-wrap">
+    <span class="font-medium text-on-surface">{authorName}</span>
     {#if createdAt}
       <span class="mx-0.5">·</span>
       <span>{formatDate(createdAt)}</span>
@@ -63,10 +63,10 @@
     {#if anchorType}
       <span class="ml-auto inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none
         {anchorType === 'point' ? 'bg-amber-500/20 text-amber-400'
-          : anchorType === 'region' ? 'bg-blue-500/20 text-blue-400'
+          : anchorType === 'region' ? 'bg-primary/20 text-primary'
           : anchorType === 'feature' ? 'bg-emerald-500/20 text-emerald-400'
           : anchorType === 'measurement' ? 'bg-cyan-500/20 text-cyan-400'
-          : 'bg-slate-500/20 text-slate-400'}">
+          : 'bg-surface-high/20 text-on-surface-variant'}">
         {anchorType === 'point' ? '📍 Pin'
           : anchorType === 'region' ? '🔲 Region'
           : anchorType === 'feature' ? '🔗 Feature'
@@ -85,9 +85,9 @@
     {#if firstMeasurement && 'displayValue' in firstMeasurement}
       <span class="text-sm font-semibold text-amber-400">{firstMeasurement.displayValue}</span>
     {:else if firstText && 'text' in firstText}
-      <p class="text-xs text-slate-300 line-clamp-2">{firstText.text}</p>
+      <p class="text-xs text-on-surface line-clamp-2">{firstText.text}</p>
     {:else if bodies[0]}
-      <p class="text-xs text-slate-400 italic">{bodies[0].type} annotation</p>
+      <p class="text-xs text-on-surface-variant italic">{bodies[0].type} annotation</p>
     {/if}
   {:else}
 
@@ -95,7 +95,7 @@
     <!-- Content area — one branch per discriminated union variant -->
     {#if body.type === 'text'}
       <!-- Plain text note: whitespace preserved, no HTML interpretation -->
-      <p class="whitespace-pre-wrap leading-relaxed text-slate-200">{body.text}</p>
+      <p class="whitespace-pre-wrap leading-relaxed text-on-surface">{body.text}</p>
 
     {:else if body.type === 'emoji'}
       <!-- Emoji pin: large glyph + optional label below -->
@@ -104,7 +104,7 @@
           {body.emoji}
         </span>
         {#if body.label}
-          <span class="text-xs text-slate-400">{body.label}</span>
+          <span class="text-xs text-on-surface-variant">{body.label}</span>
         {/if}
       </div>
 
@@ -119,7 +119,7 @@
           loading="lazy"
         />
         {#if body.altText}
-          <figcaption class="text-xs text-slate-400 italic">{body.altText}</figcaption>
+          <figcaption class="text-xs text-on-surface-variant italic">{body.altText}</figcaption>
         {/if}
       </figure>
 
@@ -134,7 +134,7 @@
           loading="lazy"
         />
         {#if body.caption}
-          <figcaption class="text-xs text-slate-400">{body.caption}</figcaption>
+          <figcaption class="text-xs text-on-surface-variant">{body.caption}</figcaption>
         {/if}
       </figure>
 
@@ -144,42 +144,42 @@
         href={body.url}
         target="_blank"
         rel="noopener noreferrer"
-        class="block rounded border border-white/10 bg-slate-700 px-3 py-2 hover:bg-slate-600 transition-colors space-y-0.5"
+        class="block rounded border border-white/5 bg-surface-container-low px-3 py-2 hover:bg-surface-high transition-colors space-y-0.5"
       >
         {#if body.title}
-          <p class="font-medium text-slate-200 truncate text-sm">{body.title}</p>
+          <p class="font-medium text-on-surface truncate text-sm">{body.title}</p>
         {/if}
         {#if body.description}
-          <p class="text-xs text-slate-400" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">
+          <p class="text-xs text-on-surface-variant" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">
             {body.description}
           </p>
         {/if}
-        <p class="text-xs text-blue-400 truncate">{body.url}</p>
+        <p class="text-xs text-primary truncate">{body.url}</p>
       </a>
 
     {:else if body.type === 'iiif'}
       <!-- IIIF manifest card: labelled badge + manifest link + navPlace summary -->
-      <div class="rounded border border-amber-400/30 bg-slate-700 px-3 py-2 space-y-1.5">
+      <div class="rounded border border-amber-400/30 bg-surface-container-low px-3 py-2 space-y-1.5">
         <p class="text-[10px] font-bold text-amber-400 uppercase tracking-widest">IIIF Manifest</p>
         {#if body.label}
-          <p class="font-medium text-slate-200 text-sm">{body.label}</p>
+          <p class="font-medium text-on-surface text-sm">{body.label}</p>
         {/if}
         <a
           href={body.manifestUrl}
           target="_blank"
           rel="noopener noreferrer"
-          class="block text-xs text-blue-400 truncate hover:underline"
+          class="block text-xs text-primary truncate hover:underline"
           title={body.manifestUrl}
         >
           {body.manifestUrl}
         </a>
         {#if body.navPlace}
-          <p class="text-xs text-slate-400">
+          <p class="text-xs text-on-surface-variant">
             NavPlace: {body.navPlace.features.length}
             {body.navPlace.features.length === 1 ? 'feature' : 'features'}
           </p>
         {:else}
-          <p class="text-xs text-slate-500 italic">No NavPlace geographic footprint</p>
+          <p class="text-xs text-on-surface-variant/70 italic">No NavPlace geographic footprint</p>
         {/if}
       </div>
 
@@ -187,10 +187,10 @@
       <!-- Measurement annotation: prominent value + type + optional label -->
       <div class="flex items-baseline gap-2">
         <span class="text-lg font-semibold text-amber-400">{body.displayValue}</span>
-        <span class="text-xs text-slate-400 capitalize">{body.measurementType}</span>
+        <span class="text-xs text-on-surface-variant capitalize">{body.measurementType}</span>
       </div>
       {#if body.label}
-        <p class="text-xs text-slate-300 mt-1">{body.label}</p>
+        <p class="text-xs text-on-surface mt-1">{body.label}</p>
       {/if}
     {/if}
   {/each}

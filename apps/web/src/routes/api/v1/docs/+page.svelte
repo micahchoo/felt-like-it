@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   const BASE = '/api/v1';
   const endpoints = [
     { method: 'GET', path: '/maps', desc: 'List maps accessible to this key', auth: 'API key, Share token (single map)' },
@@ -33,7 +33,7 @@
     { code: 'RATE_LIMITED', status: 429, when: 'Too many requests' },
   ];
 
-  function methodColor(m) {
+  function methodColor(m: string) {
     if (m === 'GET') return '#22c55e';
     if (m === 'POST') return '#3b82f6';
     if (m === 'PATCH') return '#f59e0b';

@@ -26,6 +26,7 @@
       toastStore.success(`Layer "${name}" created.`);
     } catch {
       toastStore.error('Failed to create layer.');
+      // No optimistic add was made (add happens after await), so no rollback needed.
     } finally {
       creatingLayer = false;
     }
@@ -82,13 +83,13 @@
 </script>
 
 <aside
-  class="flex flex-col h-full bg-slate-800 border-r border-white/10"
+  class="flex flex-col h-full bg-surface-container border-r border-surface-high"
   aria-label="Layers panel"
 >
   <!-- Header -->
-  <div class="px-3 py-3 border-b border-white/10">
-    <h2 class="text-sm font-semibold text-white">Layers</h2>
-    <p class="text-[11px] text-slate-400 mt-1 leading-snug">
+  <div class="px-3 py-3 border-b border-white/5">
+    <h2 class="text-sm font-semibold font-display uppercase tracking-wide text-white">Layers</h2>
+    <p class="text-[11px] text-on-surface-variant mt-1 leading-snug">
       Layers organize your map data. Each layer holds one type of geometry (points, lines, or polygons). Select a layer to draw on it or view its data.
     </p>
   </div>
@@ -97,13 +98,13 @@
   <div class="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-1" role="list">
     {#if layersStore.all.length === 0}
       <div class="p-4 text-center space-y-3">
-        <p class="text-sm text-slate-400">No layers yet. Layers organize your map data.</p>
+        <p class="text-sm text-on-surface-variant">No layers yet. Layers organize your map data.</p>
         <div class="space-y-2">
           <Button size="sm" onclick={createLayer} class="w-full">
             Create empty layer
           </Button>
         </div>
-        <p class="text-xs text-slate-500 mt-2">Tip: You can drag &amp; drop files onto the map to import them.</p>
+        <p class="text-xs text-on-surface-variant mt-2">Tip: You can drag &amp; drop files onto the map to import them.</p>
       </div>
     {/if}
 
@@ -111,8 +112,8 @@
       <div
         class="group flex items-center gap-2 rounded-md px-2 py-2 cursor-pointer transition-colors
                {layersStore.activeLayerId === layer.id
-                 ? 'bg-blue-600/20 ring-1 ring-blue-500/50'
-                 : 'hover:bg-slate-700/60'}"
+                 ? 'bg-primary-container/20 ring-1 ring-primary/50'
+                 : 'hover:bg-surface-high/60'}"
         role="button"
         onclick={() => layersStore.setActive(layer.id)}
         onkeydown={(e) => e.key === 'Enter' && layersStore.setActive(layer.id)}
@@ -120,17 +121,25 @@
         aria-current={layersStore.activeLayerId === layer.id ? 'true' : undefined}
       >
         <!-- Type icon with layer color -->
-        <span class="text-base w-5 text-center shrink-0 text-slate-300">
+        <span class="text-base w-5 text-center shrink-0 text-on-surface-variant">
           {LAYER_TYPE_ICONS[layer.type] ?? '◈'}
         </span>
 
         <!-- Layer name -->
         <span
-          class="flex-1 text-sm truncate {layer.visible ? 'text-slate-200' : 'text-slate-500'}"
+          class="flex-1 text-sm truncate {layer.visible ? 'text-on-surface' : 'text-on-surface-variant'}"
           title={layer.name}
         >
           {layer.name}
         </span>
+
+        <!-- Type badge -->
+        <span class="text-[9px] font-display uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 {
+          layer.type === 'point' ? 'bg-teal-500/20 text-teal-300' :
+          layer.type === 'polygon' ? 'bg-blue-500/20 text-blue-300' :
+          layer.type === 'line' ? 'bg-purple-500/20 text-purple-300' :
+          'bg-amber-500/20 text-amber-300'
+        }">{layer.type.toUpperCase()}</span>
 
         <!-- Actions -->
         <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -139,7 +148,7 @@
             <Tooltip content="Move up" position="top">
               <button
                 onclick={(e) => { e.stopPropagation(); moveLayer(index, 'up'); }}
-                class="h-6 w-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-600 transition-colors"
+                class="h-6 w-6 rounded flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-high transition-colors"
                 aria-label="Move layer up"
               >
                 <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
@@ -154,7 +163,7 @@
             <Tooltip content="Move down" position="top">
               <button
                 onclick={(e) => { e.stopPropagation(); moveLayer(index, 'down'); }}
-                class="h-6 w-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-600 transition-colors"
+                class="h-6 w-6 rounded flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-high transition-colors"
                 aria-label="Move layer down"
               >
                 <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
@@ -168,7 +177,7 @@
           <Tooltip content="Edit style" position="top">
             <button
               onclick={(e) => { e.stopPropagation(); styleStore.setEditingLayer(layer.id); }}
-              class="h-6 w-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-600 transition-colors"
+              class="h-6 w-6 rounded flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-high transition-colors"
               aria-label="Edit layer style"
             >
               <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
@@ -181,7 +190,7 @@
           <Tooltip content={layer.visible ? 'Hide layer' : 'Show layer'} position="top">
             <button
               onclick={(e) => { e.stopPropagation(); toggleVisibility(layer.id); }}
-              class="h-6 w-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-600 transition-colors"
+              class="h-6 w-6 rounded flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-high transition-colors"
               aria-label={layer.visible ? 'Hide layer' : 'Show layer'}
               aria-pressed={!layer.visible}
             >
@@ -199,7 +208,7 @@
           <Tooltip content="Delete layer" position="top">
             <button
               onclick={(e) => { e.stopPropagation(); deleteLayer(layer.id, layer.name); }}
-              class="h-6 w-6 rounded flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-slate-600 transition-colors"
+              class="h-6 w-6 rounded flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-surface-high transition-colors"
               aria-label="Delete layer"
             >
               <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
@@ -213,7 +222,7 @@
   </div>
 
   <!-- Create layer -->
-  <div class="px-2 py-2 border-t border-white/10">
+  <div class="px-2 py-2 border-t border-white/5">
     <form
       class="flex gap-1"
       onsubmit={(e) => { e.preventDefault(); createLayer(); }}
@@ -222,7 +231,7 @@
         type="text"
         bind:value={newLayerName}
         placeholder="New layer name…"
-        class="flex-1 min-w-0 rounded-md bg-slate-700 border border-slate-600 px-2 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        class="flex-1 min-w-0 rounded-md bg-surface-low border border-surface-high px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant focus:outline-none focus:ring-1 focus:ring-primary"
       />
       <Button
         type="submit"
@@ -230,6 +239,7 @@
         size="sm"
         loading={creatingLayer}
         aria-label="Create layer"
+        class="signature-gradient"
       >+</Button>
     </form>
   </div>
