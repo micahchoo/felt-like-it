@@ -1,17 +1,17 @@
 <script lang="ts">
 	interface Props {
-		type?: string;
 		value?: string;
 		placeholder?: string;
+		rows?: number;
 		error?: string | undefined;
 		disabled?: boolean;
 		id?: string | undefined;
 	}
 
 	let {
-		type = 'text',
 		value = $bindable(''),
 		placeholder = '',
+		rows = 3,
 		error = undefined,
 		disabled = false,
 		id = undefined
@@ -19,13 +19,13 @@
 </script>
 
 <div class="flex flex-col gap-1">
-	<input
-		{type}
+	<textarea
 		bind:value
 		{placeholder}
+		{rows}
 		{disabled}
 		{id}
-		class="font-body bg-surface-low text-on-surface rounded-md px-3 py-2 text-sm
+		class="font-body bg-surface-low text-on-surface rounded-md px-3 py-2 text-sm resize-y
 			border-b-2 border-transparent transition-colors
 			placeholder:text-on-surface-variant/50
 			focus:border-b-2 focus:border-primary focus:outline-none
@@ -34,7 +34,7 @@
 			{disabled ? 'opacity-50 cursor-not-allowed' : ''}"
 		aria-invalid={error ? 'true' : undefined}
 		aria-describedby={error && id ? `${id}-error` : undefined}
-	/>
+	></textarea>
 	{#if error}
 		<p
 			class="text-error text-xs font-body"
