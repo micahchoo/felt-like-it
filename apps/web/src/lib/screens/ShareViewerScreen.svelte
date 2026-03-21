@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { ShareViewerData, ShareViewerActions, ShareViewerStatus } from '$lib/contracts/share-viewer.js';
 	import MapCanvas from '$lib/components/map/MapCanvas.svelte';
-	import Legend from '$lib/components/map/Legend.svelte';
+	import Legend from '$lib/components/style/Legend.svelte';
 	import GuestCommentPanel from '$lib/components/collaboration/GuestCommentPanel.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import SkeletonLoader from '$lib/components/ui/SkeletonLoader.svelte';

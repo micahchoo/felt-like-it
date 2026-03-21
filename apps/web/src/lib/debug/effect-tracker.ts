@@ -88,7 +88,7 @@ export function effectEnter(label: string, deps?: Record<string, unknown>): void
     _chainLog.forEach((entry, i) => {
       const match = entry.match(/EFFECT (\S+)/);
       if (match) {
-        const name = match[1];
+        const name = match[1]!;
         if (!seen.has(name)) seen.set(name, []);
         seen.get(name)!.push(i);
       }

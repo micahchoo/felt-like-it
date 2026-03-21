@@ -1,5 +1,7 @@
 <script lang="ts">
-	interface Props {
+	import type { HTMLInputAttributes } from 'svelte/elements';
+
+	interface Props extends HTMLInputAttributes {
 		type?: string;
 		value?: string;
 		placeholder?: string;
@@ -14,7 +16,8 @@
 		placeholder = '',
 		error = undefined,
 		disabled = false,
-		id = undefined
+		id = undefined,
+		...restProps
 	}: Props = $props();
 </script>
 
@@ -25,6 +28,7 @@
 		{placeholder}
 		{disabled}
 		{id}
+		{...restProps}
 		class="font-body bg-surface-low text-on-surface rounded-md px-3 py-2 text-sm
 			border-b-2 border-transparent transition-colors
 			placeholder:text-on-surface-variant/50

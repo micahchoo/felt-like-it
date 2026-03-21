@@ -85,17 +85,6 @@
 
   const comments = $derived(commentsQuery.data ?? []);
 
-  const canSubmit = $derived(!(
-    creating || uploading
-    || (formType === 'text' && !formText.trim())
-    || (formType === 'emoji' && !formEmoji.trim())
-    || (formType === 'gif' && !formGifUrl.trim())
-    || (formType === 'image' && !formImageUrl && !selectedImageFile)
-    || (formType === 'link' && !formLinkUrl.trim())
-    || (formType === 'iiif' && !formManifestUrl.trim())
-    || (formAnchorType === 'region' && !regionGeometry)
-    || (formAnchorType === 'feature' && !pickedFeature)
-  ));
   let commentBody = $state('');
   let submittingComment = $state(false);
 
@@ -131,14 +120,14 @@
 
   const deleteCommentMutation = createMutation(() => ({
     mutationFn: (input: { id: string }) => trpc.comments.delete.mutate(input),
-    onMutate: async ({ id }) => {
+    onMutate: async ({ id }: { id: string }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.comments.list({ mapId }) });
       const previous = queryClient.getQueryData<CommentEntry[]>(queryKeys.comments.list({ mapId }));
       queryClient.setQueryData<CommentEntry[]>(
         queryKeys.comments.list({ mapId }),
         (old) => old?.filter((c) => c.id !== id) ?? []
       );
-      return { previous };
+      return { previous } as { previous?: CommentEntry[] };
     },
     onError: (_err: unknown, _vars: { id: string }, context: { previous?: CommentEntry[] } | undefined) => {
       if (context?.previous) {
@@ -152,14 +141,14 @@
 
   const resolveCommentMutation = createMutation(() => ({
     mutationFn: (input: { id: string }) => trpc.comments.resolve.mutate(input),
-    onMutate: async ({ id }) => {
+    onMutate: async ({ id }: { id: string }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.comments.list({ mapId }) });
       const previous = queryClient.getQueryData<CommentEntry[]>(queryKeys.comments.list({ mapId }));
       queryClient.setQueryData<CommentEntry[]>(
         queryKeys.comments.list({ mapId }),
         (old) => old?.map((c) => c.id === id ? { ...c, resolved: !c.resolved } : c) ?? []
       );
-      return { previous };
+      return { previous } as { previous?: CommentEntry[] };
     },
     onError: (_err: unknown, _vars: { id: string }, context: { previous?: CommentEntry[] } | undefined) => {
       if (context?.previous) {
@@ -283,6 +272,18 @@
 
   // Anchor type selector
   let formAnchorType = $state<'point' | 'region' | 'viewport' | 'feature'>('point');
+
+  const canSubmit = $derived(!(
+    creating || uploading
+    || (formType === 'text' && !formText.trim())
+    || (formType === 'emoji' && !formEmoji.trim())
+    || (formType === 'gif' && !formGifUrl.trim())
+    || (formType === 'image' && !formImageUrl && !selectedImageFile)
+    || (formType === 'link' && !formLinkUrl.trim())
+    || (formType === 'iiif' && !formManifestUrl.trim())
+    || (formAnchorType === 'region' && !regionGeometry)
+    || (formAnchorType === 'feature' && !pickedFeature)
+  ));
 
   // Request feature pick mode when anchor type is 'feature' but no feature selected yet.
   $effect(() => {
@@ -476,14 +477,14 @@
 
   const deleteAnnotationMutation = createMutation(() => ({
     mutationFn: (input: { id: string }) => trpc.annotations.delete.mutate(input),
-    onMutate: async ({ id }) => {
+    onMutate: async ({ id }: { id: string }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
       const previous = queryClient.getQueryData<AnnotationObject[]>(queryKeys.annotations.list({ mapId }));
       queryClient.setQueryData<AnnotationObject[]>(
         queryKeys.annotations.list({ mapId }),
         (old) => old?.filter((a) => a.id !== id) ?? []
       );
-      return { previous };
+      return { previous } as { previous?: AnnotationObject[] };
     },
     onError: (_err: unknown, _vars: { id: string }, context: { previous?: AnnotationObject[] } | undefined) => {
       if (context?.previous) {
@@ -498,16 +499,16 @@
   }));
 
   const updateAnnotationMutation = createMutation(() => ({
-    mutationFn: (input: { id: string; content?: { kind: 'single'; body: AC }; anchor?: Anchor; version?: number }) =>
-      trpc.annotations.update.mutate(input),
+    mutationFn: ((input: { id: string; content?: { kind: 'single'; body: AC }; anchor?: Anchor; version?: number }) =>
+      trpc.annotations.update.mutate(input)) as any,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
     },
   }));
 
   const replyAnnotationMutation = createMutation(() => ({
-    mutationFn: (input: { mapId: string; parentId: string; anchor: Anchor; content: { kind: 'single'; body: AC } }) =>
-      trpc.annotations.create.mutate(input),
+    mutationFn: ((input: { mapId: string; parentId: string; anchor: Anchor; content: { kind: 'single'; body: AC } }) =>
+      trpc.annotations.create.mutate(input)) as any,
     onSuccess: (_data: unknown, variables: { parentId: string }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.annotations.list({ mapId }) });
       queryClient.invalidateQueries({ queryKey: queryKeys.annotations.thread({ annotationId: variables.parentId }) });

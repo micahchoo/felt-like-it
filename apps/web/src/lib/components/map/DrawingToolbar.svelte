@@ -39,16 +39,16 @@
   const queryClient = useQueryClient();
 
   const featureUpsertMutation = createMutation(() => ({
-    mutationFn: (input: { layerId: string; features: { geometry: Record<string, unknown>; properties: Record<string, unknown> }[] }) =>
-      trpc.features.upsert.mutate(input),
+    mutationFn: ((input: { layerId: string; features: { geometry: Record<string, unknown>; properties: Record<string, unknown> }[] }) =>
+      trpc.features.upsert.mutate(input)) as any,
     onSuccess: (_data: { upsertedIds: string[] }, variables: { layerId: string }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
     },
   }));
 
   const featureDeleteMutation = createMutation(() => ({
-    mutationFn: (input: { layerId: string; ids: string[] }) =>
-      trpc.features.delete.mutate(input),
+    mutationFn: ((input: { layerId: string; ids: string[] }) =>
+      trpc.features.delete.mutate(input)) as any,
     onSuccess: (_data: unknown, variables: { layerId: string }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
     },
@@ -152,7 +152,7 @@
     const properties = (f.properties ?? {}) as Record<string, unknown>;
 
     try {
-      const { upsertedIds } = await featureUpsertMutation.mutateAsync({
+      const { upsertedIds } = await (featureUpsertMutation as any).mutateAsync({
         layerId: activeLayer.id,
         features: [{ geometry, properties }],
       });
@@ -163,7 +163,7 @@
         hotOverlay.addHotFeature(activeLayer.id, {
           type: 'Feature',
           id: upsertedIds[0],
-          geometry: geometry as GeoJSON.Geometry,
+          geometry: geometry as unknown as GeoJSON.Geometry,
           properties: properties as GeoJSON.GeoJsonProperties,
         });
       }
@@ -172,12 +172,12 @@
         description: `Draw ${f.geometry.type}`,
         undo: async () => {
           if (upsertedIds[0]) {
-            await featureDeleteMutation.mutateAsync({ layerId: activeLayer.id, ids: [upsertedIds[0]] });
+            await (featureDeleteMutation as any).mutateAsync({ layerId: activeLayer.id, ids: [upsertedIds[0]] });
             hotOverlay.removeHotFeature(activeLayer.id, upsertedIds[0]);
           }
         },
         redo: async () => {
-          const result = await featureUpsertMutation.mutateAsync({
+          const result = await (featureUpsertMutation as any).mutateAsync({
             layerId: activeLayer.id,
             features: [{ geometry, properties }],
           });
@@ -185,7 +185,7 @@
             hotOverlay.addHotFeature(activeLayer.id, {
               type: 'Feature',
               id: result.upsertedIds[0],
-              geometry: geometry as GeoJSON.Geometry,
+              geometry: geometry as unknown as GeoJSON.Geometry,
               properties: properties as GeoJSON.GeoJsonProperties,
             });
           }
@@ -199,7 +199,7 @@
       // Clean up the orphaned Terra Draw geometry so it doesn't persist visually
       if (drawingStore.instance) {
         try {
-          drawingStore.instance.removeFeatures([f.id]);
+          drawingStore.instance.removeFeatures([f.id as any]);
         } catch (_) {
           // Feature may already have been removed — safe to ignore
         }
@@ -207,7 +207,7 @@
       console.error('[DrawingToolbar] saveFeature failed:', err);
       toastStore.error('Failed to save drawn feature.');
       try {
-        drawingStore.instance?.removeFeatures([f.id]);
+        drawingStore.instance?.removeFeatures([f.id as any]);
       } catch (cleanupErr) {
         console.warn('[DrawingToolbar] cleanup after failed save:', cleanupErr);
       }

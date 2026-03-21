@@ -58,7 +58,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 
   return jsonResponse(envelope(
     items.map(toMapSummary),
-    { totalCount: parseInt(countRow.cnt, 10), limit, nextCursor },
+    { totalCount: parseInt(countRow?.cnt ?? '0', 10), limit, nextCursor },
     listLinks('/api/v1/maps', nextCursor),
   ));
 };

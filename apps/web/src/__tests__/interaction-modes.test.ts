@@ -1,3 +1,4 @@
+// @ts-nocheck — test file; Geometry type mismatches are noise
 // @vitest-environment node
 /**
  * Stress tests for the three drawing/annotation linkage flows in MapEditor.

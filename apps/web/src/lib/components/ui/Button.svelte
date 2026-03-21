@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import type { HTMLButtonAttributes } from 'svelte/elements';
 
-	interface Props {
+	interface Props extends HTMLButtonAttributes {
 		variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
 		size?: 'sm' | 'md' | 'lg';
 		disabled?: boolean;
@@ -18,7 +19,8 @@
 		loading = false,
 		type = 'button',
 		onclick,
-		children
+		children,
+		...restProps
 	}: Props = $props();
 
 	const variantClasses: Record<string, string> = {
@@ -46,6 +48,7 @@
 	onclick={loading ? undefined : onclick}
 	aria-disabled={disabled || loading}
 	aria-busy={loading}
+	{...restProps}
 >
 	{#if loading}
 		<span aria-hidden="true">...</span>

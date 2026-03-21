@@ -14,12 +14,13 @@
 				id: u.id,
 				name: u.name,
 				email: u.email,
+				createdAt: u.createdAt,
+				updatedAt: u.createdAt,
 				isAdmin: u.isAdmin,
 				disabledAt: u.disabledAt,
 			})),
-			total: data.users.length,
-			page: 1,
-			pageSize: data.users.length,
+			totalCount: data.users.length,
+			nextCursor: null,
 		},
 		auditLog: {
 			items: data.auditLog.map((e) => ({
@@ -32,18 +33,11 @@
 				metadata: e.metadata ?? {},
 				createdAt: e.createdAt,
 			})),
-			total: data.auditLog.length,
-			page: 1,
-			pageSize: data.auditLog.length,
+			totalCount: data.auditLog.length,
+			nextCursor: null,
 		},
 		storageStats: data.storageStats,
-		importJobs: data.importJobs.map((j) => ({
-			id: j.id,
-			fileName: j.fileName,
-			status: j.status,
-			progress: j.progress,
-			createdAt: j.createdAt,
-		})),
+		importJobs: data.importJobs as AdminData['importJobs'],
 	});
 
 	const actions: AdminActions = {

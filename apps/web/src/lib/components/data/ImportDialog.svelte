@@ -25,8 +25,6 @@
   let pollStartedAt: number | null = null;
   const POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
-  const POLL_TIMEOUT_MS = 5 * 60 * 1000;
-
   const ACCEPTED_TYPES = ['.geojson', '.json', '.csv', '.kml', '.gpx', '.gpkg', '.geojsonl', '.zip'];
 
   function handleDrop(e: DragEvent) {

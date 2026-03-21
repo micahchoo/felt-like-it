@@ -57,7 +57,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
   const bboxClause = bbox
     ? (() => {
         const [xmin, ymin, xmax, ymax] = bbox.split(',').map(Number);
-        if ([xmin, ymin, xmax, ymax].some(isNaN)) return sql``;
+        if ([xmin, ymin, xmax, ymax].some((v) => isNaN(v as number))) return sql``;
         return sql`AND ST_Intersects(geometry, ST_MakeEnvelope(${xmin}, ${ymin}, ${xmax}, ${ymax}, 4326))`;
       })()
     : sql``;

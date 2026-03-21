@@ -1,4 +1,5 @@
-import type { MapRecord, Layer, Feature, Comment } from '@felt-like-it/shared-types';
+import type { MapRecord, Layer, Feature } from '@felt-like-it/shared-types';
+import type { Comment } from './map-editor.js';
 import type { BaseActions } from './shared.js';
 
 export interface ShareViewerData {

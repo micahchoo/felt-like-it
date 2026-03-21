@@ -11,7 +11,7 @@
 	import MapCanvas from '$lib/components/map/MapCanvas.svelte';
 	import DrawingToolbar from '$lib/components/map/DrawingToolbar.svelte';
 	import BasemapPicker from '$lib/components/map/BasemapPicker.svelte';
-	import Legend from '$lib/components/map/Legend.svelte';
+	import Legend from '$lib/components/style/Legend.svelte';
 	import LayerPanel from '$lib/components/map/LayerPanel.svelte';
 
 	import Share2 from 'lucide-svelte/icons/share-2';
@@ -115,7 +115,7 @@
 
 			<!-- Left: LayerPanel (fixed, inside SidePanel internally) -->
 			<LayerPanel
-				layers={data.layers}
+			layers={data.layers}
 				ontogglelayer={(id, visible) => actions.onLayerToggle(id, visible)}
 				ondeletelayer={(id) => actions.onLayerDelete(id)}
 				oneditstyle={(id) => actions.onLayerUpdateStyle(id, {})}
@@ -130,10 +130,10 @@
 				<!-- Map area: fills remaining space, relative for absolute children -->
 				<div class="flex flex-col flex-1 overflow-hidden">
 					<div class="relative flex-1 overflow-hidden">
-						<MapCanvas interactionMode={interactionMode} />
+								<MapCanvas interactionMode={interactionMode} />
 
 						<!-- Floating: DrawingToolbar (positions itself absolute top-4 left-4) -->
-						<DrawingToolbar
+									<DrawingToolbar
 							activeMode={interactionMode}
 							onmodechange={(mode) => { interactionMode = mode; }}
 						/>
@@ -145,7 +145,7 @@
 						/>
 
 						<!-- Floating: Legend (positions itself absolute bottom-4 left-4) -->
-						<Legend entries={legendEntries} title="Layers" />
+									<Legend entries={legendEntries} title="Layers" />
 					</div>
 
 					<!-- DataTable: collapsible bottom strip -->

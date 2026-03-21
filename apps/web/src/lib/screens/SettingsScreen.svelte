@@ -134,7 +134,7 @@
 													{formatDate(key.createdAt)}
 												</td>
 												<td class="px-3 py-3 font-body text-on-surface-variant text-xs">
-													{formatDate((key as Record<string, unknown>).lastUsedAt as Date | null)}
+													{formatDate(key.lastUsedAt)}
 												</td>
 												<td class="px-3 py-3">
 													<button

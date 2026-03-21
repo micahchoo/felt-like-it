@@ -2,11 +2,31 @@ import type {
 	MapRecord,
 	Layer,
 	Feature,
-	Comment,
-	MapEvent,
-	Collaborator,
 } from '@felt-like-it/shared-types';
 import type { BaseActions } from './shared.js';
+
+/** Locally-defined until these types are promoted to shared-types. */
+export interface Comment {
+	id: string;
+	body: string;
+	authorName: string;
+	createdAt: Date;
+	resolved: boolean;
+}
+
+export interface MapEvent {
+	id: string;
+	action: string;
+	userId: string | null;
+	createdAt: Date;
+	metadata: Record<string, unknown>;
+}
+
+export interface Collaborator {
+	id: string;
+	name: string;
+	role: string;
+}
 
 /** Simplified annotation for UI display (full AnnotationObject schema is complex). */
 export interface AnnotationSummary {

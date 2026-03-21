@@ -113,7 +113,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   // Save filters to localStorage whenever filter state changes for any layer.
   $effect(() => {
     // Access every layer's filters to create a reactive dependency on the full state.
-    for (const layer of layersStore.layers) {
+    for (const layer of layersStore.all) {
       filterStore.get(layer.id);
     }
     saveFilters(mapId);
@@ -151,7 +151,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   const viewportStore = createViewportStore({
     fetchFn: (params) => trpc.features.listPaged.query(params),
     getActiveLayer: () => layersStore.active,
-    isLargeLayer,
+    isLargeLayer: isLargeLayer as (layer: { id: string }) => boolean,
     getMap: () => mapStore.mapInstance ?? undefined,
     onError: (err) => {
       console.error('[fetchViewportFeatures] failed:', err);
@@ -221,7 +221,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     effectEnter('ME:selectionToFeature', { featId: feat?.id, lid });
     if (feat && lid) {
       const geom = feat.geometry as Geometry | undefined;
-      const fid = resolveFeatureId(feat);
+      const fid = resolveFeatureId(feat as any);
       const currentType = untrack(() => interactionState.type);
       if (geom && fid && (currentType === 'idle' || currentType === 'featureSelected')) {
         transitionTo({ type: 'featureSelected', feature: { featureId: fid, layerId: lid, geometry: geom } });
@@ -259,7 +259,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     if (feat && lid) {
       const current = untrack(() => interactionState);
       if (current.type === 'pickFeature' && !current.picked) {
-        const fid = resolveFeatureId(feat);
+        const fid = resolveFeatureId(feat as any);
         if (fid) {
           transitionTo({
             type: 'pickFeature',
@@ -431,8 +431,8 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     }
 
     // 1/2/3 — switch drawing tools (only in editing mode, no modifier keys, not in text inputs)
-    const tag = (e.target as HTMLElement)?.tagName;
-    if (!designMode && !mod && !e.shiftKey && !e.altKey && tag !== 'INPUT' && tag !== 'TEXTAREA' && !(e.target as HTMLElement)?.isContentEditable) {
+    const tag2 = (e.target as HTMLElement)?.tagName;
+    if (!designMode && !mod && !e.shiftKey && !e.altKey && tag2 !== 'INPUT' && tag2 !== 'TEXTAREA' && !(e.target as HTMLElement)?.isContentEditable) {
       switch (e.key) {
         case '1': selectionStore.setActiveTool('select'); break;
         case '2': selectionStore.setActiveTool('point'); break;

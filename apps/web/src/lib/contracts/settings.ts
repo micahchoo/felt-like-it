@@ -1,8 +1,22 @@
-import type { User, ApiKey } from '@felt-like-it/shared-types';
 import type { BaseActions } from './shared.js';
 
+/** Locally-defined until ApiKey is promoted to shared-types. */
+export interface ApiKey {
+	id: string;
+	name: string;
+	prefix: string;
+	lastUsedAt: Date | null;
+	createdAt: Date;
+}
+
+export interface SettingsUser {
+	id: string;
+	email: string;
+	name: string;
+}
+
 export interface SettingsData {
-	user: User;
+	user: SettingsUser;
 	apiKeys: ApiKey[];
 }
 
