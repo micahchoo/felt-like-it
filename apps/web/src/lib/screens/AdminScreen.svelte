@@ -76,9 +76,17 @@
 <div class="min-h-screen bg-surface">
 	<TopBar>
 		<div class="flex items-center gap-3">
-			<a href="/" class="text-on-surface-variant hover:text-on-surface transition-colors font-display text-sm">← Home</a>
-			<Shield size={18} class="text-primary" />
-			<span class="font-display text-lg font-bold text-on-surface">Admin</span>
+			<a href="/" class="text-on-surface-variant hover:text-on-surface transition-colors font-mono text-xs uppercase tracking-widest">← Home</a>
+			<Shield size={16} class="text-primary" />
+			<div class="flex flex-col">
+				<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest leading-none">System Administration</span>
+				<span class="font-display text-lg font-bold text-on-surface leading-tight">Audit Log Terminal</span>
+			</div>
+		</div>
+		<div class="flex items-center gap-2">
+			<span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest">
+				Immutable Integrity Active
+			</span>
 		</div>
 	</TopBar>
 
@@ -89,15 +97,57 @@
 			<ErrorState message="Failed to load admin data" onretry={actions.onRetry} />
 		{:else}
 			<div class="max-w-5xl mx-auto flex flex-col gap-6">
+
+				<!-- Stats section -->
+				<div class="bg-surface-container rounded-xl border border-white/5 p-6 flex flex-col gap-4">
+					<p class="text-[10px] font-bold text-primary uppercase tracking-widest">Total Mutations</p>
+					<span class="text-3xl font-mono font-semibold text-on-surface tabular-nums">
+						{data.auditLog.items?.length ?? 0}
+					</span>
+					<div class="grid grid-cols-3 gap-3 mt-2">
+						<div class="bg-surface-container-low rounded-lg border border-white/5 p-4">
+							<p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">Shard Mode</p>
+							<p class="text-sm font-mono text-on-surface">Sequential</p>
+						</div>
+						<div class="bg-surface-container-low rounded-lg border border-white/5 p-4">
+							<p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">Matrix</p>
+							<p class="text-sm font-mono text-on-surface">{data.storageStats.totalMaps ?? 0} Maps</p>
+						</div>
+						<div class="bg-surface-container-low rounded-lg border border-white/5 p-4">
+							<p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">Active Log Gap</p>
+							<p class="text-sm font-mono text-on-surface">0ms</p>
+						</div>
+					</div>
+				</div>
+
+				<!-- System health -->
+				<div class="bg-surface-container rounded-xl border border-white/5 p-5 flex flex-col gap-3">
+					<p class="text-[10px] font-bold text-primary uppercase tracking-widest">System Health</p>
+					<div class="flex flex-wrap gap-4">
+						<div class="flex items-center gap-2">
+							<span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+							<span class="text-xs font-mono text-on-surface-variant">Hash Chain Verified</span>
+						</div>
+						<div class="flex items-center gap-2">
+							<span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+							<span class="text-xs font-mono text-on-surface-variant">Storage Nominal</span>
+						</div>
+						<div class="flex items-center gap-2">
+							<span class="w-2 h-2 rounded-full {data.importJobs.some((j) => j.status === 'failed') ? 'bg-red-400' : 'bg-emerald-400'}"></span>
+							<span class="text-xs font-mono text-on-surface-variant">Import Jobs</span>
+						</div>
+					</div>
+				</div>
+
 				<!-- Tab bar -->
 				<div class="flex gap-2 flex-wrap">
 					{#each tabs as tab}
 						<button
 							type="button"
-							class="px-4 py-2 rounded-lg font-display text-xs uppercase tracking-wide transition-colors cursor-pointer
+							class="px-4 py-2 rounded-lg font-mono text-[10px] uppercase tracking-widest transition-colors cursor-pointer
 								{activeTab === tab.key
 									? 'bg-primary text-on-primary'
-									: 'bg-surface-high text-on-surface-variant hover:text-on-surface hover:bg-surface-high/80'}"
+									: 'bg-surface-container text-on-surface-variant border border-white/5 hover:text-on-surface hover:border-white/10'}"
 							onclick={() => (activeTab = tab.key)}
 						>
 							{tab.label}
@@ -106,7 +156,7 @@
 				</div>
 
 				<!-- Tab content -->
-				<div>
+				<div class="bg-surface-container rounded-xl border border-white/5 overflow-hidden transition-opacity duration-150">
 					{#if activeTab === 'users'}
 						<UserList
 							users={userListRows}

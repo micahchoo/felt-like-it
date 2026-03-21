@@ -90,12 +90,15 @@
 		},
 	};
 
-	function copyNewKey() {
+	async function copyNewKey() {
 		if (!newKey) return;
-		navigator.clipboard.writeText(newKey).then(() => {
+		try {
+			await navigator.clipboard.writeText(newKey);
 			newKeyCopied = true;
 			setTimeout(() => { newKeyCopied = false; }, 2000);
-		}).catch(() => undefined);
+		} catch {
+			toastStore.error('Failed to copy — try selecting and copying manually.');
+		}
 	}
 
 	const status: SettingsStatus = 'success';

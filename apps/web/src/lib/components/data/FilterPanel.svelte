@@ -53,13 +53,18 @@
   }
 </script>
 
-<div class="flex flex-col gap-2 p-3 bg-slate-800 border-b border-white/10 text-xs text-white">
+<div class="flex flex-col gap-2 p-3 bg-surface-container border-b border-white/5 text-xs text-white">
   <div class="flex items-center justify-between">
-    <span class="font-medium text-slate-300">Filters</span>
+    <div class="flex items-center gap-2">
+      <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Filters</span>
+      {#if activeFilters.length > 0}
+        <span class="bg-primary/20 text-primary text-[9px] font-bold rounded-full px-1.5 py-0.5">{activeFilters.length} active</span>
+      {/if}
+    </div>
     {#if activeFilters.length > 0}
       <button
         type="button"
-        class="text-slate-400 hover:text-white transition-colors"
+        class="text-[10px] text-on-surface-variant hover:text-on-surface transition-colors"
         onclick={() => filterStore.clear(layerId)}
       >
         Clear all
@@ -68,20 +73,20 @@
   </div>
 
   {#if activeFilters.length === 0}
-    <p class="text-xs text-slate-400 text-center py-3 px-4">Add filters to show only features matching specific attribute values.</p>
+    <p class="text-xs text-on-surface-variant text-center py-3 px-4">Add filters to show only features matching specific attribute values.</p>
   {/if}
 
   <!-- Active filter chips -->
   {#if activeFilters.length > 0}
     <ul class="flex flex-col gap-1">
       {#each activeFilters as filter, i (i)}
-        <li class="flex items-center gap-2 bg-slate-700 rounded px-2 py-1">
-          <span class="font-mono text-blue-300">{filter.field}</span>
-          <span class="text-slate-400">{FILTER_OPERATOR_LABELS[filter.operator]}</span>
-          <span class="flex-1 truncate text-white">{filter.value}</span>
+        <li class="flex items-center gap-2 bg-surface-container-low border border-white/5 rounded px-2 py-1">
+          <span class="font-mono text-primary/80">{filter.field}</span>
+          <span class="text-on-surface-variant/70">{FILTER_OPERATOR_LABELS[filter.operator]}</span>
+          <span class="flex-1 truncate text-amber-400/90 bg-amber-400/10 rounded px-1">{filter.value}</span>
           <button
             type="button"
-            class="text-slate-400 hover:text-red-400 transition-colors shrink-0"
+            class="text-on-surface-variant hover:text-red-400 transition-colors shrink-0"
             onclick={() => filterStore.remove(layerId, i)}
             aria-label="Remove filter"
           >
@@ -98,7 +103,7 @@
       <!-- Field selector -->
       <select
         bind:value={newField}
-        class="flex-1 min-w-0 rounded bg-slate-700 border border-slate-600 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+        class="flex-1 min-w-0 rounded bg-surface-container-low border border-white/5 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
       >
         {#each availableFields as field (field)}
           <option value={field}>{field}</option>
@@ -108,7 +113,7 @@
       <!-- Operator selector -->
       <select
         bind:value={newOperator}
-        class="w-24 rounded bg-slate-700 border border-slate-600 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+        class="w-24 rounded bg-surface-container-low border border-white/5 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
       >
         {#each OPERATORS as op (op)}
           <option value={op}>{FILTER_OPERATOR_LABELS[op]}</option>
@@ -121,12 +126,12 @@
         bind:value={newValue}
         onkeydown={handleKeydown}
         placeholder="value"
-        class="w-28 rounded bg-slate-700 border border-slate-600 px-2 py-1 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        class="w-28 rounded bg-surface-container-low border border-white/5 px-2 py-1 text-xs text-white placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
       />
 
       <button
         type="button"
-        class="rounded bg-blue-600 hover:bg-blue-500 px-2 py-1 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        class="rounded bg-primary-container hover:bg-primary px-2 py-1 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         onclick={addFilter}
         disabled={!newField || !newValue.trim()}
       >
@@ -134,6 +139,6 @@
       </button>
     </div>
   {:else}
-    <p class="text-slate-400 italic">Load layer data to add filters.</p>
+    <p class="text-on-surface-variant/70 italic text-xs">Load layer data to add filters.</p>
   {/if}
 </div>

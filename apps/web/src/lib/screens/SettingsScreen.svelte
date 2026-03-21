@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { SettingsData, SettingsActions, SettingsStatus } from '$lib/contracts/settings.js';
 	import TopBar from '$lib/components/ui/TopBar.svelte';
-	import GlassPanel from '$lib/components/ui/GlassPanel.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
@@ -23,6 +22,7 @@
 	let nameValue = $state('');
 	let newKeyName = $state('');
 	let newKeyScope = $state('read');
+	let savingProfile = $state(false);
 
 	$effect(() => {
 		if (status === 'success') {
@@ -48,7 +48,7 @@
 		<div class="flex items-center gap-3">
 			<a href="/" class="text-on-surface-variant hover:text-on-surface transition-colors font-display text-sm">← Home</a>
 			<Settings size={18} class="text-primary" />
-			<span class="font-display text-lg font-bold text-on-surface">Settings</span>
+			<span class="font-display text-lg font-bold text-on-surface tracking-tight">Settings</span>
 		</div>
 	</TopBar>
 
@@ -61,12 +61,12 @@
 			<div class="max-w-2xl mx-auto flex flex-col gap-6">
 				<!-- Account section -->
 				<section>
-					<h2 class="font-display text-sm uppercase tracking-wide text-on-surface-variant mb-3">
+					<h2 class="text-[10px] font-bold text-primary uppercase tracking-widest mb-3">
 						Account
 					</h2>
-					<GlassPanel class="p-6 flex flex-col gap-4">
+					<div class="bg-surface-container rounded-xl border border-white/5 p-6 flex flex-col gap-4">
 						<div class="flex flex-col gap-1">
-							<label for="settings-name" class="font-display text-xs text-on-surface-variant uppercase tracking-wide">
+							<label for="settings-name" class="text-xs text-on-surface-variant">
 								Name
 							</label>
 							<Input
@@ -77,7 +77,7 @@
 							/>
 						</div>
 						<div class="flex flex-col gap-1">
-							<label for="settings-email" class="font-display text-xs text-on-surface-variant uppercase tracking-wide">
+							<label for="settings-email" class="text-xs text-on-surface-variant">
 								Email
 							</label>
 							<Input
@@ -90,23 +90,31 @@
 						<div class="flex justify-end">
 							<Button
 								variant="primary"
-								onclick={() => actions.onUpdateProfile({ name: nameValue })}
+								disabled={savingProfile}
+								onclick={async () => {
+									savingProfile = true;
+									try {
+										await actions.onUpdateProfile({ name: nameValue });
+									} finally {
+										savingProfile = false;
+									}
+								}}
 							>
-								Save changes
+								{savingProfile ? 'Saving...' : 'Save changes'}
 							</Button>
 						</div>
-					</GlassPanel>
+					</div>
 				</section>
 
 				<!-- API Keys section -->
 				<section>
 					<div class="flex items-center justify-between mb-3">
-						<h2 class="font-display text-sm uppercase tracking-wide text-on-surface-variant flex items-center gap-2">
-							<Key size={14} />
+						<h2 class="text-[10px] font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+							<Key size={12} />
 							API Keys
 						</h2>
 					</div>
-					<GlassPanel class="p-6 flex flex-col gap-4">
+					<div class="bg-surface-container rounded-xl border border-white/5 p-6 flex flex-col gap-4">
 						<!-- Existing keys table -->
 						{#if data.apiKeys.length > 0}
 							<div class="overflow-x-auto">
@@ -114,7 +122,7 @@
 									<thead>
 										<tr>
 											{#each apiKeyColumns as col}
-												<th class="text-left font-display text-xs uppercase tracking-wide text-on-surface-variant px-3 py-2">
+												<th class="text-left text-[10px] font-bold uppercase tracking-widest text-primary px-3 py-2">
 													{col.label}
 												</th>
 											{/each}
@@ -123,17 +131,17 @@
 									</thead>
 									<tbody>
 										{#each data.apiKeys as key (key.id)}
-											<tr class="hover:bg-surface-high transition-colors">
-												<td class="px-3 py-3 font-body text-on-surface">{key.name}</td>
+											<tr class="hover:bg-surface-container-low transition-colors border-t border-white/5">
+												<td class="px-3 py-3 text-sm text-on-surface">{key.name}</td>
 												<td class="px-3 py-3">
-													<code class="font-mono text-xs text-primary bg-surface-low px-2 py-0.5 rounded">
+													<code class="font-mono text-xs text-primary bg-surface-container-low px-2 py-0.5 rounded">
 														{key.prefix}…
 													</code>
 												</td>
-												<td class="px-3 py-3 font-body text-on-surface-variant text-xs">
+												<td class="px-3 py-3 text-xs text-on-surface-variant">
 													{formatDate(key.createdAt)}
 												</td>
-												<td class="px-3 py-3 font-body text-on-surface-variant text-xs">
+												<td class="px-3 py-3 text-xs text-on-surface-variant">
 													{formatDate(key.lastUsedAt)}
 												</td>
 												<td class="px-3 py-3">
@@ -152,12 +160,12 @@
 								</table>
 							</div>
 						{:else}
-							<p class="font-body text-sm text-on-surface-variant">No API keys yet.</p>
+							<p class="text-sm text-on-surface-variant">No API keys yet.</p>
 						{/if}
 
 						<!-- Create new key -->
-						<div class="flex flex-col gap-3 pt-2">
-							<h3 class="font-display text-xs uppercase tracking-wide text-on-surface-variant">
+						<div class="flex flex-col gap-3 pt-2 border-t border-white/5">
+							<h3 class="text-[10px] font-bold text-primary uppercase tracking-widest">
 								Create new key
 							</h3>
 							<div class="flex gap-3">
@@ -182,7 +190,7 @@
 								</Button>
 							</div>
 						</div>
-					</GlassPanel>
+					</div>
 				</section>
 			</div>
 		{/if}

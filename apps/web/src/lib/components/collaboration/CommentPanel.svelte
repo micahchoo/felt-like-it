@@ -81,7 +81,7 @@
 		{/if}
 	</div>
 
-	<div class="mt-4 flex flex-col gap-2 border-t border-white/10 pt-4">
+	<div class="mt-4 flex flex-col gap-2 border-t border-white/5 pt-4">
 		<Textarea bind:value={newBody} placeholder="Write a comment…" rows={3} />
 		<Button variant="primary" onclick={handleAdd} disabled={!newBody.trim()}>Add Comment</Button>
 	</div>

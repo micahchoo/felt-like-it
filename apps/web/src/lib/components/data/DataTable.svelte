@@ -37,6 +37,7 @@
   let sortKey = $state<string | null>(null);
   let sortAsc = $state(true);
   let filterText = $state('');
+  let selectedFeatureId = $state<string | number | null>(null);
 
   // Derive column headers from features (client) or server rows
   const columns = $derived.by(() => {
@@ -93,6 +94,7 @@
   const totalCount = $derived(mode === 'server' ? serverTotal : features.length);
 
   function handleRowClick(feature: GeoJSONFeature) {
+    selectedFeatureId = feature.id ?? null;
     selectionStore.selectFeature(feature);
     // Zoom to feature
     const bbox = computeBbox([feature]);
@@ -134,24 +136,27 @@
   }
 </script>
 
-<div class="flex flex-col h-full bg-slate-900 text-white">
+<div class="flex flex-col h-full bg-surface-container text-white">
   {#if totalCount === 0}
     <div class="flex flex-col items-center justify-center py-12 px-4 text-center h-full">
-      <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <svg class="h-6 w-6 text-on-surface-variant/70 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 001-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 001 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/>
       </svg>
-      <p class="text-sm text-slate-400">
+      <p class="text-xs text-on-surface-variant">
         {mode === 'server' ? 'No features in current viewport.' : 'Draw features on the map or import data to see them here.'}
       </p>
     </div>
   {:else}
   <!-- Table toolbar -->
-  <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10 shrink-0">
-    <span class="text-xs font-medium text-slate-300">
+  <div class="flex items-center gap-2 px-3 py-2 border-b border-white/5 shrink-0">
+    <span class="text-[10px] font-bold text-primary uppercase tracking-widest">
+      Feature Attributes
+    </span>
+    <span class="text-on-surface-variant/50 text-[10px] uppercase tracking-widest">
       {#if mode === 'server'}
         {serverTotal > 0
-          ? `Showing ${(serverPage - 1) * serverPageSize + 1}–${Math.min(serverPage * serverPageSize, serverTotal)} of ${serverTotal.toLocaleString()} in viewport`
-          : 'No features in current viewport'}
+          ? `${(serverPage - 1) * serverPageSize + 1}–${Math.min(serverPage * serverPageSize, serverTotal)} of ${serverTotal.toLocaleString()} in viewport`
+          : 'No features in viewport'}
       {:else}
         {filteredFeatures.length} of {features.length} features
       {/if}
@@ -160,8 +165,8 @@
       <input
         type="search"
         bind:value={filterText}
-        placeholder="Filter features…"
-        class="ml-auto w-48 rounded bg-slate-700 border border-slate-600 px-2 py-1 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        placeholder="Search…"
+        class="ml-auto w-44 rounded bg-surface-container-low border border-white/5 px-2 py-1 text-xs text-white placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
       />
     {/if}
   </div>
@@ -169,11 +174,11 @@
   <!-- Table -->
   <div class="flex-1 overflow-auto scrollbar-thin">
     <table class="w-full text-xs border-collapse">
-      <thead class="sticky top-0 bg-slate-800 z-10">
+      <thead class="sticky top-0 bg-surface-container-low z-10">
         <tr>
           {#each columns as col (col)}
             <th
-              class="px-3 py-2 text-left text-slate-300 font-medium border-b border-white/10 whitespace-nowrap cursor-pointer hover:text-white select-none"
+              class="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-on-surface-variant border-b border-white/5 whitespace-nowrap cursor-pointer hover:text-white select-none"
               onclick={() => toggleSort(col)}
               title={col}
             >
@@ -189,16 +194,36 @@
         {#each displayRows as feature (feature.id)}
           <tr
             class="border-b border-white/5 cursor-pointer transition-colors
-                   {selectionStore.selectedFeature?.id === feature.id
-                     ? 'bg-blue-600/20'
-                     : 'hover:bg-slate-800'}"
+                   {selectedFeatureId === feature.id
+                     ? 'bg-primary/10 border-l-2 border-primary'
+                     : 'bg-surface-container hover:bg-surface-high'}"
             onclick={() => handleRowClick(feature)}
             onkeydown={(e) => e.key === 'Enter' && handleRowClick(feature)}
             tabindex="0"
           >
             {#each columns as col (col)}
-              <td class="px-3 py-1.5 text-slate-200 max-w-40 truncate whitespace-nowrap">
-                {formatCell(col, feature.properties?.[col])}
+              <td
+                class="px-3 py-1.5 max-w-40 truncate whitespace-nowrap
+                       {col === 'id' || col === '_id'
+                         ? 'font-mono text-on-surface-variant/70'
+                         : col === 'geometry_type' || col === 'type'
+                           ? 'text-xs text-on-surface'
+                           : 'text-xs text-on-surface'}"
+              >
+                {#if col === 'status' || col === 'validation'}
+                  {@const val = String(feature.properties?.[col] ?? '')}
+                  {#if val.toLowerCase() === 'validated'}
+                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium text-emerald-400 bg-emerald-400/10">{val}</span>
+                  {:else if val.toLowerCase() === 'overlap'}
+                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium text-amber-400 bg-amber-400/10">{val}</span>
+                  {:else if val.toLowerCase() === 'draft'}
+                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium text-on-surface-variant/70 bg-surface-high">{val}</span>
+                  {:else}
+                    {formatCell(col, feature.properties?.[col])}
+                  {/if}
+                {:else}
+                  {formatCell(col, feature.properties?.[col])}
+                {/if}
               </td>
             {/each}
           </tr>
@@ -207,40 +232,45 @@
     </table>
 
     {#if displayRows.length === 0}
-      <p class="text-center text-slate-400 py-8 text-xs">
+      <p class="text-center text-on-surface-variant py-8 text-xs">
         {mode === 'server' ? 'No features in current viewport.' : filterText ? 'No features match your filter.' : 'No features in this layer.'}
       </p>
     {/if}
   </div>
 
-  {#if mode === 'server'}
-    <div class="flex items-center justify-between px-3 py-2 border-t border-white/10 text-xs text-slate-300 shrink-0">
+  <!-- Footer -->
+  <div class="flex items-center justify-between px-3 py-2 border-t border-white/5 text-xs text-on-surface-variant shrink-0">
+    <span class="text-[10px] text-on-surface-variant/70">
+      {#if mode === 'server'}
+        Showing {serverTotal > 0 ? `${(serverPage - 1) * serverPageSize + 1}–${Math.min(serverPage * serverPageSize, serverTotal)}` : '0'} of {serverTotal.toLocaleString()} features
+      {:else}
+        Showing {filteredFeatures.length} of {features.length} features
+      {/if}
+    </span>
+    {#if mode === 'server'}
       <div class="flex items-center gap-2">
         <select
-          class="bg-slate-700 border border-white/10 rounded px-1 py-0.5 text-xs"
+          class="bg-surface-container-low border border-white/5 rounded px-1 py-0.5 text-xs text-on-surface"
           value={serverPageSize}
           onchange={(e) => onPageSizeChange?.(Number((e.target as HTMLSelectElement).value))}
         >
-          <option value={25}>25</option>
-          <option value={50}>50</option>
-          <option value={100}>100</option>
+          <option value={25}>25 / page</option>
+          <option value={50}>50 / page</option>
+          <option value={100}>100 / page</option>
         </select>
-        <span>per page</span>
-      </div>
-      <div class="flex items-center gap-2">
         <button
-          class="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40"
+          class="px-2 py-0.5 rounded bg-surface-container-low hover:bg-surface-high transition-colors disabled:opacity-40"
           disabled={serverPage <= 1}
           onclick={() => onPageChange?.(serverPage - 1)}
         >Prev</button>
-        <span>{serverPage} / {Math.max(1, Math.ceil(serverTotal / serverPageSize))}</span>
+        <span class="text-on-surface-variant/70">{serverPage} / {Math.max(1, Math.ceil(serverTotal / serverPageSize))}</span>
         <button
-          class="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40"
+          class="px-2 py-0.5 rounded bg-surface-container-low hover:bg-surface-high transition-colors disabled:opacity-40"
           disabled={serverPage * serverPageSize >= serverTotal}
           onclick={() => onPageChange?.(serverPage + 1)}
         >Next</button>
       </div>
-    </div>
-  {/if}
+    {/if}
+  </div>
   {/if}
 </div>

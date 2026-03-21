@@ -39,7 +39,7 @@
     a.download = filename;
     a.click();
     // Delay revocation to ensure browser has time to start the download
-    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   async function exportGeoJSON(): Promise<void> {
@@ -116,7 +116,7 @@
       a.download = filename;
       a.click();
       // Delay revocation to ensure browser has time to start the download
-      setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
 
       toastStore.success('PDF exported.');
     } catch {
@@ -154,76 +154,173 @@
   }
 </script>
 
-<Modal bind:open title="Export">
-  <div class="flex flex-col gap-5">
-    <!-- Layer data export -->
+<Modal bind:open title="Export & Output Controls">
+  <div class="flex flex-col gap-5 bg-surface-container rounded-xl">
+    <!-- Header label -->
+    <div class="flex items-center justify-between">
+      <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Export & Output Controls</span>
+      <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">PROJECT ALPHA / WORKSPACE XX-2</span>
+    </div>
+
+    <!-- Active layers list -->
     <div class="space-y-2">
-      <h3 class="text-sm font-medium text-white">Export layer data</h3>
-      <select
-        bind:value={selectedLayerId}
-        class="w-full rounded-lg bg-slate-700 border border-slate-600 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-        aria-label="Select layer to export"
-      >
+      <h3 class="text-[10px] font-bold text-primary uppercase tracking-widest">Active Layers</h3>
+      <div class="flex flex-col gap-1">
         {#each layers as layer (layer.id)}
-          <option value={layer.id}>{layer.name}</option>
+          <label class="flex items-center gap-2 rounded-lg border border-white/5 bg-surface-container-low px-3 py-2 cursor-pointer hover:bg-white/5 transition-colors">
+            <input
+              type="radio"
+              name="selectedLayer"
+              value={layer.id}
+              bind:group={selectedLayerId}
+              class="accent-primary"
+            />
+            <span class="flex-1 text-xs font-semibold text-on-surface">{layer.name}</span>
+            <span class="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-primary/10 text-primary">
+              {layer.type ?? 'vector'}
+            </span>
+          </label>
         {/each}
-      </select>
-      <div class="grid grid-cols-2 gap-2">
-        <Button
-          variant="primary"
-          onclick={exportGeoJSON}
-          loading={exportingGeoJSON}
-          disabled={!selectedLayerId}
-          class="w-full"
-        >
-          GeoJSON
-        </Button>
-        <Button
-          variant="primary"
-          onclick={exportGpkg}
-          loading={exportingGpkg}
-          disabled={!selectedLayerId}
-          class="w-full"
-        >
-          GeoPackage
-        </Button>
-        <Button
-          variant="primary"
-          onclick={exportShp}
-          loading={exportingShp}
-          disabled={!selectedLayerId}
-          class="w-full"
-        >
-          Shapefile
-        </Button>
-        <Button
-          variant="primary"
-          onclick={exportPdf}
-          loading={exportingPdf}
-          disabled={!selectedLayerId}
-          class="w-full"
-        >
-          PDF
-        </Button>
       </div>
     </div>
 
-    <div class="border-t border-white/10"></div>
+    <div class="border-t border-white/5"></div>
 
-    <!-- High-res PNG export -->
+    <!-- Output format selector -->
     <div class="space-y-2">
-      <h3 class="text-sm font-medium text-white">Export as PNG</h3>
-      <p class="text-xs text-slate-400">
-        Captures the map view and legend at 2x resolution (high-DPI / print-ready).
-      </p>
-      <Button
-        variant="secondary"
-        onclick={exportPNG}
-        loading={exportingPNG}
-        class="w-full"
+      <h3 class="text-[10px] font-bold text-primary uppercase tracking-widest">Output Format</h3>
+      <div class="flex flex-col gap-2">
+        <!-- GeoJSON -->
+        <button
+          type="button"
+          onclick={exportGeoJSON}
+          disabled={!selectedLayerId || exportingGeoJSON}
+          class="flex items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors
+            {exportingGeoJSON
+              ? 'border-primary/20 bg-amber-500/10 cursor-wait opacity-75'
+              : 'border-primary/20 bg-amber-500/10 hover:bg-amber-500/15'}"
+        >
+          <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-primary">
+            <span class="h-2 w-2 rounded-full bg-primary"></span>
+          </span>
+          <div class="flex-1 min-w-0">
+            <span class="text-xs font-semibold text-on-surface">GeoJSON</span>
+            <p class="text-xs text-on-surface-variant">Layer features as .geojson</p>
+          </div>
+          {#if exportingGeoJSON}
+            <span class="text-[9px] font-bold uppercase tracking-wider text-primary">Exporting…</span>
+          {/if}
+        </button>
+
+        <!-- GeoPackage -->
+        <button
+          type="button"
+          onclick={exportGpkg}
+          disabled={!selectedLayerId || exportingGpkg}
+          class="flex items-start gap-3 rounded-lg border border-white/5 bg-surface-container-low px-3 py-2.5 text-left transition-colors hover:bg-white/5
+            {exportingGpkg ? 'cursor-wait opacity-75' : ''}"
+        >
+          <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-white/20">
+          </span>
+          <div class="flex-1 min-w-0">
+            <span class="text-xs font-semibold text-on-surface">GeoPackage</span>
+            <p class="text-xs text-on-surface-variant">Layer features as .gpkg</p>
+          </div>
+          {#if exportingGpkg}
+            <span class="text-[9px] font-bold uppercase tracking-wider text-primary">Exporting…</span>
+          {/if}
+        </button>
+
+        <!-- ESRI Shapefile -->
+        <button
+          type="button"
+          onclick={exportShp}
+          disabled={!selectedLayerId || exportingShp}
+          class="flex items-start gap-3 rounded-lg border border-white/5 bg-surface-container-low px-3 py-2.5 text-left transition-colors hover:bg-white/5
+            {exportingShp ? 'cursor-wait opacity-75' : ''}"
+        >
+          <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-white/20">
+          </span>
+          <div class="flex-1 min-w-0">
+            <span class="text-xs font-semibold text-on-surface">ESRI Shapefile</span>
+            <p class="text-xs text-on-surface-variant">Layer features as .shp</p>
+          </div>
+          {#if exportingShp}
+            <span class="text-[9px] font-bold uppercase tracking-wider text-primary">Exporting…</span>
+          {/if}
+        </button>
+      </div>
+    </div>
+
+    <!-- Progress bar (visible when any export is running) -->
+    {#if exportingGeoJSON || exportingGpkg || exportingShp || exportingPdf || exportingPNG}
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Processing</span>
+          <span class="text-xs text-on-surface-variant">Preparing file…</span>
+        </div>
+        <div class="h-1.5 w-full rounded-full bg-surface-container-low">
+          <div class="h-1.5 w-2/3 rounded-full bg-primary animate-pulse"></div>
+        </div>
+        <div class="flex items-center justify-between text-xs text-on-surface-variant">
+          <span>Processing…</span>
+          <span>-- KB</span>
+        </div>
+      </div>
+    {/if}
+
+    <div class="border-t border-white/5"></div>
+
+    <!-- High-res PNG export + PDF -->
+    <div class="space-y-2">
+      <h3 class="text-[10px] font-bold text-primary uppercase tracking-widest">Additional Formats</h3>
+      <div class="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onclick={exportPdf}
+          disabled={!selectedLayerId || exportingPdf}
+          class="flex flex-col items-start gap-0.5 rounded-xl border border-white/5 px-3 py-2 text-left transition-colors
+            {exportingPdf ? 'cursor-wait opacity-75' : 'hover:bg-white/5'}"
+        >
+          <span class="text-xs font-semibold text-on-surface">{exportingPdf ? 'Exporting…' : 'PDF'}</span>
+          <span class="text-[10px] text-on-surface-variant">Map screenshot as .pdf</span>
+        </button>
+        <button
+          type="button"
+          onclick={exportPNG}
+          disabled={exportingPNG}
+          class="flex flex-col items-start gap-0.5 rounded-xl border border-white/5 px-3 py-2 text-left transition-colors
+            {exportingPNG ? 'cursor-wait opacity-75' : 'hover:bg-white/5'}"
+        >
+          <span class="text-xs font-semibold text-on-surface">{exportingPNG ? 'Exporting…' : 'PNG (2x)'}</span>
+          <span class="text-[10px] text-on-surface-variant">Map screenshot as .png</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="flex items-center gap-2 pt-1">
+      <button
+        type="button"
+        onclick={() => (open = false)}
+        class="flex-1 rounded-xl px-4 py-2 text-xs font-bold text-on-surface-variant hover:text-on-surface transition-colors"
       >
-        Save as PNG (2x)
-      </Button>
+        Cancel Job
+      </button>
+      <button
+        type="button"
+        onclick={exportGeoJSON}
+        disabled={!selectedLayerId || exportingGeoJSON}
+        class="flex-1 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-on-primary transition-opacity disabled:opacity-50"
+      >
+        Download
+      </button>
+      <button
+        type="button"
+        class="flex-1 rounded-xl border border-white/5 px-4 py-2 text-xs font-bold text-on-surface-variant hover:text-on-surface transition-colors"
+      >
+        Generate New Link
+      </button>
     </div>
   </div>
 </Modal>

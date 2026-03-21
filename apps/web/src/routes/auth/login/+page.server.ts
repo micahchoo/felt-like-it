@@ -52,7 +52,7 @@ export const actions: Actions = {
     }
 
     if (user.disabledAt) {
-      return fail(403, { field: '', message: 'This account has been disabled.' });
+      return fail(403, { field: '', message: 'This account has been disabled. Contact support at admin@feltlikei.it for assistance.' });
     }
 
     const session = await lucia.createSession(user.id, {});

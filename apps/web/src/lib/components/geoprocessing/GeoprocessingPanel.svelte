@@ -3,6 +3,7 @@
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { queryKeys } from '$lib/utils/query-keys.js';
   import Button from '$lib/components/ui/Button.svelte';
+  import { CircleDot, Triangle, Crosshair, Droplets, Merge, CircleDashed, Scissors, MapPin, Radar, BarChart3, Play } from 'lucide-svelte';
   import type { Layer } from '@felt-like-it/shared-types';
   import { GEO_OP_LABELS } from '@felt-like-it/shared-types';
   import type { GeoprocessingOp } from '@felt-like-it/shared-types';
@@ -30,6 +31,11 @@
   // Op type is constrained to the discriminated union keys — no stringly-typed widening
   type OpType = GeoprocessingOp['type'];
   const OP_TYPES = Object.keys(GEO_OP_LABELS) as OpType[];
+  const OP_ICONS: Record<OpType, typeof CircleDot> = {
+    buffer: CircleDot, convex_hull: Triangle, centroid: Crosshair, dissolve: Droplets,
+    intersect: Merge, union: CircleDashed, clip: Scissors,
+    point_in_polygon: MapPin, nearest_neighbor: Radar, aggregate: BarChart3,
+  };
   const TWO_LAYER_OPS: ReadonlySet<OpType> = new Set<OpType>([
     'intersect', 'clip', 'point_in_polygon', 'nearest_neighbor', 'aggregate',
   ]);
@@ -156,48 +162,53 @@
   }
 </script>
 
-<div class="flex flex-col h-full {embedded !== true ? 'bg-slate-800 border-l border-white/10' : ''}">
+<div class="flex flex-col h-full {embedded !== true ? 'bg-surface-container border-l border-white/5' : ''}">
   {#if embedded !== true}
   <!-- Header -->
-  <div class="px-3 py-2 border-b border-white/10 shrink-0">
-    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Geoprocessing</span>
+  <div class="px-3 py-3 border-b border-white/5 shrink-0">
+    <span class="text-[10px] font-bold text-primary uppercase tracking-widest">SQL Operations</span>
+    <h2 class="text-sm font-semibold text-on-surface mt-0.5">PostGIS Engine</h2>
   </div>
   {/if}
 
   {#if layers.length === 0}
     <div class="flex flex-col items-center justify-center py-12 px-4 text-center flex-1">
-      <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <svg class="h-6 w-6 text-on-surface-variant/70 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.5 7.5a.5.5 0 010 1H5.707l2.147 2.146a.5.5 0 01-.708.708l-3-3a.5.5 0 010-.708l3-3a.5.5 0 11.708.708L5.707 7.5H11.5z"/>
       </svg>
-      <p class="text-sm text-slate-400">Add a layer with features first, then run spatial operations here.</p>
+      <p class="text-sm text-on-surface-variant">Add a layer with features first, then run spatial operations here.</p>
     </div>
   {:else}
   <!-- Form -->
-  <form onsubmit={handleRun} class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+  <form onsubmit={handleRun} class="flex-1 overflow-y-auto p-3 flex flex-col gap-4">
 
-    <!-- Operation selector -->
-    <div class="flex flex-col gap-1">
-      <label class="text-xs text-slate-400" for="geo-op">Operation</label>
-      <select
-        id="geo-op"
-        bind:value={opType}
-        class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-      >
-        {#each OP_TYPES as op (op)}
-          <option value={op}>{GEO_OP_LABELS[op]}</option>
-        {/each}
-      </select>
+    <!-- Operation icon grid -->
+    <div class="grid grid-cols-4 gap-1.5">
+      {#each OP_TYPES as op (op)}
+        {@const Icon = OP_ICONS[op]}
+        <button
+          type="button"
+          onclick={() => { opType = op; }}
+          class="flex flex-col items-center justify-center p-2 rounded-lg transition-all text-center
+                 {opType === op
+                   ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                   : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-high'}"
+        >
+          <Icon size={16} strokeWidth={opType === op ? 2.5 : 1.5} />
+          <span class="text-[8px] font-bold uppercase tracking-wider mt-1 leading-tight">{GEO_OP_LABELS[op]}</span>
+        </button>
+      {/each}
     </div>
 
     <!-- Layer A -->
     <div class="flex flex-col gap-1">
-      <label class="text-xs text-slate-400" for="geo-layer-a">
+      <label class="text-xs text-on-surface-variant" for="geo-layer-a">
         {getLayerALabel(opType)}
       </label>
       <select
         id="geo-layer-a"
         bind:value={layerIdA}
-        class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
       >
         {#each layers as layer (layer.id)}
           <option value={layer.id}>{layer.name}</option>
@@ -208,13 +219,13 @@
     <!-- Layer B (only for two-layer ops) -->
     {#if TWO_LAYER_OPS.has(opType)}
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-slate-400" for="geo-layer-b">
+        <label class="text-xs text-on-surface-variant" for="geo-layer-b">
           {getLayerBLabel(opType)}
         </label>
         <select
           id="geo-layer-b"
           bind:value={layerIdB}
-          class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
         >
           {#each layers as layer (layer.id)}
             <option value={layer.id}>{layer.name}</option>
@@ -226,7 +237,7 @@
     <!-- Buffer distance -->
     {#if DIST_OPS.has(opType)}
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-slate-400" for="geo-dist">Distance (km)</label>
+        <label class="text-xs text-on-surface-variant" for="geo-dist">Distance (km)</label>
         <input
           id="geo-dist"
           type="number"
@@ -234,7 +245,7 @@
           max="1000"
           step="0.1"
           bind:value={distanceKm}
-          class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
     {/if}
@@ -242,15 +253,15 @@
     <!-- Dissolve field -->
     {#if FIELD_OPS.has(opType)}
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-slate-400" for="geo-field">
-          Dissolve by field <span class="text-slate-500">(optional)</span>
+        <label class="text-xs text-on-surface-variant" for="geo-field">
+          Dissolve by field <span class="text-on-surface-variant/50">(optional)</span>
         </label>
         <input
           id="geo-field"
           type="text"
           placeholder="property name"
           bind:value={dissolveField}
-          class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
     {/if}
@@ -258,11 +269,11 @@
     <!-- Aggregation controls -->
     {#if AGG_OPS.has(opType)}
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-slate-400" for="geo-agg">Aggregation</label>
+        <label class="text-xs text-on-surface-variant" for="geo-agg">Aggregation</label>
         <select
           id="geo-agg"
           bind:value={aggregation}
-          class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
         >
           <option value="count">Count</option>
           <option value="sum">Sum</option>
@@ -271,40 +282,40 @@
       </div>
       {#if aggregation === 'sum' || aggregation === 'avg'}
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-slate-400" for="geo-agg-field">
-            Point property <span class="text-slate-500">(numeric)</span>
+          <label class="text-xs text-on-surface-variant" for="geo-agg-field">
+            Point property <span class="text-on-surface-variant/50">(numeric)</span>
           </label>
           <input
             id="geo-agg-field"
             type="text"
             placeholder="property name"
             bind:value={aggField}
-            class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
       {/if}
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-slate-400" for="geo-agg-out">
-          Output field name <span class="text-slate-500">(optional)</span>
+        <label class="text-xs text-on-surface-variant" for="geo-agg-out">
+          Output field name <span class="text-on-surface-variant/50">(optional)</span>
         </label>
         <input
           id="geo-agg-out"
           type="text"
           placeholder={aggregation}
           bind:value={aggOutputField}
-          class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
     {/if}
 
     <!-- Output layer name -->
     <div class="flex flex-col gap-1">
-      <label class="text-xs text-slate-400" for="geo-name">Output layer name</label>
+      <label class="text-xs text-on-surface-variant" for="geo-name">Output layer name</label>
       <input
         id="geo-name"
         type="text"
         bind:value={outputName}
-        class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
       />
     </div>
 
@@ -315,19 +326,30 @@
     {#if success}
       <p class="text-xs text-green-400">{success}</p>
     {/if}
+    {#if TWO_LAYER_OPS.has(opType) && layerIdA === layerIdB}
+      <p class="text-xs text-amber-400">Layer A and B must be different.</p>
+    {/if}
 
     <!-- Run / Cancel -->
-    <div class="flex gap-2">
-      <Button
+    {#if !layerIdA}
+      <p class="text-xs text-on-surface-variant">Select a layer to run analysis.</p>
+    {:else if TWO_LAYER_OPS.has(opType) && !layerIdB}
+      <p class="text-xs text-on-surface-variant">This operation requires two layers.</p>
+    {:else if AGG_OPS.has(opType) && aggregation !== 'count' && !aggField.trim()}
+      <p class="text-xs text-on-surface-variant">Enter a numeric field for aggregation.</p>
+    {/if}
+    <div class="flex gap-2 mt-2">
+      <button
         type="submit"
-        size="sm"
-        loading={running}
-        disabled={!layerIdA
+        disabled={running || !layerIdA
           || (TWO_LAYER_OPS.has(opType) && !layerIdB)
+          || (TWO_LAYER_OPS.has(opType) && layerIdA === layerIdB)
           || (AGG_OPS.has(opType) && aggregation !== 'count' && !aggField.trim())}
+        class="flex-1 flex items-center justify-center gap-2 py-3 bg-primary rounded-xl text-on-primary font-bold text-sm tracking-tight active:scale-95 transition-transform shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        Run
-      </Button>
+        <Play size={16} fill="currentColor" />
+        {running ? 'Running…' : 'RUN ANALYSIS'}
+      </button>
       {#if running}
         <Button
           variant="ghost"

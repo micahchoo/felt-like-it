@@ -49,7 +49,7 @@
 <SidePanel title="Collaborators" side="right">
 	<div class="flex flex-col gap-4">
 		<!-- Invite form -->
-		<div class="flex flex-col gap-2 pb-4 border-b border-white/10">
+		<div class="flex flex-col gap-2 pb-4 border-b border-white/5">
 			<p class="font-display text-xs text-on-surface-variant uppercase tracking-wide">Invite</p>
 			<Input bind:value={inviteEmail} placeholder="Email address" type="email" />
 			<Select options={roleOptions} bind:value={inviteRole} />

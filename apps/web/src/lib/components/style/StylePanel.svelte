@@ -58,6 +58,7 @@
   // ── Simple style controls ──────────────────────────────────────────────────
 
   let saving = $state(false);
+  let dirty = $state(false);
 
   function getColor(): string {
     if (!style) return '#3b82f6';
@@ -97,6 +98,7 @@
     };
     styleStore.setStyle(layer.id, newStyle);
     layersStore.updateStyle(layer.id, newStyle);
+    dirty = true;
   }
 
   function updateOpacity(opacity: number) {
@@ -113,6 +115,7 @@
     };
     styleStore.setStyle(layer.id, newStyle);
     layersStore.updateStyle(layer.id, newStyle);
+    dirty = true;
   }
 
   async function saveStyle() {
@@ -121,8 +124,11 @@
     try {
       await trpc.layers.update.mutate({ id: layer.id, style });
       toastStore.success('Style saved.');
+      dirty = false;
     } catch {
       toastStore.error('Failed to save style.');
+      // TODO(loop): trpc.layers.get query not available to revert optimistic style state;
+      // the in-memory style may diverge from server until the user refreshes or saves again.
     } finally {
       saving = false;
     }
@@ -327,25 +333,51 @@
 
 {#if layer && style}
   <aside
-    class="w-56 shrink-0 flex flex-col bg-slate-800 border-l border-white/10"
+    class="w-56 shrink-0 flex flex-col bg-surface-container border-l border-white/5"
     aria-label="Style panel"
   >
-    <div class="flex items-center justify-between px-3 py-3 border-b border-white/10">
-      <h2 class="text-sm font-semibold text-white">Style</h2>
+    <div class="flex items-center justify-between px-3 py-3 border-b border-white/5">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="text-primary text-sm">&#9670;</span>
+        <div class="min-w-0">
+          <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Style</span>
+          <p class="text-xs text-on-surface-variant truncate">{layer.name}</p>
+        </div>
+      </div>
       <button
-        onclick={() => styleStore.setEditingLayer(null)}
-        class="text-slate-400 hover:text-white transition-colors"
+        onclick={() => {
+          if (dirty && !window.confirm('You have unsaved style changes. Discard them?')) return;
+          styleStore.setEditingLayer(null);
+        }}
+        class="text-on-surface-variant hover:text-on-surface transition-colors"
         aria-label="Close style panel"
-      >✕</button>
+      >&#10005;</button>
     </div>
 
     <div class="flex-1 overflow-y-auto p-3 space-y-4">
-      <p class="text-xs text-slate-400 truncate">{layer.name}</p>
+      <!-- Mapping Mode tabs -->
+      <div class="space-y-2">
+        <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Mapping Mode</span>
+        <div class="flex rounded-lg bg-surface-container-low p-0.5">
+          <span class="flex-1 text-center py-1.5 text-[10px] font-bold uppercase tracking-wide rounded-md transition-colors
+                       {style.type === 'simple' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}">
+            Simple
+          </span>
+          <span class="flex-1 text-center py-1.5 text-[10px] font-bold uppercase tracking-wide rounded-md transition-colors
+                       {style.type === 'categorical' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}">
+            Categoric
+          </span>
+          <span class="flex-1 text-center py-1.5 text-[10px] font-bold uppercase tracking-wide rounded-md transition-colors
+                       {style.type === 'numeric' || style.type === 'heatmap' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}">
+            Numeric
+          </span>
+        </div>
+      </div>
 
-      <!-- Color (simple styles only — hidden when numeric/categorical active) -->
+      <!-- Color + Colorramp (simple styles only) -->
       {#if style.type === 'simple'}
-        <div class="space-y-1">
-          <span class="text-xs font-medium text-slate-300">Color</span>
+        <div class="space-y-2">
+          <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Colorramp (FSL)</span>
           <div class="flex items-center gap-2">
             <input
               type="color"
@@ -354,16 +386,22 @@
               class="h-8 w-10 rounded cursor-pointer border-0 bg-transparent p-0"
               aria-label="Layer color"
             />
-            <span class="text-xs text-slate-400 font-mono">{getColor()}</span>
+            <span class="text-xs text-on-surface-variant font-mono">{getColor()}</span>
           </div>
         </div>
       {/if}
 
-      <!-- Opacity -->
-      <div class="space-y-1">
-        <div class="flex justify-between">
-          <span class="text-xs font-medium text-slate-300">Opacity</span>
-          <span class="text-xs text-slate-400">{Math.round(getOpacity() * 100)}%</span>
+      <!-- Composition Layers -->
+      <div class="space-y-2 border-t border-white/5 pt-3">
+        <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Composition Layers</span>
+
+        <!-- Fill Overlay / Opacity -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-full border-2 border-primary"></span>
+            <span class="text-xs text-on-surface">Fill Overlay</span>
+          </div>
+          <span class="text-[10px] text-on-surface-variant font-mono">{Math.round(getOpacity() * 100)}% opacity</span>
         </div>
         <input
           type="range"
@@ -372,32 +410,24 @@
           step="0.05"
           value={getOpacity()}
           oninput={(e) => updateOpacity(parseFloat((e.target as HTMLInputElement).value))}
-          class="w-full accent-blue-500"
+          class="w-full accent-primary"
           aria-label="Layer opacity"
         />
       </div>
 
-      <!-- Style type badge -->
-      <div class="space-y-1">
-        <span class="text-xs font-medium text-slate-300">Style type</span>
-        <span class="inline-block rounded-full bg-slate-700 px-2 py-0.5 text-xs text-slate-300 capitalize">
-          {style.type}
-        </span>
-      </div>
-
       <!-- ── FSL Properties ───────────────────────────────────────────────── -->
       {#if allProperties.length > 0}
-        <div class="border-t border-white/10 pt-3 space-y-3">
-          <span class="text-xs font-semibold text-slate-300 uppercase tracking-wide">Layer Properties</span>
+        <div class="border-t border-white/5 pt-3 space-y-3">
+          <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Layer Properties</span>
 
           <!-- Label attribute -->
           <div class="space-y-1">
-            <label class="text-xs text-slate-400" for="fsl-label">Label attribute</label>
+            <label class="text-xs text-on-surface-variant" for="fsl-label">Label attribute</label>
             <select
               id="fsl-label"
               value={style.config?.labelAttribute ?? ''}
               onchange={(e) => updateConfig({ labelAttribute: (e.target as HTMLSelectElement).value || undefined })}
-              class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">None</option>
               {#each allProperties as prop (prop)}
@@ -409,7 +439,7 @@
           <!-- Categorical attribute -->
           {#if categoricalCandidates.length > 0}
             <div class="space-y-1">
-              <label class="text-xs text-slate-400" for="fsl-categorical">Categorical attribute</label>
+              <label class="text-xs text-on-surface-variant" for="fsl-categorical">Categorical attribute</label>
               <select
                 id="fsl-categorical"
                 value={style.config?.categoricalAttribute ?? ''}
@@ -426,7 +456,7 @@
                     updateConfig({ categoricalAttribute: undefined, categories: undefined });
                   }
                 }}
-                class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="">None</option>
                 {#each categoricalCandidates as prop (prop)}
@@ -438,11 +468,11 @@
 
           <!-- isClickable toggle -->
           <div class="flex items-center justify-between">
-            <span class="text-xs text-slate-400">Clickable</span>
+            <span class="text-xs text-on-surface-variant">Clickable</span>
             <button
               type="button"
               onclick={() => updateStyleField('isClickable', style.isClickable === false ? undefined : false)}
-              class="relative h-5 w-9 rounded-full transition-colors {style.isClickable !== false ? 'bg-blue-600' : 'bg-slate-600'}"
+              class="relative h-5 w-9 rounded-full transition-colors {style.isClickable !== false ? 'bg-primary-container' : 'bg-surface-high'}"
               role="switch"
               aria-checked={style.isClickable !== false}
               aria-label="Toggle layer clickability"
@@ -453,7 +483,7 @@
 
           <!-- highlightColor picker -->
           <div class="space-y-1">
-            <span class="text-xs text-slate-400">Highlight color</span>
+            <span class="text-xs text-on-surface-variant">Highlight color</span>
             <div class="flex items-center gap-2">
               <input
                 type="color"
@@ -463,14 +493,14 @@
                 aria-label="Selection highlight color"
               />
               {#if style.highlightColor}
-                <span class="text-xs text-slate-400 font-mono">{style.highlightColor}</span>
+                <span class="text-xs text-on-surface-variant font-mono">{style.highlightColor}</span>
                 <button
                   onclick={() => updateStyleField('highlightColor', undefined)}
-                  class="text-xs text-slate-500 hover:text-white"
+                  class="text-xs text-on-surface-variant/70 hover:text-white"
                   aria-label="Clear highlight color"
                 >clear</button>
               {:else}
-                <span class="text-xs text-slate-500">Not set</span>
+                <span class="text-xs text-on-surface-variant/70">Not set</span>
               {/if}
             </div>
           </div>
@@ -478,11 +508,11 @@
           <!-- isSandwiched toggle (polygon/mixed layers only) -->
           {#if layer.type === 'polygon' || layer.type === 'mixed'}
             <div class="flex items-center justify-between">
-              <span class="text-xs text-slate-400">Sandwiched</span>
+              <span class="text-xs text-on-surface-variant">Sandwiched</span>
               <button
                 type="button"
                 onclick={() => updateStyleField('isSandwiched', style.isSandwiched ? undefined : true)}
-                class="relative h-5 w-9 rounded-full transition-colors {style.isSandwiched ? 'bg-blue-600' : 'bg-slate-600'}"
+                class="relative h-5 w-9 rounded-full transition-colors {style.isSandwiched ? 'bg-primary-container' : 'bg-surface-high'}"
                 role="switch"
                 aria-checked={style.isSandwiched ?? false}
                 aria-label="Place fill below basemap labels"
@@ -496,16 +526,16 @@
 
       <!-- ── Popup config ──────────────────────────────────────────────────── -->
       {#if allProperties.length > 0}
-        <div class="border-t border-white/10 pt-3 space-y-3">
-          <span class="text-xs font-semibold text-slate-300 uppercase tracking-wide">Popup</span>
+        <div class="border-t border-white/5 pt-3 space-y-3">
+          <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Popup</span>
 
           <div class="space-y-1">
-            <label class="text-xs text-slate-400" for="fsl-popup-title">Title attribute</label>
+            <label class="text-xs text-on-surface-variant" for="fsl-popup-title">Title attribute</label>
             <select
               id="fsl-popup-title"
               value={style.popup?.titleAttribute ?? ''}
               onchange={(e) => updatePopup({ titleAttribute: (e.target as HTMLSelectElement).value || undefined })}
-              class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">Default (all properties)</option>
               {#each allProperties as prop (prop)}
@@ -515,10 +545,10 @@
           </div>
 
           <div class="space-y-1">
-            <span class="text-xs text-slate-400">Visible attributes</span>
+            <span class="text-xs text-on-surface-variant">Visible attributes</span>
             <div class="max-h-24 overflow-y-auto space-y-0.5">
               {#each allProperties as prop (prop)}
-                <label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                <label class="flex items-center gap-1.5 text-xs text-on-surface cursor-pointer">
                   <input
                     type="checkbox"
                     checked={!style.popup?.keyAttributes || style.popup.keyAttributes.includes(prop)}
@@ -530,7 +560,7 @@
                         : current.filter((k: string) => k !== prop);
                       updatePopup({ keyAttributes: next.length < allProperties.length ? next : undefined });
                     }}
-                    class="rounded accent-blue-500"
+                    class="rounded accent-primary"
                   />
                   {prop}
                 </label>
@@ -542,18 +572,18 @@
 
       <!-- ── Attribute display overrides ────────────────────────────────────── -->
       {#if allProperties.length > 0}
-        <div class="border-t border-white/10 pt-3 space-y-3">
-          <span class="text-xs font-semibold text-slate-300 uppercase tracking-wide">Column Labels</span>
+        <div class="border-t border-white/5 pt-3 space-y-3">
+          <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Column Labels</span>
           <div class="space-y-1.5 max-h-40 overflow-y-auto">
             {#each allProperties as prop (prop)}
               <div class="flex items-center gap-1">
-                <span class="text-xs text-slate-500 w-16 truncate shrink-0" title={prop}>{prop}</span>
+                <span class="text-xs text-on-surface-variant/70 w-16 truncate shrink-0" title={prop}>{prop}</span>
                 <input
                   type="text"
                   value={style.attributes?.[prop]?.displayName ?? ''}
                   placeholder={prop}
                   onchange={(e) => updateAttributes(prop, (e.target as HTMLInputElement).value)}
-                  class="flex-1 min-w-0 rounded bg-slate-700 border border-white/10 px-1.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  class="flex-1 min-w-0 rounded bg-surface-container-low border border-white/5 px-1.5 py-1 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
             {/each}
@@ -563,16 +593,16 @@
 
       <!-- ── Choropleth configurator ─────────────────────────────────────── -->
       {#if showChoropleth}
-        <div class="border-t border-white/10 pt-3 space-y-3">
-          <span class="text-xs font-semibold text-slate-300 uppercase tracking-wide">Choropleth</span>
+        <div class="border-t border-white/5 pt-3 space-y-3">
+          <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Choropleth</span>
 
           <!-- Attribute selector -->
           <div class="space-y-1">
-            <label class="text-xs text-slate-400" for="choro-attr">Attribute</label>
+            <label class="text-xs text-on-surface-variant" for="choro-attr">Attribute</label>
             <select
               id="choro-attr"
               bind:value={choroplethAttr}
-              class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
             >
               {#each numericProperties as prop (prop)}
                 <option value={prop}>{prop}</option>
@@ -582,7 +612,7 @@
 
           <!-- Color ramp picker -->
           <div class="space-y-1">
-            <span class="text-xs text-slate-400">Color ramp</span>
+            <span class="text-xs text-on-surface-variant">Color ramp</span>
             <div class="grid grid-cols-3 gap-1">
               {#each COLOR_RAMP_NAMES as ramp (ramp)}
                 {@const colors = getColorRamp(ramp, 6)}
@@ -592,7 +622,7 @@
                   title={ramp}
                   aria-label={ramp}
                   aria-pressed={choroplethRamp === ramp}
-                  class="flex rounded overflow-hidden h-4 border-2 transition-colors {choroplethRamp === ramp ? 'border-blue-400' : 'border-transparent'}"
+                  class="flex rounded overflow-hidden h-4 border-2 transition-colors {choroplethRamp === ramp ? 'border-primary' : 'border-transparent'}"
                 >
                   {#each colors as c (c)}
                     <span class="flex-1 block" style="background:{c}"></span>
@@ -605,8 +635,8 @@
           <!-- Number of classes -->
           <div class="space-y-1">
             <div class="flex justify-between">
-              <span class="text-xs text-slate-400">Classes</span>
-              <span class="text-xs text-slate-300">{choroplethClasses}</span>
+              <span class="text-xs text-on-surface-variant">Classes</span>
+              <span class="text-xs text-on-surface">{choroplethClasses}</span>
             </div>
             <input
               type="range"
@@ -614,18 +644,18 @@
               max="9"
               step="1"
               bind:value={choroplethClasses}
-              class="w-full accent-blue-500"
+              class="w-full accent-primary"
               aria-label="Number of choropleth classes"
             />
           </div>
 
           <!-- Classification method -->
           <div class="space-y-1">
-            <label class="text-xs text-slate-400" for="choro-method">Method</label>
+            <label class="text-xs text-on-surface-variant" for="choro-method">Method</label>
             <select
               id="choro-method"
               bind:value={choroplethMethod}
-              class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="quantile">Quantile</option>
               <option value="equal_interval">Equal Interval</option>
@@ -647,16 +677,16 @@
 
       <!-- ── Heatmap configurator (point layers only) ───────────────────── -->
       {#if showHeatmap}
-        <div class="border-t border-white/10 pt-3 space-y-3">
-          <span class="text-xs font-semibold text-slate-300 uppercase tracking-wide">Heatmap</span>
+        <div class="border-t border-white/5 pt-3 space-y-3">
+          <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Heatmap</span>
 
           <!-- Weight attribute (optional) -->
           <div class="space-y-1">
-            <label class="text-xs text-slate-400" for="heat-weight">Weight attribute</label>
+            <label class="text-xs text-on-surface-variant" for="heat-weight">Weight attribute</label>
             <select
               id="heat-weight"
               bind:value={heatmapWeightAttr}
-              class="w-full rounded bg-slate-700 border border-white/10 px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">Uniform (all equal)</option>
               {#each numericProperties as prop (prop)}
@@ -668,8 +698,8 @@
           <!-- Radius -->
           <div class="space-y-1">
             <div class="flex justify-between">
-              <span class="text-xs text-slate-400">Radius (px)</span>
-              <span class="text-xs text-slate-300">{heatmapRadius}</span>
+              <span class="text-xs text-on-surface-variant">Radius (px)</span>
+              <span class="text-xs text-on-surface">{heatmapRadius}</span>
             </div>
             <input
               type="range"
@@ -677,7 +707,7 @@
               max="200"
               step="1"
               bind:value={heatmapRadius}
-              class="w-full accent-blue-500"
+              class="w-full accent-primary"
               aria-label="Heatmap kernel radius in pixels"
             />
           </div>
@@ -685,8 +715,8 @@
           <!-- Intensity -->
           <div class="space-y-1">
             <div class="flex justify-between">
-              <span class="text-xs text-slate-400">Intensity</span>
-              <span class="text-xs text-slate-300">{heatmapIntensity.toFixed(1)}</span>
+              <span class="text-xs text-on-surface-variant">Intensity</span>
+              <span class="text-xs text-on-surface">{heatmapIntensity.toFixed(1)}</span>
             </div>
             <input
               type="range"
@@ -694,7 +724,7 @@
               max="5"
               step="0.1"
               bind:value={heatmapIntensity}
-              class="w-full accent-blue-500"
+              class="w-full accent-primary"
               aria-label="Heatmap intensity multiplier"
             />
           </div>
@@ -725,7 +755,7 @@
 
     <!-- Simple style save (opacity) -->
     {#if style.type === 'simple'}
-      <div class="px-3 py-3 border-t border-white/10">
+      <div class="px-3 py-3 border-t border-white/5">
         <Button variant="primary" size="sm" class="w-full" onclick={saveStyle} loading={saving}>
           Save Style
         </Button>

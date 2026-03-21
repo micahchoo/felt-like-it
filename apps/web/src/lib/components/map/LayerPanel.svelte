@@ -26,6 +26,7 @@
       toastStore.success(`Layer "${name}" created.`);
     } catch {
       toastStore.error('Failed to create layer.');
+      // No optimistic add was made (add happens after await), so no rollback needed.
     } finally {
       creatingLayer = false;
     }
@@ -86,7 +87,7 @@
   aria-label="Layers panel"
 >
   <!-- Header -->
-  <div class="px-3 py-3 border-b border-white/10">
+  <div class="px-3 py-3 border-b border-white/5">
     <h2 class="text-sm font-semibold font-display uppercase tracking-wide text-white">Layers</h2>
     <p class="text-[11px] text-on-surface-variant mt-1 leading-snug">
       Layers organize your map data. Each layer holds one type of geometry (points, lines, or polygons). Select a layer to draw on it or view its data.
@@ -221,7 +222,7 @@
   </div>
 
   <!-- Create layer -->
-  <div class="px-2 py-2 border-t border-white/10">
+  <div class="px-2 py-2 border-t border-white/5">
     <form
       class="flex gap-1"
       onsubmit={(e) => { e.preventDefault(); createLayer(); }}

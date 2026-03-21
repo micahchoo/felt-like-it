@@ -1,8 +1,5 @@
 <script lang="ts">
 	import type { AuthActions, AuthStatus } from '$lib/contracts/auth.js';
-	import GlassPanel from '$lib/components/ui/GlassPanel.svelte';
-	import Input from '$lib/components/ui/Input.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
 
 	let { actions, status }: { actions: AuthActions; status: AuthStatus } = $props();
 
@@ -27,51 +24,73 @@
 </script>
 
 <div class="bg-surface min-h-screen flex items-center justify-center p-4">
-	<GlassPanel class="w-full max-w-sm p-8 flex flex-col gap-6">
-		<div class="text-center">
-			<span class="font-display text-4xl font-bold text-primary">FLIT</span>
+	<div class="w-full max-w-sm bg-surface-container rounded-2xl border border-white/5 shadow-2xl p-8 flex flex-col gap-6">
+		<div class="text-center flex flex-col gap-1">
+			<span class="text-primary font-bold text-xl font-display">FLI</span>
+			<h1 class="text-2xl font-bold text-on-surface font-display">Create an account</h1>
+			<p class="text-sm text-on-surface-variant">Get started with FLI</p>
 		</div>
 
 		<div class="flex flex-col gap-4">
-			<Input
-				id="name"
-				type="text"
-				placeholder="Name"
-				bind:value={name}
-			/>
-			<Input
-				id="email"
-				type="email"
-				placeholder="Email"
-				bind:value={email}
-			/>
-			<Input
-				id="password"
-				type="password"
-				placeholder="Password"
-				bind:value={password}
-			/>
-			<Input
-				id="confirm-password"
-				type="password"
-				placeholder="Confirm Password"
-				bind:value={confirmPassword}
-			/>
+			<div class="flex flex-col gap-1.5">
+				<label for="name" class="text-xs text-on-surface-variant uppercase tracking-wide">Name</label>
+				<input
+					id="name"
+					type="text"
+					placeholder="Your name"
+					bind:value={name}
+					class="bg-surface-container-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
+				/>
+			</div>
+			<div class="flex flex-col gap-1.5">
+				<label for="email" class="text-xs text-on-surface-variant uppercase tracking-wide">Email</label>
+				<input
+					id="email"
+					type="email"
+					placeholder="you@example.com"
+					bind:value={email}
+					class="bg-surface-container-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
+				/>
+			</div>
+			<div class="flex flex-col gap-1.5">
+				<label for="password" class="text-xs text-on-surface-variant uppercase tracking-wide">Password</label>
+				<input
+					id="password"
+					type="password"
+					placeholder="••••••••"
+					bind:value={password}
+					class="bg-surface-container-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
+				/>
+			</div>
+			<div class="flex flex-col gap-1.5">
+				<label for="confirm-password" class="text-xs text-on-surface-variant uppercase tracking-wide">Confirm Password</label>
+				<input
+					id="confirm-password"
+					type="password"
+					placeholder="••••••••"
+					bind:value={confirmPassword}
+					class="bg-surface-container-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
+				/>
+			</div>
 		</div>
 
 		{#if status === 'error' || errorMessage}
-			<p class="text-error text-sm font-body" role="alert">
+			<p class="text-error text-xs" role="alert">
 				{errorMessage || 'An error occurred. Please try again.'}
 			</p>
 		{/if}
 
-		<Button variant="primary" size="lg" onclick={handleSubmit} disabled={status === 'loading'}>
-			Create Account
-		</Button>
+		<button
+			onclick={handleSubmit}
+			disabled={status === 'loading'}
+			class="w-full bg-primary text-on-primary font-bold rounded-xl py-3 text-sm active:scale-95 transition-transform shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+		>
+			{status === 'loading' ? 'Creating account…' : 'Create Account'}
+		</button>
 
-		<p class="text-center text-sm font-body text-on-surface-variant">
+		<p class="text-center text-sm text-on-surface-variant">
 			Already have an account?
-			<a href="/login" class="text-primary hover:underline">Sign in</a>
+			<a href="/login" class="text-primary hover:text-primary/80">Sign in</a>
 		</p>
-	</GlassPanel>
+	</div>
 </div>

@@ -84,7 +84,7 @@
 	</div>
 
 	<!-- Generate token -->
-	<div class="pt-2 border-t border-white/10">
+	<div class="pt-2 border-t border-white/5">
 		<Button variant="secondary" onclick={ongeneratetoken}>Generate New Token</Button>
 	</div>
 </GlassPanel>

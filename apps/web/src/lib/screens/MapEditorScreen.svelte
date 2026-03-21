@@ -149,7 +149,7 @@
 					</div>
 
 					<!-- DataTable: collapsible bottom strip -->
-					<div class="border-t border-white/10 bg-surface-well flex flex-col shrink-0"
+					<div class="border-t border-white/5 bg-surface-well flex flex-col shrink-0"
 						style="max-height: 40%;">
 						<button
 							type="button"

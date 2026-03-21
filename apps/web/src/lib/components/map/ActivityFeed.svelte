@@ -171,13 +171,13 @@
   }
 </script>
 
-<div class="flex flex-col h-full {embedded !== true ? 'bg-slate-800 border-l border-white/10' : ''}">
+<div class="flex flex-col h-full {embedded !== true ? 'bg-surface-container border-l border-white/5' : ''}">
   {#if embedded !== true}
-  <div class="px-3 py-2 border-b border-white/10 shrink-0 flex items-center justify-between gap-2">
-    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Activity</span>
+  <div class="px-3 py-2 border-b border-white/5 shrink-0 flex items-center justify-between gap-2">
+    <span class="text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Activity</span>
     <select
       bind:value={selectedFilter}
-      class="text-xs bg-slate-700 text-slate-300 border border-white/10 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      class="text-xs bg-surface-container-low text-on-surface border border-white/5 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
       aria-label="Filter activity by type"
     >
       {#each Object.entries(FILTER_LABELS) as [value, label] (value)}
@@ -189,15 +189,15 @@
 
   <div class="flex-1 overflow-y-auto">
     {#if loading}
-      <div class="flex items-center justify-center h-16 text-slate-500 text-xs">Loading…</div>
+      <div class="flex items-center justify-center h-16 text-on-surface-variant/70 text-xs">Loading…</div>
     {:else if error}
       <div class="px-3 py-2 text-red-400 text-xs">{error}</div>
     {:else if filteredEvents.length === 0}
       <div class="flex flex-col items-center justify-center py-12 px-4 text-center">
-        <svg class="h-6 w-6 text-slate-500 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <svg class="h-6 w-6 text-on-surface-variant/70 mb-2" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm14.5 5.5h-13v1h13v-1zM2 4.5h12v1H2v-1zm0 4h8v1H2v-1z"/>
         </svg>
-        <p class="text-sm text-slate-400">
+        <p class="text-sm text-on-surface-variant">
           {selectedFilter === 'all'
             ? 'Map activity will appear here as you and collaborators make changes.'
             : `No ${FILTER_LABELS[selectedFilter].toLowerCase()} activity yet.`}
@@ -206,21 +206,21 @@
     {:else}
       <ul class="divide-y divide-white/5">
         {#each filteredEvents as event (event.id)}
-          <li class="flex items-start gap-2 px-3 py-2 {isNew(event) ? 'bg-blue-950/30' : ''}">
-            <div class="mt-0.5 shrink-0 w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center relative">
-              <svg class="w-3 h-3 text-slate-300" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <li class="flex items-start gap-2 px-3 py-2 {isNew(event) ? 'bg-tertiary/10' : ''}">
+            <div class="mt-0.5 shrink-0 w-5 h-5 rounded-full bg-surface-container-low flex items-center justify-center relative">
+              <svg class="w-3 h-3 text-on-surface" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d={iconFor(event.action)} />
               </svg>
               {#if isNew(event)}
                 <span
-                  class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-400 rounded-full"
+                  class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary rounded-full"
                   aria-label="New since last visit"
                 ></span>
               {/if}
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-xs text-slate-200 leading-snug">{labelFor(event.action, event.metadata)}</p>
-              <p class="text-xs text-slate-500 mt-0.5">{relativeTime(event.createdAt)}</p>
+              <p class="text-xs text-on-surface leading-snug">{labelFor(event.action, event.metadata)}</p>
+              <p class="text-xs text-on-surface-variant/70 mt-0.5">{relativeTime(event.createdAt)}</p>
             </div>
           </li>
         {/each}

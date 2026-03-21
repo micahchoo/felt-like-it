@@ -33,14 +33,14 @@
 
 {#if styleStore.showLegend && legendItems.length > 0}
   <div
-    class="absolute bottom-14 right-3 z-10 bg-slate-800/90 backdrop-blur-sm rounded-lg shadow-xl ring-1 ring-white/10 p-3 max-w-48"
+    class="absolute bottom-14 right-3 z-10 bg-surface-container/90 backdrop-blur-sm rounded-lg shadow-xl ring-1 ring-white/10 p-3 max-w-48"
     aria-label="Map legend"
   >
     <div class="flex items-center justify-between mb-2">
       <span class="text-xs font-semibold text-white">Legend</span>
       <button
         onclick={() => styleStore.toggleLegend()}
-        class="text-slate-400 hover:text-white transition-colors"
+        class="text-on-surface-variant hover:text-white transition-colors"
         aria-label="Hide legend"
       >
         <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
@@ -52,7 +52,7 @@
     <div class="space-y-3">
       {#each legendItems as item (item.layerId)}
         <div>
-          <p class="text-xs text-slate-400 font-medium truncate mb-1">{item.layerName}</p>
+          <p class="text-xs text-on-surface-variant font-medium truncate mb-1">{item.layerName}</p>
 
           {#if item.entries.length > 0}
             {#each item.entries as entry, i (i)}
@@ -61,7 +61,7 @@
                   class="w-3 h-3 rounded-sm shrink-0"
                   style="background-color: {entry.color}"
                 ></span>
-                <span class="text-xs text-slate-300 truncate">{entry.label}</span>
+                <span class="text-xs text-on-surface truncate">{entry.label}</span>
               </div>
             {/each}
           {:else}
@@ -70,7 +70,7 @@
                 class="w-3 h-3 rounded-sm shrink-0"
                 style="background-color: {item.color}"
               ></span>
-              <span class="text-xs text-slate-300">{item.layerName}</span>
+              <span class="text-xs text-on-surface">{item.layerName}</span>
             </div>
           {/if}
         </div>
@@ -80,7 +80,7 @@
 {:else if !styleStore.showLegend}
   <button
     onclick={() => styleStore.toggleLegend()}
-    class="absolute bottom-14 right-3 z-10 bg-slate-800/90 backdrop-blur-sm rounded-lg px-2 py-1 text-xs text-slate-300 hover:text-white shadow-md ring-1 ring-white/10 transition-colors"
+    class="absolute bottom-14 right-3 z-10 bg-surface-container/90 backdrop-blur-sm rounded-lg px-2 py-1 text-xs text-on-surface hover:text-white shadow-md ring-1 ring-white/10 transition-colors"
     aria-label="Show legend"
   >
     Legend

@@ -24,23 +24,48 @@ Reskin every UI surface to match the reference designs at `docs/stitch_layer_ann
 - ✅ Status bar: cursor lat/lng, CRS EPSG:4326, zoom, green CONNECTED indicator
 - ✅ Icon sidebar: 52px rail (LAYERS/PROCESS/TABLES/EXPORT) with LayerPanel flyout
 
-### Remaining Reskin Work (Not Started)
-- ⬚ **MapEditor toolbar refinement** — reference shows icon-only toolbar, current still has text labels (STYLE, IMPORT, EXPORT, etc.)
-- ⬚ **Right panel (SidePanel) refinement** — active section should use amber accent, annotations/analysis/activity sections need tighter styling
-- ⬚ **AnnotationPanel reskin** — reference shows coordinate display, content type picker (TEXT/EMOJI/GIF/IMAGE/LINK/IIIF), anchor UI
-- ⬚ **StylePanel reskin** — reference shows FSL coloramp, composition layers (Fill Overlay + Boundary Stroke), Simple/Categoric/Numeric tabs
-- ⬚ **GeoprocessingPanel reskin** — reference shows icon grid for operations (Union, Intersection, Buffer, Dissolve), target layer dropdown
-- ⬚ **DataTable/FilterPanel reskin** — reference shows feature rows with validation badges, geometry type column
-- ⬚ **FeaturePopup reskin** — reference shows coordinates, "EDIT ATTRIBUTES" button
-- ⬚ **ImportDialog reskin** — reference shows split-screen import pipeline + audit terminal
-- ⬚ **ExportDialog reskin** — reference shows output format controls, progress bar
-- ⬚ **ShareDialog/Collaboration reskin** — reference shows user list with role dropdowns, public access token
-- ⬚ **Dashboard refinement** — reference shows map thumbnails, tabs (All Maps/Recent/Shared/Templates), search bar
-- ⬚ **Admin refinement** — reference shows "Audit Log Terminal" aesthetic with integrity badge
-- ⬚ **Settings refinement** — check against reference designs
-- ⬚ **Auth refinement** — check against reference designs
-- ⬚ **Legend reskin** — match reference styling
-- ⬚ **MeasurementPanel reskin** — reference shows terminal-style measurement display
+### Reskin Wave 2 — Token Migration (Complete)
+- ✅ All 22+ component files migrated from slate/blue to design tokens
+- ✅ Zero remaining `bg-slate-*`, `text-slate-*`, `ring-blue-*` references (except 1 intentional polygon badge in LayerPanel)
+- ✅ All `border-white/10` → `border-white/5` consistently
+
+### Reskin Wave 3 — Structural Layout Changes (Complete)
+- ✅ **DrawingToolbar** — moved to top-center horizontal, lucide icons, divider between select/draw tools
+- ✅ **SidePanel** — glass-panel bg, amber inset border accent, amber icon tinting on active
+- ✅ **AnnotationPanel** — full token migration, amber primary accents
+- ✅ **StylePanel** — MAPPING MODE tabs (Simple/Categoric/Numeric), COLORRAMP section, COMPOSITION LAYERS with Fill Overlay
+- ✅ **GeoprocessingPanel** — icon grid (2x5) replacing dropdown, PostGIS Engine header, RUN ANALYSIS button
+- ✅ **MeasurementPanel** — terminal-style with LIVE MEASUREMENT MODE header, 2-column stat cards, unit toggle pills
+- ✅ **FeaturePopup** — glass-panel with MapPin icon, coordinate stat pairs, EDIT ATTRIBUTES amber button
+- ✅ **ImportDialog** — Import Pipeline header, dashed drop zone, LIVE JOB POLLING section, amber progress bars
+- ✅ **ExportDialog** — Export & Output Controls, format cards, progress bar, Download/Generate buttons
+- ✅ **ShareDialog** — collaborator list with avatars, role dropdowns, public access section, amber copy buttons
+- ✅ **DataTable** — amber header, uppercase column names, validation badges (emerald/amber/muted), font-mono IDs
+- ✅ **FilterPanel** — amber section headers, active filter chips with amber accent
+- ✅ **Legend** — token migration complete
+
+### Reskin Wave 4 — Screen Refinements (Complete)
+- ✅ **Dashboard** — search bar, tab selector (All Maps/Recent/Shared/Templates), map cards with thumbnails/badges, PWA install prompt
+- ✅ **Admin** — Audit Log Terminal aesthetic, stats section (Total Mutations, Shard Mode, Matrix), System Health indicators, terminal-style log entries
+- ✅ **Settings** — amber section headers, design token cards, API keys table styling
+- ✅ **Auth (Login + Register)** — centered glass card, FLI brand, amber submit buttons, token-styled inputs
+
+### Remaining Work — UX Gestalt Remediation
+
+Shadow walk (STATE.md) found 46 UX issues across 10 flows. Reskin is cosmetically complete but flows feel broken because components were styled independently without tracing user journeys.
+
+**P0 — Silent failures + race conditions (10 findings)**
+Fix error handling, add retry logic, prevent draw-without-layer, fix blob revocation timing.
+Route: characterization-testing → targeted fixes.
+
+**P1 — No feedback + dead ends + hidden requirements (19 findings)**
+Wire dashboard buttons, add loading states, add inline validation messages, fix unsaved-changes warnings.
+Route: writing-plans → implementation sprint.
+
+**P2 — Assumptions + jargon (12 findings)**
+UI copy pass: rename "Import Pipeline"→"Import Data", add tooltips, label pre-filled coords, etc.
+
+**Pre-existing:** 29 type errors from web-next merge (not reskin-related).
 
 ### Routes NOT reskinned (kept existing behavior)
 - `(app)/map/[id]` — MapEditor reskinned but child panel internals still need work

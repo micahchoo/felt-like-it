@@ -28,7 +28,7 @@
   class="fixed top-16 bottom-0 {positionClass} {width} z-40 glass-panel tonal-elevation
     flex flex-col transition-transform duration-300 ease-in-out {transform}"
 >
-  <header class="flex items-center justify-between px-4 py-3 border-b border-white/10">
+  <header class="flex items-center justify-between px-4 py-3 border-b border-white/5">
     <h2 class="font-display text-lg font-semibold text-on-surface">{title}</h2>
     {#if onclose}
       <button

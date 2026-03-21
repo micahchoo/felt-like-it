@@ -29,24 +29,24 @@
 </script>
 
 <aside
-  class="w-80 shrink-0 flex flex-col h-full bg-surface-container border-l border-surface-high"
+  class="w-80 shrink-0 flex flex-col h-full glass-panel border-l border-white/5"
   aria-label="Side panel"
 >
   {#each sections as section (section.id)}
     <!-- Accordion header -->
     <button
-      class="flex items-center gap-2 px-4 py-3 w-full text-left transition-colors shrink-0 font-display uppercase tracking-wide text-xs
+      class="flex items-center gap-2.5 px-4 py-3 w-full text-left transition-all duration-200 shrink-0 font-display uppercase tracking-widest text-[10px]
              {activeSection === section.id
-               ? 'bg-surface-high/50 border-l-2 border-primary'
-               : 'hover:bg-surface-high/30 border-l-2 border-transparent'}"
+               ? 'bg-amber-500/10 shadow-[inset_3px_0_0_0_#f59e0b] text-amber-400'
+               : 'hover:bg-amber-500/5 hover:text-amber-400 text-on-surface-variant border-l-2 border-transparent'}"
       onclick={() => toggle(section.id)}
       aria-expanded={activeSection === section.id}
       aria-controls="sidepanel-{section.id}"
     >
       <!-- Chevron -->
       <svg
-        class="h-3 w-3 text-on-surface-variant transition-transform duration-200 shrink-0
-               {activeSection === section.id ? 'rotate-90' : ''}"
+        class="h-3 w-3 transition-transform duration-200 shrink-0
+               {activeSection === section.id ? 'rotate-90 text-amber-500' : 'text-on-surface-variant'}"
         viewBox="0 0 16 16"
         fill="currentColor"
         aria-hidden="true"
@@ -55,16 +55,19 @@
       </svg>
 
       <!-- Icon -->
-      <svg class="h-4 w-4 text-on-surface-variant shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <svg class="h-4 w-4 shrink-0 {activeSection === section.id ? 'text-amber-500' : 'text-on-surface-variant'}" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         <path d={section.icon} />
       </svg>
 
       <!-- Label -->
-      <span class="text-sm font-medium text-on-surface flex-1">{section.label}</span>
+      <span class="font-semibold flex-1 {activeSection === section.id ? 'text-on-surface' : ''}">{section.label}</span>
 
       <!-- Count badge -->
       {#if section.count !== undefined && section.count > 0}
-        <span class="bg-surface-high text-xs rounded-full px-1.5 py-0.5 text-on-surface-variant tabular-nums">
+        <span class="text-[9px] rounded-full px-1.5 py-0.5 tabular-nums font-bold
+                     {activeSection === section.id
+                       ? 'bg-amber-500/20 text-amber-400'
+                       : 'bg-surface-high text-on-surface-variant'}">
           {section.count}
         </span>
       {/if}
@@ -77,7 +80,7 @@
         class="flex-1 min-h-0 overflow-y-auto"
       >
         {#if section.helpText}
-          <div class="px-4 py-2 bg-surface-low/30 border-b border-surface-high/30 text-xs text-on-surface-variant leading-relaxed">
+          <div class="px-4 py-2 bg-surface-lowest/30 border-b border-white/5 text-[10px] text-on-surface-variant leading-relaxed tracking-wide">
             {section.helpText}
           </div>
         {/if}

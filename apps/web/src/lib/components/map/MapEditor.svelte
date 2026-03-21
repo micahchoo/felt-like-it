@@ -594,7 +594,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
               </svg>
               Filter
               {#if layersStore.active && filterStore.hasFilters(layersStore.active.id)}
-                <span class="rounded-full bg-blue-500 px-1 text-xs font-semibold leading-tight">
+                <span class="rounded-full bg-primary px-1 text-xs font-semibold leading-tight">
                   {filterStore.get(layersStore.active.id).length}
                 </span>
               {/if}
@@ -669,7 +669,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       />
 
       {#if interactionState.type === 'drawRegion' && !interactionState.geometry}
-        <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
+        <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-primary-container text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
           Draw a polygon to define the annotation region ·
           <button class="underline ml-1" onclick={() => { transitionTo({ type: 'idle' }); }}>Cancel (Esc)</button>
         </div>
@@ -745,7 +745,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       {@const filteredFeatures = filterStore.applyToFeatures(activeLayer.id, rawFeatures)}
       <div class="border-t border-surface-high shrink-0 flex flex-col overflow-hidden" style="height: {showFilterPanel && !isLargeLayer(activeLayer) ? '22rem' : '16rem'}">
         {#if isLargeLayer(activeLayer)}
-          <div class="px-3 py-1.5 bg-blue-900/30 border-b border-blue-500/20 text-xs text-blue-300 flex items-center gap-2 shrink-0">
+          <div class="px-3 py-1.5 bg-tertiary/10 border-b border-white/5 text-xs text-primary/80 flex items-center gap-2 shrink-0">
             <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -818,7 +818,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
         <button
           class="flex-1 py-2 text-xs font-display uppercase tracking-wide font-medium text-center transition-colors
                  {analysisTab === 'measure'
-                   ? 'text-blue-400 border-b-2 border-blue-400'
+                   ? 'text-primary border-b-2 border-primary'
                    : 'text-on-surface-variant hover:text-on-surface'}"
           onclick={() => { analysisTab = 'measure'; }}
         >
@@ -827,7 +827,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
         <button
           class="flex-1 py-2 text-xs font-display uppercase tracking-wide font-medium text-center transition-colors
                  {analysisTab === 'process'
-                   ? 'text-blue-400 border-b-2 border-blue-400'
+                   ? 'text-primary border-b-2 border-primary'
                    : 'text-on-surface-variant hover:text-on-surface'}"
           onclick={() => { analysisTab = 'process'; }}
         >

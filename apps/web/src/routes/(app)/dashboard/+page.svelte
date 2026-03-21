@@ -50,18 +50,33 @@
 
 	const actions: DashboardActions = {
 		onCreate: async (title: string, description?: string) => {
-			const map = await trpc.maps.create.mutate({ title, ...(description ? { description } : {}) });
-			await goto(`/map/${map.id}`);
+			try {
+				const map = await trpc.maps.create.mutate({ title, ...(description ? { description } : {}) });
+				await goto(`/map/${map.id}`);
+			} catch (err) {
+				toastStore.error('Failed to create map.');
+				console.error('[dashboard] create failed:', err);
+			}
 		},
 		onDelete: async (id: string) => {
-			await trpc.maps.delete.mutate({ id });
-			toastStore.success('Map deleted.');
-			await invalidateAll();
+			try {
+				await trpc.maps.delete.mutate({ id });
+				toastStore.success('Map deleted.');
+				await invalidateAll();
+			} catch (err) {
+				toastStore.error('Failed to delete map.');
+				console.error('[dashboard] delete failed:', err);
+			}
 		},
 		onClone: async (id: string) => {
-			const map = await trpc.maps.clone.mutate({ id });
-			toastStore.success('Map duplicated.');
-			await goto(`/map/${map.id}`);
+			try {
+				const map = await trpc.maps.clone.mutate({ id });
+				toastStore.success('Map duplicated.');
+				await goto(`/map/${map.id}`);
+			} catch (err) {
+				toastStore.error('Failed to duplicate map.');
+				console.error('[dashboard] clone failed:', err);
+			}
 		},
 		onRetry: async () => {
 			await invalidateAll();
