@@ -140,6 +140,10 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   // GeoJSON data cache per layer
   let layerData = $state<Record<string, { type: 'FeatureCollection'; features: GeoJSONFeature[] }>>({});
   let showDataTable = $state(false);
+  let activePanelIcon = $state<'layers' | 'processing' | 'tables' | 'export' | null>('layers');
+  let cursorLat = $state<number | null>(null);
+  let cursorLng = $state<number | null>(null);
+  let currentZoom = $state(0);
   let showFilterPanel = $state(false);
   let showImportDialog = $state(false);
   let showExportDialog = $state(false);
@@ -449,16 +453,77 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       hotOverlay.clearHotFeatures();
     };
   });
+
+  // ── Status bar: cursor position + zoom level ───────────────────────────────
+  $effect(() => {
+    const map = mapStore.mapInstance;
+    if (!map) return;
+
+    const onMouseMove = (e: { lngLat: { lat: number; lng: number } }) => {
+      cursorLat = e.lngLat.lat;
+      cursorLng = e.lngLat.lng;
+    };
+    const onZoom = () => {
+      currentZoom = map.getZoom();
+    };
+
+    currentZoom = map.getZoom();
+    map.on('mousemove', onMouseMove);
+    map.on('zoom', onZoom);
+
+    return () => {
+      map.off('mousemove', onMouseMove);
+      map.off('zoom', onZoom);
+    };
+  });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="flex h-screen w-full overflow-hidden bg-surface">
-  <!-- Left: Layer Panel -->
+  <!-- Left: Icon rail + LayerPanel flyout -->
   {#if !effectiveReadonly && !designMode}
-    <div class="w-56 shrink-0 flex flex-col">
-      <LayerPanel {mapId} onlayerchange={handleLayerChange} />
+    <!-- Icon rail -->
+    <div class="w-[52px] shrink-0 flex flex-col items-center pt-2 gap-1 bg-surface-container border-r border-surface-high">
+      <button
+        class="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-full {activePanelIcon === 'layers' ? 'bg-surface-high text-primary' : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'}"
+        onclick={() => { activePanelIcon = activePanelIcon === 'layers' ? null : 'layers'; }}
+        title="Layers"
+      >
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <span class="text-[8px] font-display uppercase tracking-wider">Layers</span>
+      </button>
+      <button
+        class="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-full {activePanelIcon === 'processing' ? 'bg-surface-high text-primary' : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'}"
+        onclick={() => { activePanelIcon = activePanelIcon === 'processing' ? null : 'processing'; activeSection = 'analysis'; }}
+        title="Processing"
+      >
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+        <span class="text-[8px] font-display uppercase tracking-wider">Process</span>
+      </button>
+      <button
+        class="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-full {showDataTable ? 'bg-surface-high text-primary' : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'}"
+        onclick={() => { showDataTable = !showDataTable; }}
+        title="Tables"
+      >
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+        <span class="text-[8px] font-display uppercase tracking-wider">Tables</span>
+      </button>
+      <button
+        class="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-full text-on-surface-variant hover:bg-surface-high hover:text-on-surface"
+        onclick={() => { showExportDialog = true; }}
+        title="Export"
+      >
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        <span class="text-[8px] font-display uppercase tracking-wider">Export</span>
+      </button>
     </div>
+    <!-- LayerPanel flyout -->
+    {#if activePanelIcon === 'layers'}
+      <div class="w-56 shrink-0 flex flex-col bg-surface-container border-r border-surface-high">
+        <LayerPanel {mapId} onlayerchange={handleLayerChange} />
+      </div>
+    {/if}
   {/if}
 
   <!-- Center: Map + toolbar -->
@@ -653,6 +718,24 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       {/if}
 
       <Legend />
+    </div>
+
+    <!-- Status bar -->
+    <div class="flex items-center gap-4 px-3 py-1 bg-surface-lowest text-[10px] font-display uppercase tracking-wider text-on-surface-variant shrink-0 border-t border-surface-high">
+      {#if cursorLat !== null && cursorLng !== null}
+        <span>LAT {cursorLat.toFixed(4)}</span>
+        <span>LNG {cursorLng.toFixed(4)}</span>
+      {:else}
+        <span>LAT —</span>
+        <span>LNG —</span>
+      {/if}
+      <span class="text-on-surface-variant/50">|</span>
+      <span>CRS EPSG:4326</span>
+      <span>ZOOM {currentZoom.toFixed(1)}</span>
+      <span class="ml-auto flex items-center gap-1.5">
+        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 status-glow"></span>
+        CONNECTED
+      </span>
     </div>
 
     <!-- Data table + filter panel (collapsible bottom panel) -->
