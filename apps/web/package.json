@@ -60,6 +60,7 @@
     "html-to-image": "^1.11.13",
     "ioredis": "^5.4.2",
     "lucia": "^3.2.2",
+    "lucide-svelte": "^0.469.0",
     "maplibre-gl": "^5.0.0",
     "papaparse": "^5.4.1",
     "pdfkit": "^0.17.2",
