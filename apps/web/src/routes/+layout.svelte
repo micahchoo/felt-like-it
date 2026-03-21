@@ -1,6 +1,9 @@
 <script lang="ts">
   import '../app.css';
   import Toast from '$lib/components/ui/Toast.svelte';
+  import OfflineBanner from '$lib/components/ui/OfflineBanner.svelte';
+  import InstallPrompt from '$lib/components/ui/InstallPrompt.svelte';
+  import UpdateBanner from '$lib/components/ui/UpdateBanner.svelte';
   import { onMount } from 'svelte';
   import type { Snippet } from 'svelte';
 
@@ -44,5 +47,8 @@
   });
 </script>
 
+<OfflineBanner />
+<UpdateBanner />
+<InstallPrompt />
 {@render children()}
 <Toast />
