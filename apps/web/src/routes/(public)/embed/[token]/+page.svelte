@@ -1,31 +1,21 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { mapStore } from '$lib/stores/map.svelte.js';
-  import MapEditor from '$lib/components/map/MapEditor.svelte';
+  import EmbedScreen from '$lib/screens/EmbedScreen.svelte';
+  import type { ShareViewerData } from '$lib/contracts/share-viewer.js';
   import type { PageData } from './$types';
   import type { Layer } from '@felt-like-it/shared-types';
 
   let { data }: { data: PageData } = $props();
 
-  onMount(() => {
-    mapStore.loadViewport(data.map.viewport);
-    mapStore.setBasemap(data.map.basemap as Parameters<typeof mapStore.setBasemap>[0]);
+  const viewerData = $derived<ShareViewerData>({
+    map: data.map,
+    layers: data.layers as Layer[],
+    shareToken: '',
   });
 </script>
 
 <svelte:head>
   <title>{data.map.title}</title>
-  <!-- Prevent search engines from indexing embed views -->
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
-<!--
-  embed=true: no toolbar, no layer panel, no basemap picker, no side panels.
-  readonly=true is implied by embed — no drawing tools or write operations.
--->
-<MapEditor
-  mapId={data.map.id}
-  mapTitle={data.map.title}
-  initialLayers={data.layers as Layer[]}
-  embed={true}
-/>
+<EmbedScreen data={viewerData} status="success" />
