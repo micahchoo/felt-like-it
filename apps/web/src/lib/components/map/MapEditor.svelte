@@ -672,6 +672,12 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
         }}
       />
 
+      {#if effectiveReadonly}
+        <div class="absolute top-3 right-3 z-10 rounded bg-surface-container px-2 py-1 text-xs text-on-surface-variant shadow-sm">
+          View Only
+        </div>
+      {/if}
+
       {#if interactionState.type === 'drawRegion' && !interactionState.geometry}
         <div class="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-primary-container text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
           Draw a polygon to define the annotation region ·
