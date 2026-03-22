@@ -54,6 +54,14 @@
     if (!layerIdA && layers.length > 0) layerIdA = layers[0]?.id ?? '';
     if (!layerIdB && layers.length > 0) layerIdB = layers[1]?.id ?? layers[0]?.id ?? '';
   });
+
+  // Reset layerIdB when it collides with layerIdA (same-layer guard)
+  $effect(() => {
+    if (layerIdB === layerIdA) {
+      const alt = layers.find((l) => l.id !== layerIdA);
+      layerIdB = alt?.id ?? '';
+    }
+  });
   let dissolveField = $state('');
   let aggregation   = $state<'count' | 'sum' | 'avg'>('count');
   let aggField      = $state('');
@@ -131,6 +139,22 @@
     }
   }
 
+  /** Extract a user-friendly message from trpc / server errors. */
+  function extractErrorMessage(err: unknown, op: OpType): string {
+    const e = err as { message?: string; shape?: { message?: string }; data?: { message?: string } };
+    // trpc wraps server messages in shape.message or data.message
+    const serverMsg = e?.shape?.message ?? e?.data?.message ?? e?.message;
+    if (serverMsg && serverMsg !== 'failed' && serverMsg.length > 2) return serverMsg;
+    // Fallback: context-specific hints based on the operation
+    const hints: Partial<Record<OpType, string>> = {
+      intersect: 'Intersection failed — layers may have no overlapping features.',
+      clip: 'Clip failed — the clip mask may not overlap the source layer.',
+      buffer: 'Buffer failed — check that the layer has valid geometries.',
+      point_in_polygon: 'Point-in-polygon failed — ensure the points layer has point geometries and the polygons layer has polygon geometries.',
+    };
+    return hints[op] ?? `${GEO_OP_LABELS[op]} operation failed. Please check your inputs and try again.`;
+  }
+
   async function handleRun(e: Event) {
     e.preventDefault();
     if (!layerIdA) return;
@@ -153,7 +177,7 @@
       if (abortController?.signal.aborted) {
         error = null; // User cancelled
       } else {
-        error = (err as { message?: string })?.message ?? 'Geoprocessing failed.';
+        error = extractErrorMessage(err, opType);
       }
     } finally {
       running = false;
@@ -227,7 +251,7 @@
           bind:value={layerIdB}
           class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
         >
-          {#each layers as layer (layer.id)}
+          {#each layers.filter((l) => l.id !== layerIdA) as layer (layer.id)}
             <option value={layer.id}>{layer.name}</option>
           {/each}
         </select>
@@ -326,29 +350,17 @@
     {#if success}
       <p class="text-xs text-green-400">{success}</p>
     {/if}
-    {#if TWO_LAYER_OPS.has(opType) && layerIdA === layerIdB}
-      <p class="text-xs text-amber-400">Layer A and B must be different.</p>
-    {/if}
-
     <!-- Run / Cancel -->
-    {#if !layerIdA}
-      <p class="text-xs text-on-surface-variant">Select a layer to run analysis.</p>
-    {:else if TWO_LAYER_OPS.has(opType) && !layerIdB}
-      <p class="text-xs text-on-surface-variant">This operation requires two layers.</p>
-    {:else if AGG_OPS.has(opType) && aggregation !== 'count' && !aggField.trim()}
-      <p class="text-xs text-on-surface-variant">Enter a numeric field for aggregation.</p>
-    {/if}
     <div class="flex gap-2 mt-2">
       <button
         type="submit"
         disabled={running || !layerIdA
           || (TWO_LAYER_OPS.has(opType) && !layerIdB)
-          || (TWO_LAYER_OPS.has(opType) && layerIdA === layerIdB)
           || (AGG_OPS.has(opType) && aggregation !== 'count' && !aggField.trim())}
         class="flex-1 flex items-center justify-center gap-2 py-3 bg-primary rounded-xl text-on-primary font-bold text-sm tracking-tight active:scale-95 transition-transform shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Play size={16} fill="currentColor" />
-        {running ? 'Running…' : 'RUN ANALYSIS'}
+        {running ? `Running ${GEO_OP_LABELS[opType]}…` : 'RUN ANALYSIS'}
       </button>
       {#if running}
         <Button
@@ -358,6 +370,15 @@
         >Cancel</Button>
       {/if}
     </div>
+    {#if !running}
+      {#if !layerIdA}
+        <p class="text-xs text-on-surface-variant/70">Select a layer to run analysis.</p>
+      {:else if TWO_LAYER_OPS.has(opType) && !layerIdB}
+        <p class="text-xs text-on-surface-variant/70">Select a second layer for this operation.</p>
+      {:else if AGG_OPS.has(opType) && aggregation !== 'count' && !aggField.trim()}
+        <p class="text-xs text-on-surface-variant/70">Enter a numeric field name for {aggregation} aggregation.</p>
+      {/if}
+    {/if}
   </form>
   {/if}
 </div>

@@ -257,6 +257,8 @@
   let gpsExtracted = $state(false);
   /** True while the selected image is being uploaded to /api/annotation-upload. */
   let uploading = $state(false);
+  /** True while EXIF GPS data is being parsed from a selected image file. */
+  let parsingExif = $state(false);
 
   // Link
   let formLinkUrl = $state('');
@@ -279,7 +281,7 @@
   let formAnchorType = $state<'point' | 'region' | 'viewport' | 'feature'>('point');
 
   const canSubmit = $derived(!(
-    creating || uploading
+    creating || uploading || parsingExif
     || (formType === 'text' && !formText.trim())
     || (formType === 'emoji' && !formEmoji.trim())
     || (formType === 'gif' && !formGifUrl.trim())
@@ -368,6 +370,7 @@
 
     // EXIF GPS extraction — exifr.gps() handles both DMS and decimal-degree formats
     // and normalises to { latitude: number, longitude: number } in WGS84.
+    parsingExif = true;
     try {
       const gps = await exifr.gps(file);
       if (gps && typeof gps.latitude === 'number' && typeof gps.longitude === 'number') {
@@ -377,6 +380,8 @@
       }
     } catch {
       // EXIF parsing failure is non-fatal — user can set coordinates manually
+    } finally {
+      parsingExif = false;
     }
   }
 
@@ -467,6 +472,7 @@
     if (imagePreviewUrl) { URL.revokeObjectURL(imagePreviewUrl); imagePreviewUrl = null; }
     selectedImageFile = null;
     gpsExtracted = false;
+    parsingExif = false;
     pendingMeasurementData = null;
   }
 
@@ -546,7 +552,8 @@
           formImageUrl = await uploadImageFile(selectedImageFile);
         } catch (uploadErr) {
           uploading = false;
-          createError = `Image upload failed: ${(uploadErr as { message?: string })?.message ?? 'unknown error'}`;
+          const fileName = selectedImageFile.name;
+          createError = `Failed to upload ${fileName}: ${(uploadErr as { message?: string })?.message ?? 'unknown error'}`;
           creating = false;
           return;
         } finally {
@@ -989,10 +996,10 @@
       <div class="flex gap-2 items-end">
         <div class="flex flex-col gap-1 flex-1">
           <label class="text-xs text-on-surface-variant flex items-center gap-1" for="ann-lng">
-            Lng
+            Longitude
             {#if gpsExtracted && formType === 'image'}
               <span class="text-[10px] text-green-400 font-medium">EXIF</span>
-            {:else if formLng !== 0}
+            {:else}
               <span class="text-[10px] text-on-surface-variant/50 ml-1">(from map center)</span>
             {/if}
           </label>
@@ -1008,10 +1015,10 @@
         </div>
         <div class="flex flex-col gap-1 flex-1">
           <label class="text-xs text-on-surface-variant flex items-center gap-1" for="ann-lat">
-            Lat
+            Latitude
             {#if gpsExtracted && formType === 'image'}
               <span class="text-[10px] text-green-400 font-medium">EXIF</span>
-            {:else if formLat !== 0}
+            {:else}
               <span class="text-[10px] text-on-surface-variant/50 ml-1">(from map center)</span>
             {/if}
           </label>
@@ -1036,28 +1043,36 @@
         type="submit"
         size="sm"
         loading={creating || uploading}
-        disabled={creating || uploading
-          || (formType === 'text' && !formText.trim())
-          || (formType === 'emoji' && !formEmoji.trim())
-          || (formType === 'gif' && !formGifUrl.trim())
-          || (formType === 'image' && !formImageUrl && !selectedImageFile)
-          || (formType === 'link' && !formLinkUrl.trim())
-          || (formType === 'iiif' && !formManifestUrl.trim())
-          || (formAnchorType === 'region' && !regionGeometry)
-          || (formAnchorType === 'feature' && !pickedFeature)}
+        disabled={!canSubmit}
       >
-        {#if uploading}Uploading…{:else}Save annotation{/if}
+        {#if uploading}Uploading…{:else if parsingExif}Reading image data…{:else}Save annotation{/if}
       </Button>
       {#if !canSubmit}
         <p class="text-xs text-on-surface-variant/70 mt-1">
-          {#if formAnchorType === 'region' && !regionGeometry}
+          {#if parsingExif}
+            Reading location data from image — please wait.
+          {:else if uploading}
+            Uploading image — please wait.
+          {:else if creating}
+            Saving — please wait.
+          {:else if formAnchorType === 'region' && !regionGeometry}
             Draw a region on the map to anchor this annotation.
           {:else if formAnchorType === 'feature' && !pickedFeature}
-            Pick a feature on the map to anchor this annotation.
+            Select a feature on the map to attach this annotation.
           {:else if formType === 'text' && !formText.trim()}
             Write some text to save this annotation.
+          {:else if formType === 'emoji' && !formEmoji.trim()}
+            Enter an emoji to save this annotation.
+          {:else if formType === 'gif' && !formGifUrl.trim()}
+            Paste a GIF URL to save this annotation.
+          {:else if formType === 'image' && !formImageUrl && !selectedImageFile}
+            Upload an image or paste a URL to save this annotation.
+          {:else if formType === 'link' && !formLinkUrl.trim()}
+            Paste a link URL to save this annotation.
+          {:else if formType === 'iiif' && !formManifestUrl.trim()}
+            Paste an IIIF manifest URL to save this annotation.
           {:else}
-            Add content (text, emoji, image, or link) to save.
+            Add content to save this annotation.
           {/if}
         </p>
       {/if}
@@ -1182,7 +1197,7 @@
     <!-- Comments sub-section -->
     <div class="border-t border-white/5 mt-2">
       <div class="px-3 py-2 flex items-center gap-2">
-        <span class="text-xs font-semibold text-on-surface-variant uppercase tracking-wide flex-1">Comments<span class="text-[10px] text-on-surface-variant/70 font-normal normal-case tracking-normal ml-2">General discussion</span></span>
+        <span class="text-xs font-semibold text-on-surface-variant uppercase tracking-wide flex-1">Map Comments<span class="text-[10px] text-on-surface-variant/70 font-normal normal-case tracking-normal ml-2">Notes visible to all collaborators</span></span>
         {#if comments.length > 0}
           <span class="text-xs text-on-surface-variant/70">{comments.length}</span>
         {/if}

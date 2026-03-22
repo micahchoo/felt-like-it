@@ -41,7 +41,7 @@
       <span class="inline-block w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_theme(colors.amber.400)]"></span>
       <span class="text-[10px] font-bold uppercase tracking-widest text-primary font-display">Live Measurement Mode</span>
     </div>
-    <p class="text-[10px] text-on-surface-variant/60 font-mono pl-4">TurfJs Engine Active</p>
+    <p class="text-[10px] text-on-surface-variant/60 font-mono pl-4">Draw on the map to measure</p>
   </div>
 
   <!-- Body -->
@@ -185,7 +185,7 @@
             toastStore.success('Measurement saved as annotation.');
           }}
         >
-          Save Annotation
+          Save as {measureResult.type === 'distance' ? 'Distance' : 'Area'} Annotation
         </button>
       </div>
     {/if}

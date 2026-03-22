@@ -183,8 +183,7 @@
     <div class="flex flex-col gap-4">
       <!-- Section header -->
       <div class="flex items-center justify-between">
-        <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Live Job Polling</span>
-        <span class="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-low border border-white/5 rounded px-2 py-0.5">Polling Interval: 1.5s</span>
+        <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Importing your data…</span>
       </div>
 
       <!-- Active job card -->
@@ -213,7 +212,7 @@
 
         <div class="flex items-center gap-1.5">
           <Spinner size="sm" />
-          <p class="text-xs text-on-surface-variant">Processing your data…</p>
+          <p class="text-xs text-on-surface-variant">Importing your data…</p>
         </div>
       </div>
     </div>
@@ -237,10 +236,9 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
         </svg>
       </div>
-      <p class="text-xs font-semibold text-on-surface mb-1">Drop geospatial datasets here</p>
-      <p class="text-xs text-on-surface-variant">Supports GEOJSON, SHP, CSV (Max 20B)</p>
-      <p class="text-[9px] font-mono text-on-surface-variant/40 mt-2 uppercase tracking-wider">{ACCEPTED_TYPES.join(' · ')}</p>
-      <p class="text-[10px] text-on-surface-variant mt-1">Imported files become new layers on your map.</p>
+      <p class="text-xs font-semibold text-on-surface mb-1">Drop your file here or click to browse</p>
+      <p class="text-xs text-on-surface-variant">GeoJSON, CSV, KML, GPX, GeoPackage, and Shapefiles (zipped)</p>
+      <p class="text-[10px] text-on-surface-variant mt-2">Imported files become new layers on your map.</p>
     </div>
     <input
       id="file-input"

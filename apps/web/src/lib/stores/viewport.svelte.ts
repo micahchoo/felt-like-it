@@ -1,3 +1,5 @@
+/* global AbortController */
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type ViewportSortBy = 'created_at' | 'updated_at' | 'id';

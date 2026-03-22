@@ -56,7 +56,7 @@
 
   // ── Collaborator state ──────────────────────────────────────────────────────
   let collaborators = $state<CollaboratorEntry[]>([]);
-  let collabLoading = $state(false);
+  let collabLoading = $state(true);
   let collabError = $state<string | null>(null);
   let inviteEmail = $state('');
   let inviteRole = $state<'viewer' | 'commenter' | 'editor'>('viewer');
@@ -270,9 +270,9 @@
             bind:value={inviteRole}
             class="rounded-lg bg-surface-container-low border border-white/5 px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
           >
-            <option value="viewer">Viewer</option>
-            <option value="commenter">Commenter</option>
-            <option value="editor">Editor</option>
+            <option value="viewer">Viewer — can view</option>
+            <option value="commenter">Commenter — can view & comment</option>
+            <option value="editor">Editor — can view & edit</option>
           </select>
           <button
             type="submit"

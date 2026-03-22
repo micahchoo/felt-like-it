@@ -46,8 +46,8 @@ export const PATCH: RequestHandler = async ({ request, url, params }) => {
   const { mapId, id } = params;
   try { await requireMapAccess(auth.userId, mapId, 'commenter'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
 
-  let body: any;
-  try { body = stripNullBytes(await request.json()); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
+  let body: Record<string, unknown>;
+  try { body = stripNullBytes(await request.json()) as Record<string, unknown>; } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
 
   // Get user name for changelog
   const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, auth.userId));

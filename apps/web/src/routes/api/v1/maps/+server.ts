@@ -16,7 +16,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 
   // Share tokens can only access their specific map
   if (auth.mapScope) {
-    const rows = await typedExecute<any>(sql`
+    const rows = await typedExecute<Record<string, unknown>>(sql`
       SELECT id, title, description, basemap, created_at, updated_at
       FROM maps WHERE id = ${auth.mapScope}::uuid
     `);
@@ -33,7 +33,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
     ? sql`AND (m.created_at, m.id) > (${cursor.createdAt}, ${cursor.id}::uuid)`
     : sql``;
 
-  const rows = await typedExecute<any>(sql`
+  const rows = await typedExecute<Record<string, unknown>>(sql`
     SELECT m.id, m.title, m.description, m.basemap, m.created_at, m.updated_at
     FROM maps m
     LEFT JOIN map_collaborators mc ON mc.map_id = m.id AND mc.user_id = ${auth.userId}::uuid

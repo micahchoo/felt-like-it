@@ -1,32 +1,29 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { mapStore } from '$lib/stores/map.svelte.js';
-  import MapEditor from '$lib/components/map/MapEditor.svelte';
+  import MapEditorScreen from '$lib/screens/MapEditorScreen.svelte';
+  import { invalidateAll } from '$app/navigation';
+  import type { MapEditorData, MapEditorActions } from '$lib/contracts/map-editor.js';
   import type { PageData } from './$types';
   import type { Layer } from '@felt-like-it/shared-types';
 
   let { data }: { data: PageData } = $props();
 
-  // Initialize map viewport from saved state — onMount since server data is stable.
-  // localStorage takes precedence: if the user previously panned/zoomed, restore that
-  // position rather than the server default so they don't lose their place on navigation.
-  onMount(() => {
-    const local = mapStore.loadViewportLocally(data.map.id);
-    mapStore.loadViewport(local ?? data.map.viewport);
-    mapStore.setBasemap(data.map.basemap as Parameters<typeof mapStore.setBasemap>[0]);
+  const editorData = $derived<MapEditorData>({
+    map: data.map,
+    layers: data.layers as Layer[],
+    userId: data.userId,
+    userRole: data.userRole as MapEditorData['userRole'],
+    isOwner: data.userRole === 'owner',
+    readonly: data.userRole === 'viewer' || data.userRole === 'commenter',
+    embed: false,
   });
+
+  const actions: MapEditorActions = {
+    onRetry: async () => { await invalidateAll(); },
+  };
 </script>
 
 <svelte:head>
   <title>{data.map.title} — Felt Like It</title>
 </svelte:head>
 
-<MapEditor
-  mapId={data.map.id}
-  mapTitle={data.map.title}
-  initialLayers={data.layers as Layer[]}
-  userId={data.userId}
-  readonly={data.userRole === 'viewer' || data.userRole === 'commenter'}
-  isOwner={data.userRole === 'owner'}
-  userRole={data.userRole}
-/>
+<MapEditorScreen data={editorData} {actions} status="success" />

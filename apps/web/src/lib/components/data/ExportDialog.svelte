@@ -24,6 +24,19 @@
   let exportingPdf = $state(false);
   let exportingPNG = $state(false);
 
+  /** Wait for map tiles to finish loading before capture (max 10s). */
+  function waitForTiles(): Promise<void> {
+    const map = mapStore.mapInstance;
+    if (!map || map.areTilesLoaded()) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, 10_000);
+      map.once('idle', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+  }
+
   /** Fetch a layer export and trigger a browser download. */
   async function downloadLayer(format: string, extension: string): Promise<void> {
     const layer = layers.find((l) => l.id === selectedLayerId);
@@ -89,7 +102,7 @@
       let screenshot: string | undefined;
       if (container) {
         try {
-              // TODO: check map.areTilesLoaded() before capture to prevent incomplete screenshots
+          await waitForTiles();
           screenshot = await toPng(container, { pixelRatio: 2 });
         } catch {
           // Best effort — PDF will be generated without map image
@@ -138,6 +151,9 @@
     try {
       const container = mapStore.mapContainerEl;
       if (!container) throw new Error('Map container not ready');
+
+      toastStore.info('Waiting for tiles to load…');
+      await waitForTiles();
 
       const dataUrl = await toPng(container, { pixelRatio: 2 });
 
@@ -189,7 +205,7 @@
 
     <!-- Output format selector -->
     <div class="space-y-2">
-      <h3 class="text-[10px] font-bold text-primary uppercase tracking-widest">Output Format</h3>
+      <h3 class="text-[10px] font-bold text-primary uppercase tracking-widest">Data Export</h3>
       <div class="flex flex-col gap-2">
         <!-- GeoJSON -->
         <button
@@ -205,7 +221,7 @@
             <span class="h-2 w-2 rounded-full bg-primary"></span>
           </span>
           <div class="flex-1 min-w-0">
-            <span class="text-xs font-semibold text-on-surface">GeoJSON</span>
+            <span class="text-xs font-semibold text-on-surface">GeoJSON (layer data)</span>
             <p class="text-xs text-on-surface-variant">Layer features as .geojson</p>
           </div>
           {#if exportingGeoJSON}
@@ -224,7 +240,7 @@
           <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-white/20">
           </span>
           <div class="flex-1 min-w-0">
-            <span class="text-xs font-semibold text-on-surface">GeoPackage</span>
+            <span class="text-xs font-semibold text-on-surface">GeoPackage (layer data)</span>
             <p class="text-xs text-on-surface-variant">Layer features as .gpkg</p>
           </div>
           {#if exportingGpkg}
@@ -243,8 +259,8 @@
           <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-white/20">
           </span>
           <div class="flex-1 min-w-0">
-            <span class="text-xs font-semibold text-on-surface">ESRI Shapefile</span>
-            <p class="text-xs text-on-surface-variant">Layer features as .shp</p>
+            <span class="text-xs font-semibold text-on-surface">Shapefile (layer data)</span>
+            <p class="text-xs text-on-surface-variant">Layer features as .shp.zip</p>
           </div>
           {#if exportingShp}
             <span class="text-[9px] font-bold uppercase tracking-wider text-primary">Exporting…</span>
@@ -257,14 +273,14 @@
     {#if exportingGeoJSON || exportingGpkg || exportingShp || exportingPdf || exportingPNG}
       <div class="space-y-1.5">
         <div class="flex items-center justify-between">
-          <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Processing</span>
+          <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Exporting</span>
           <span class="text-xs text-on-surface-variant">Preparing file…</span>
         </div>
         <div class="h-1.5 w-full rounded-full bg-surface-container-low">
           <div class="h-1.5 w-2/3 rounded-full bg-primary animate-pulse"></div>
         </div>
         <div class="flex items-center justify-between text-xs text-on-surface-variant">
-          <span>Processing…</span>
+          <span>Preparing your file…</span>
           <span>-- KB</span>
         </div>
       </div>
@@ -274,7 +290,7 @@
 
     <!-- High-res PNG export + PDF -->
     <div class="space-y-2">
-      <h3 class="text-[10px] font-bold text-primary uppercase tracking-widest">Additional Formats</h3>
+      <h3 class="text-[10px] font-bold text-primary uppercase tracking-widest">Map Screenshot</h3>
       <div class="grid grid-cols-2 gap-2">
         <button
           type="button"

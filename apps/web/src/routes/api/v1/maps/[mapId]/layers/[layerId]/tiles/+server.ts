@@ -20,13 +20,13 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
   }
 
   // Verify layer exists on this map
-  const [layer] = await typedExecute<any>(sql`
+  const [layer] = await typedExecute<Record<string, unknown>>(sql`
     SELECT id FROM layers WHERE id = ${layerId}::uuid AND map_id = ${mapId}::uuid
   `);
   if (!layer) return toErrorResponse('LAYER_NOT_FOUND');
 
   // Get bounds from PostGIS
-  const [bounds] = await typedExecute<any>(sql`
+  const [bounds] = await typedExecute<Record<string, unknown>>(sql`
     SELECT
       ST_XMin(ext)::float AS xmin, ST_YMin(ext)::float AS ymin,
       ST_XMax(ext)::float AS xmax, ST_YMax(ext)::float AS ymax

@@ -59,8 +59,10 @@
 					type="password"
 					placeholder="••••••••"
 					bind:value={password}
+					minlength="8"
 					class="bg-surface-container-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
 				/>
+				<p class="text-[10px] text-on-surface-variant/70">Must be at least 8 characters</p>
 			</div>
 			<div class="flex flex-col gap-1.5">
 				<label for="confirm-password" class="text-xs text-on-surface-variant uppercase tracking-wide">Confirm Password</label>

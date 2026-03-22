@@ -38,8 +38,11 @@
 
   const activeFilters = $derived.by(() => filterStore.get(layerId));
 
+  let addingFilter = $state(false);
+
   function addFilter() {
-    if (!newField || !newValue.trim()) return;
+    if (!newField || !newValue.trim() || addingFilter) return;
+    addingFilter = true;
     filterStore.add(layerId, {
       field:    newField,
       operator: newOperator,
@@ -47,6 +50,7 @@
     } satisfies UIFilter);
     newValue = '';
     newField = availableFields[0] ?? '';
+    addingFilter = false;
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -134,11 +138,12 @@
         type="button"
         class="rounded bg-primary-container hover:bg-primary px-2 py-1 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         onclick={addFilter}
-        disabled={!newField || !newValue.trim()}
+        disabled={!newField || !newValue.trim() || addingFilter}
       >
         Add
       </button>
     </div>
+    <p class="text-[10px] text-on-surface-variant/50 mt-0.5">Fields are detected from the first 100 features.</p>
   {:else}
     <p class="text-on-surface-variant/70 italic text-xs">Load layer data to add filters.</p>
   {/if}
