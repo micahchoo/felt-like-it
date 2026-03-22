@@ -165,10 +165,12 @@ describe('selectionStore.setActiveTool', () => {
     expect(selectionStore.hasSelection).toBe(false);
   });
 
-  it('clears selection when switching to select tool (non-null)', () => {
+  it('preserves selection when switching to select tool', () => {
     selectionStore.selectFeature(makeFeature('feat-select'));
     selectionStore.setActiveTool('select');
-    expect(selectionStore.hasSelection).toBe(false);
+    // 'select' tool preserves selection — clearing it causes an effect cycle
+    // (selectFeature → setActiveTool('select') → clear → re-fire)
+    expect(selectionStore.hasSelection).toBe(true);
   });
 
   it('does NOT clear selection when tool is set to null', () => {
