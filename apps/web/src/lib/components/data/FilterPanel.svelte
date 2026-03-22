@@ -139,6 +139,7 @@
         Add
       </button>
     </div>
+    <p class="text-[10px] text-on-surface-variant/50 mt-0.5">Fields are detected from the first 100 features.</p>
   {:else}
     <p class="text-on-surface-variant/70 italic text-xs">Load layer data to add filters.</p>
   {/if}

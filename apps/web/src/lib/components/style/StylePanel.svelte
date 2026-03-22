@@ -59,6 +59,15 @@
 
   let saving = $state(false);
   let dirty = $state(false);
+  /** Last style acknowledged by the server — used to revert on save failure. */
+  let lastSavedStyle = $state<LayerStyle | null>(null);
+
+  // Capture the server-acknowledged style when the panel opens (before any edits).
+  $effect(() => {
+    if (layer && style && !dirty) {
+      lastSavedStyle = structuredClone(style) as LayerStyle;
+    }
+  });
 
   function getColor(): string {
     if (!style) return '#3b82f6';
@@ -126,9 +135,13 @@
       toastStore.success('Style saved.');
       dirty = false;
     } catch {
-      toastStore.error('Failed to save style.');
-      // TODO(loop): trpc.layers.get query not available to revert optimistic style state;
-      // the in-memory style may diverge from server until the user refreshes or saves again.
+      toastStore.error('Failed to save style. Reverting changes.');
+      // Revert optimistic state to what the server last acknowledged
+      if (lastSavedStyle && layer) {
+        styleStore.setStyle(layer.id, lastSavedStyle);
+        layersStore.updateStyle(layer.id, lastSavedStyle);
+      }
+      dirty = false;
     } finally {
       saving = false;
     }
