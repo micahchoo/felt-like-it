@@ -33,6 +33,7 @@
 					type="email"
 					placeholder="you@example.com"
 					bind:value={email}
+					autofocus
 					class="bg-surface-container-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
 				/>
 			</div>
@@ -50,7 +51,11 @@
 
 		{#if status === 'error' || errorMessage}
 			<p class="text-error text-xs" role="alert">
-				{errorMessage || 'An error occurred. Please try again.'}
+				{#if errorMessage.includes('admin@feltlikei.it')}
+					This account has been disabled. Contact support at <a href="mailto:admin@feltlikei.it" class="underline">admin@feltlikei.it</a> for assistance.
+				{:else}
+					{errorMessage || 'An error occurred. Please try again.'}
+				{/if}
 			</p>
 		{/if}
 
