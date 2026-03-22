@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { eq, and, desc, asc, count } from 'drizzle-orm';
+import { eq, and, desc, asc, count, sql } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
 import { db, maps, layers, mapCollaborators } from '../../db/index.js';
 import { CreateMapSchema, UpdateMapSchema } from '@felt-like-it/shared-types';
@@ -22,6 +22,7 @@ export const mapsRouter = router({
           basemap: maps.basemap,
           createdAt: maps.createdAt,
           updatedAt: maps.updatedAt,
+          version: maps.version,
         })
         .from(maps)
         .where(eq(maps.userId, userId))
@@ -93,9 +94,13 @@ export const mapsRouter = router({
   update: protectedProcedure
     .input(z.object({ id: z.string().uuid() }).merge(UpdateMapSchema))
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
+      const { id, version, ...data } = input;
 
       await requireMapOwnership(ctx.user.id, id);
+
+      const whereClause = version !== undefined
+        ? and(eq(maps.id, id), eq(maps.version, version))
+        : eq(maps.id, id);
 
       const [updated] = await db
         .update(maps)
@@ -104,9 +109,17 @@ export const mapsRouter = router({
           ...(data.description !== undefined && { description: data.description }),
           ...(data.viewport !== undefined && { viewport: data.viewport }),
           ...(data.basemap !== undefined && { basemap: data.basemap }),
+          version: sql`version + 1`,
         })
-        .where(eq(maps.id, id))
+        .where(whereClause)
         .returning();
+
+      if (!updated) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'This map was modified by another user. Please reload to see their changes.',
+        });
+      }
 
       void appendAuditLog({
         userId: ctx.user.id,
