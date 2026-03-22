@@ -163,7 +163,10 @@
 							{#if activeTab === 'users'}
 								<UserList
 									users={userListRows}
-									ondisable={(id) => actions.onDisableUser(id)}
+									ondisable={(id) => {
+										if (!window.confirm('Disable this user? They will be logged out and unable to sign in.')) return;
+										actions.onDisableUser(id);
+									}}
 									onenable={(id) => actions.onEnableUser(id)}
 								/>
 							{:else if activeTab === 'audit'}

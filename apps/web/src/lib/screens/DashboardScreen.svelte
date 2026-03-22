@@ -21,6 +21,18 @@
 
 	let activeTab = $state<'all' | 'recent' | 'shared' | 'templates'>('all');
 	let searchQuery = $state('');
+	let creatingMap = $state(false);
+
+	async function handleCreate(title: string) {
+		if (creatingMap) return;
+		creatingMap = true;
+		try {
+			await handleCreate(title);
+		} finally {
+			creatingMap = false;
+		}
+	}
+
 	function handleOpen(id: string) {
 		window.location.href = `/map/${id}`;
 	}
@@ -82,7 +94,7 @@
 					message="No maps yet"
 					description="Create your first map to get started with spatial analysis."
 					cta="Create your first map"
-					onaction={() => actions.onCreate('New Map')}
+					onaction={() => handleCreate('New Map')}
 				/>
 			{:else}
 				<!-- Owned Maps section -->
@@ -100,7 +112,7 @@
 								message="No maps yet"
 								description="Create your first map."
 								cta="New Map"
-								onaction={() => actions.onCreate('New Map')}
+								onaction={() => handleCreate('New Map')}
 							/>
 						{:else}
 							<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -194,7 +206,7 @@
 							</div>
 							<button
 								type="button"
-								onclick={() => actions.onCreate('New Template')}
+								onclick={() => handleCreate('New Template')}
 								class="flex items-center gap-1.5 bg-surface-container rounded-lg px-2.5 py-1.5 text-xs text-on-surface-variant hover:text-on-surface transition-colors border border-white/5"
 							>
 								<Plus size={12} />
@@ -241,10 +253,16 @@
 	<!-- Floating action button -->
 	<button
 		type="button"
-		class="fixed bottom-20 right-6 h-14 w-14 rounded-full signature-gradient flex items-center justify-center shadow-lg cursor-pointer transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-surface z-40"
+		disabled={creatingMap}
+		class="fixed bottom-20 right-6 h-14 w-14 rounded-full signature-gradient flex items-center justify-center shadow-lg cursor-pointer transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-surface z-40
+			{creatingMap ? 'opacity-50 cursor-not-allowed' : ''}"
 		aria-label="Create new map"
-		onclick={() => actions.onCreate('New Map')}
+		onclick={() => handleCreate('New Map')}
 	>
-		<Plus size={24} class="text-on-primary-container" />
+		{#if creatingMap}
+			<div class="h-5 w-5 border-2 border-on-primary-container/30 border-t-on-primary-container rounded-full animate-spin"></div>
+		{:else}
+			<Plus size={24} class="text-on-primary-container" />
+		{/if}
 	</button>
 </div>

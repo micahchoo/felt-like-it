@@ -7,7 +7,10 @@
 	let email = $state('');
 	let password = $state('');
 	let confirmPassword = $state('');
+	let confirmTouched = $state(false);
 	let errorMessage = $state('');
+
+	const passwordMismatch = $derived(confirmTouched && confirmPassword.length > 0 && password !== confirmPassword);
 
 	async function handleSubmit() {
 		errorMessage = '';
@@ -71,8 +74,13 @@
 					type="password"
 					placeholder="••••••••"
 					bind:value={confirmPassword}
-					class="bg-surface-container-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
+					onblur={() => (confirmTouched = true)}
+					class="bg-surface-container-low border rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 w-full
+						{passwordMismatch ? 'border-error focus:ring-error' : 'border-white/5 focus:ring-primary'}"
 				/>
+				{#if passwordMismatch}
+					<p class="text-[10px] text-error" role="alert">Passwords must match</p>
+				{/if}
 			</div>
 		</div>
 

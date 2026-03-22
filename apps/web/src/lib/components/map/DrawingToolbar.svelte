@@ -358,7 +358,7 @@
                    : selectionStore.activeTool === tool.id
                      ? 'bg-primary-container text-on-primary-container shadow-lg shadow-primary/20'
                      : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'}"
-        aria-label={tool.label}
+        aria-label="{tool.label}: {tool.helpText}"
         aria-pressed={selectionStore.activeTool === tool.id}
       >
         <tool.icon size={18} strokeWidth={selectionStore.activeTool === tool.id ? 2.5 : 2} />

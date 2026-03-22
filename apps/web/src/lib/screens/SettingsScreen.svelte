@@ -6,9 +6,11 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import SkeletonLoader from '$lib/components/ui/SkeletonLoader.svelte';
 	import ErrorState from '$lib/components/ui/ErrorState.svelte';
+	import { toastStore } from '$lib/components/ui/Toast.svelte';
 	import Settings from 'lucide-svelte/icons/settings';
 	import Key from 'lucide-svelte/icons/key';
 	import Plus from 'lucide-svelte/icons/plus';
+	import Copy from 'lucide-svelte/icons/copy';
 	import Trash2 from 'lucide-svelte/icons/trash-2';
 
 	interface Props {
@@ -133,10 +135,21 @@
 										{#each data.apiKeys as key (key.id)}
 											<tr class="hover:bg-surface-container-low transition-colors border-t border-white/5">
 												<td class="px-3 py-3 text-sm text-on-surface">{key.name}</td>
-												<td class="px-3 py-3">
+												<td class="px-3 py-3 flex items-center gap-1.5">
 													<code class="font-mono text-xs text-primary bg-surface-container-low px-2 py-0.5 rounded">
 														{key.prefix}…
 													</code>
+													<button
+														type="button"
+														class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+														aria-label="Copy key prefix"
+														onclick={async () => {
+															await navigator.clipboard.writeText(key.prefix);
+															toastStore.add('Key prefix copied to clipboard', 'success');
+														}}
+													>
+														<Copy size={12} />
+													</button>
 												</td>
 												<td class="px-3 py-3 text-xs text-on-surface-variant">
 													{formatDate(key.createdAt)}
@@ -168,6 +181,9 @@
 							<h3 class="text-[10px] font-bold text-primary uppercase tracking-widest">
 								Create new key
 							</h3>
+							<p class="text-xs text-on-surface-variant">
+								The full API key won't be shown again after creation. Copy it immediately.
+							</p>
 							<div class="flex gap-3">
 								<div class="flex-1">
 									<Input
