@@ -1,7 +1,6 @@
 import type {
 	MapRecord,
 	Layer,
-	Feature,
 } from '@felt-like-it/shared-types';
 import type { BaseActions } from './shared.js';
 
@@ -14,66 +13,26 @@ export interface Comment {
 	resolved: boolean;
 }
 
-export interface MapEvent {
-	id: string;
-	action: string;
-	userId: string | null;
-	createdAt: Date;
-	metadata: Record<string, unknown>;
-}
-
-export interface Collaborator {
-	id: string;
-	name: string;
-	role: string;
-}
-
-/** Simplified annotation for UI display (full AnnotationObject schema is complex). */
-export interface AnnotationSummary {
-	id: string;
-	authorName: string;
-	content: { type: string; [key: string]: unknown };
-	anchor: { type: string; coordinates?: [number, number] };
-	createdAt: Date;
-	version: number;
-}
-
+/**
+ * Data the route provides to MapEditorScreen.
+ *
+ * Annotations, comments, events, and collaborators are fetched client-side
+ * by the screen via tRPC / TanStack Query — they are NOT provided by the route.
+ */
 export interface MapEditorData {
 	map: MapRecord;
 	layers: Layer[];
-	features: Record<string, Feature[]>; // keyed by layerId
-	annotations: AnnotationSummary[];
-	comments: Comment[];
-	events: MapEvent[];
-	collaborators: Collaborator[];
+	userId: string;
+	userRole: 'owner' | 'editor' | 'commenter' | 'viewer';
+	isOwner: boolean;
+	readonly: boolean;
+	embed: boolean;
 }
 
 export interface MapEditorActions extends BaseActions {
-	onLayerCreate: (name: string) => Promise<void>;
-	onLayerDelete: (id: string) => Promise<void>;
-	onLayerReorder: (id: string, newIndex: number) => Promise<void>;
-	onLayerToggle: (id: string, visible: boolean) => Promise<void>;
-	onLayerUpdateStyle: (id: string, style: Record<string, unknown>) => Promise<void>;
-	onFeatureUpsert: (layerId: string, feature: Feature) => Promise<void>;
-	onFeatureDelete: (layerId: string, featureId: string) => Promise<void>;
-	onAnnotationCreate: (annotation: Partial<AnnotationSummary>) => Promise<void>;
-	onAnnotationUpdate: (
-		id: string,
-		version: number,
-		changes: Partial<AnnotationSummary>,
-	) => Promise<void>;
-	onAnnotationDelete: (id: string) => Promise<void>;
-	onCommentCreate: (body: string) => Promise<void>;
-	onCommentDelete: (id: string) => Promise<void>;
-	onCommentResolve: (id: string) => Promise<void>;
-	onMapUpdate: (changes: Partial<MapRecord>) => Promise<void>;
-	onViewportSave: (viewport: {
-		center: [number, number];
-		zoom: number;
-		bearing: number;
-		pitch: number;
-	}) => Promise<void>;
-	onGeoprocessingRun: (op: Record<string, unknown>) => Promise<void>;
+	// Route provides onRetry from BaseActions.
+	// All mutation actions (layer CRUD, feature upsert, annotation CRUD, etc.)
+	// are handled internally by MapEditor via tRPC.
 }
 
 export type MapEditorStatus = 'loading' | 'success' | 'error' | 'empty';

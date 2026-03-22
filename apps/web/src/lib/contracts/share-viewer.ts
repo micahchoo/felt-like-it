@@ -1,18 +1,19 @@
-import type { MapRecord, Layer, Feature } from '@felt-like-it/shared-types';
-import type { Comment } from './map-editor.js';
+import type { MapRecord, Layer } from '@felt-like-it/shared-types';
 import type { BaseActions } from './shared.js';
 
+/**
+ * Data the route provides to ShareViewerScreen / EmbedScreen.
+ *
+ * Guest comments are handled internally by GuestCommentPanel via tRPC.
+ */
 export interface ShareViewerData {
 	map: MapRecord;
 	layers: Layer[];
-	features: Record<string, Feature[]>;
-	comments: Comment[];
 	shareToken: string;
-	accessLevel: 'public' | 'unlisted';
 }
 
 export interface ShareViewerActions extends BaseActions {
-	onGuestComment: (authorName: string, body: string) => Promise<void>;
+	// Route provides onRetry from BaseActions.
 }
 
 export type ShareViewerStatus = 'loading' | 'success' | 'error';
