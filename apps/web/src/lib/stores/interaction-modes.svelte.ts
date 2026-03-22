@@ -1,4 +1,3 @@
-import { untrack } from 'svelte';
 import { selectionStore } from './selection.svelte.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -36,14 +35,19 @@ let _interactionState = $state<InteractionState>({ type: 'idle' });
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
-/** Centralized mode transition — atomically sets interactionState and implied tool.
- *  Uses untrack() for the prev-state read so it's safe to call from $effect blocks. */
+// pure state machine — no side effects, tool sync handled reactively below
 function transitionTo(next: InteractionState) {
-  const prev = untrack(() => _interactionState);
   _interactionState = next;
+}
 
-  // Entry actions: set the tool implied by the target mode
-  switch (next.type) {
+// Reactive tool sync: decoupled from transitionTo so effects compose cleanly
+let _prevType: InteractionState['type'] = 'idle';
+$effect(() => {
+  const cur = _interactionState;
+  const prev = _prevType;
+  _prevType = cur.type;
+
+  switch (cur.type) {
     case 'drawRegion':
       selectionStore.setActiveTool('polygon');
       break;
@@ -51,13 +55,12 @@ function transitionTo(next: InteractionState) {
       selectionStore.setActiveTool('select');
       break;
     case 'idle':
-      // Reset tool when leaving annotation-capture modes
-      if (prev.type === 'drawRegion' || prev.type === 'pickFeature' || prev.type === 'pendingMeasurement') {
+      if (prev === 'drawRegion' || prev === 'pickFeature' || prev === 'pendingMeasurement') {
         selectionStore.setActiveTool('select');
       }
       break;
   }
-}
+});
 
 export const interactionModes = {
   get state(): InteractionState { return _interactionState; },

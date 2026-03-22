@@ -131,7 +131,7 @@
     if (!layer || !style) return;
     saving = true;
     try {
-      await trpc.layers.update.mutate({ id: layer.id, style, version: (layer as any).version });
+      await trpc.layers.update.mutate({ id: layer.id, style, version: layer.version });
       toastStore.success('Style saved.');
       dirty = false;
     } catch {
@@ -258,12 +258,16 @@
 
     applyingChoropleth = true;
     try {
-      await trpc.layers.update.mutate({ id: layer.id, style: merged, version: (layer as any).version });
+      await trpc.layers.update.mutate({ id: layer.id, style: merged, version: layer.version });
       styleStore.setStyle(layer.id, merged);
       layersStore.updateStyle(layer.id, merged);
       toastStore.success('Choropleth applied.');
     } catch {
-      toastStore.error('Failed to apply choropleth.');
+      toastStore.error('Failed to apply choropleth. Reverting changes.');
+      if (lastSavedStyle && layer) {
+        styleStore.setStyle(layer.id, lastSavedStyle);
+        layersStore.updateStyle(layer.id, lastSavedStyle);
+      }
     } finally {
       applyingChoropleth = false;
     }
@@ -308,12 +312,16 @@
     };
     applyingHeatmap = true;
     try {
-      await trpc.layers.update.mutate({ id: layer.id, style: newStyle, version: (layer as any).version });
+      await trpc.layers.update.mutate({ id: layer.id, style: newStyle, version: layer.version });
       styleStore.setStyle(layer.id, newStyle);
       layersStore.updateStyle(layer.id, newStyle);
       toastStore.success('Heatmap applied.');
     } catch {
-      toastStore.error('Failed to apply heatmap.');
+      toastStore.error('Failed to apply heatmap. Reverting changes.');
+      if (lastSavedStyle && layer) {
+        styleStore.setStyle(layer.id, lastSavedStyle);
+        layersStore.updateStyle(layer.id, lastSavedStyle);
+      }
     } finally {
       applyingHeatmap = false;
     }
@@ -334,7 +342,7 @@
       config: undefined,
     };
     try {
-      await trpc.layers.update.mutate({ id: layer.id, style: newStyle, version: (layer as any).version });
+      await trpc.layers.update.mutate({ id: layer.id, style: newStyle, version: layer.version });
       styleStore.setStyle(layer.id, newStyle);
       layersStore.updateStyle(layer.id, newStyle);
       toastStore.success('Reset to simple style.');

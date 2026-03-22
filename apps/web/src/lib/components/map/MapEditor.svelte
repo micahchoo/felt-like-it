@@ -139,6 +139,8 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
 
   // GeoJSON data cache per layer
   let layerData = $state<Record<string, { type: 'FeatureCollection'; features: GeoJSONFeature[] }>>({});
+  const loadGeneration: Record<string, number> = {};
+  const loadingLayers = new Set<string>();
   let showDataTable = $state(false);
   let activePanelIcon = $state<'layers' | 'processing' | 'tables' | 'export' | null>('layers');
   let cursorLat = $state<number | null>(null);
@@ -309,8 +311,12 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   });
 
   async function loadLayerData(layerId: string) {
+    if (loadingLayers.has(layerId)) return;
+    loadingLayers.add(layerId);
+    const gen = (loadGeneration[layerId] = (loadGeneration[layerId] ?? 0) + 1);
     try {
       const fc = await trpc.features.list.query({ layerId });
+      if (gen !== loadGeneration[layerId]) return; // stale — newer load in progress
       if (!isFeatureCollection(fc)) {
         throw new Error(`Unexpected response shape from features.list for layer ${layerId}`);
       }
@@ -324,8 +330,11 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
         (src as { setData: (_data: unknown) => void }).setData(fc);
       }
     } catch (err) {
+      if (gen !== loadGeneration[layerId]) return;
       console.error('[loadLayerData] failed:', err);
       toastStore.error(`Failed to load data for layer.`);
+    } finally {
+      loadingLayers.delete(layerId);
     }
   }
 
@@ -388,20 +397,23 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     }
   }
 
-  function handleImportComplete(layerId: string) {
+  async function handleImportComplete(layerId: string) {
     showImportDialog = false;
     layersStore.setActive(layerId);
     // Re-fetch layers to get updated featureCount, then load data if not large
-    trpc.layers.list.query({ mapId }).then((newLayers) => {
+    try {
+      const newLayers = await trpc.layers.list.query({ mapId });
       layersStore.set(newLayers);
       const imported = newLayers.find((l) => l.id === layerId);
       if (imported && !isLargeLayer(imported)) {
-        loadLayerData(layerId);
+        await loadLayerData(layerId);
       }
       trpc.events.log
         .mutate({ mapId, action: 'layer.imported', metadata: { name: imported?.name ?? '' } })
         .catch(() => undefined);
-    });
+    } catch {
+      toastStore.error('Failed to refresh layers after import.');
+    }
   }
 
   function handleKeydown(e: KeyboardEvent) {

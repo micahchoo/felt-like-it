@@ -15,6 +15,7 @@
   let creatingLayer = $state(false);
   let newLayerName = $state('');
   let loadErrors: Record<string, string> = $state({});
+  const togglingIds = new Set<string>();
 
   async function createLayer() {
     const name = newLayerName.trim() || 'New Layer';
@@ -47,11 +48,13 @@
   }
 
   async function toggleVisibility(layerId: string) {
+    if (togglingIds.has(layerId)) return;
     const layer = layersStore.all.find((l) => l.id === layerId);
     if (!layer) return;
+    togglingIds.add(layerId);
     layersStore.toggle(layerId);
     try {
-      await trpc.layers.update.mutate({ id: layerId, visible: !layer.visible, version: (layer as any).version });
+      await trpc.layers.update.mutate({ id: layerId, visible: !layer.visible, version: layer.version });
     } catch (err: any) {
       // Revert optimistic update
       layersStore.toggle(layerId);
@@ -60,6 +63,8 @@
         : 'Failed to update visibility.';
       loadErrors = { ...loadErrors, [layerId]: msg };
       toastStore.error(msg);
+    } finally {
+      togglingIds.delete(layerId);
     }
   }
 

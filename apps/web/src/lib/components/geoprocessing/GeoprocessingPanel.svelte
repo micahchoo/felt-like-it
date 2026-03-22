@@ -69,6 +69,7 @@
   let outputName  = $state('');
   let abortController: AbortController | null = null;
   let running     = $state(false);
+  let cancelling  = $state(false);
   let error       = $state<string | null>(null);
   let success     = $state<string | null>(null);
 
@@ -181,6 +182,7 @@
       }
     } finally {
       running = false;
+      cancelling = false;
       abortController = null;
     }
   }
@@ -360,13 +362,13 @@
         class="flex-1 flex items-center justify-center gap-2 py-3 bg-primary rounded-xl text-on-primary font-bold text-sm tracking-tight active:scale-95 transition-transform shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Play size={16} fill="currentColor" />
-        {running ? `Running ${GEO_OP_LABELS[opType]}…` : 'RUN ANALYSIS'}
+        {cancelling ? 'Cancelling…' : running ? `Running ${GEO_OP_LABELS[opType]}…` : 'RUN ANALYSIS'}
       </button>
-      {#if running}
+      {#if running && !cancelling}
         <Button
           variant="ghost"
           size="sm"
-          onclick={() => { abortController?.abort(); running = false; abortController = null; }}
+          onclick={() => { cancelling = true; abortController?.abort(); }}
         >Cancel</Button>
       {/if}
     </div>

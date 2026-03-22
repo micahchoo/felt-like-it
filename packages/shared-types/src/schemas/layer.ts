@@ -13,6 +13,7 @@ export const LayerSchema = z.object({
   zIndex: z.number().int().min(0),
   sourceFileName: z.string().nullable(),
   featureCount: z.number().optional(),
+  version: z.number().int().positive().default(1),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
