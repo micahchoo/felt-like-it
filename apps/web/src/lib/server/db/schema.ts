@@ -74,6 +74,7 @@ export const maps = pgTable(
      * Managed by admins / seeded — not settable by regular users via tRPC.
      */
     isTemplate: boolean('is_template').notNull().default(false),
+    version: integer('version').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -95,6 +96,7 @@ export const layers = pgTable(
     visible: boolean('visible').notNull().default(true),
     zIndex: integer('z_index').notNull().default(0),
     sourceFileName: text('source_file_name'),
+    version: integer('version').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

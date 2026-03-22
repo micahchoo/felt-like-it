@@ -28,4 +28,5 @@ export const UpdateLayerSchema = z.object({
   style: LayerStyleSchema.optional(),
   visible: z.boolean().optional(),
   zIndex: z.number().int().min(0).optional(),
+  version: z.number().int().positive().optional(),
 });

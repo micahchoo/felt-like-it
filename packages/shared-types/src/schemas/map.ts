@@ -29,4 +29,5 @@ export const UpdateMapSchema = z.object({
   description: z.string().max(2000).nullable().optional(),
   viewport: ViewportSchema.optional(),
   basemap: z.string().optional(),
+  version: z.number().int().positive().optional(),
 });
