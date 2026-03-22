@@ -4,7 +4,12 @@
   let isInstalled = $state(false);
 
   $effect(() => {
-    dismissed = localStorage.getItem('flit-install-dismissed') === 'true';
+    try {
+      dismissed = localStorage.getItem('flit-install-dismissed') === 'true';
+    } catch {
+      // Private browsing or quota exceeded; treat as not dismissed
+      dismissed = false;
+    }
     isInstalled = window.matchMedia('(display-mode: standalone)').matches;
 
     const handleBeforeInstall = (e: Event) => {
@@ -28,7 +33,11 @@
 
   function handleDismiss() {
     dismissed = true;
-    localStorage.setItem('flit-install-dismissed', 'true');
+    try {
+      localStorage.setItem('flit-install-dismissed', 'true');
+    } catch {
+      // Private browsing or quota exceeded; silently ignore
+    }
   }
 </script>
 
