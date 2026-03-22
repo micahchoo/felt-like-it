@@ -14,7 +14,7 @@ vi.mock('$lib/server/db/index.js', () => ({
     execute:     vi.fn(),
     transaction: vi.fn(),
   },
-  maps:             { id: {}, userId: {},  isTemplate: {}, updatedAt: {}, title: {}, description: {}, viewport: {}, basemap: {}, createdAt: {} },
+  maps:             { id: {}, userId: {},  isTemplate: {}, updatedAt: {}, title: {}, description: {}, viewport: {}, basemap: {}, createdAt: {}, version: {} },
   layers:           { mapId: {}, zIndex: {}, id: {}, style: {} },
   mapCollaborators: { mapId: {}, userId: {}, role: {} },
   users: {},
@@ -166,6 +166,46 @@ describe('maps.update', () => {
     await expect(makeCaller().update({ id: MAP_ID, title: 'X' })).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
+  });
+});
+
+describe('maps.update optimistic concurrency', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('throws CONFLICT when version does not match', async () => {
+    vi.mocked(db.update).mockReturnValue(drizzleChain([]));
+    vi.mocked(db.select).mockReturnValue(drizzleChain([{ id: MAP_ID, userId: USER_ID }]));
+    await expect(
+      makeCaller().update({ id: MAP_ID, title: 'New Title', version: 1 })
+    ).rejects.toThrow(/modified/i);
+  });
+
+  it('succeeds when version matches', async () => {
+    const updated = { id: MAP_ID, title: 'New Title', version: 2 };
+    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]));
+    vi.mocked(db.select).mockReturnValue(drizzleChain([{ id: MAP_ID, userId: USER_ID }]));
+    const result = await makeCaller().update({ id: MAP_ID, title: 'New Title', version: 1 });
+    expect(result!.version).toBe(2);
+  });
+
+  it('skips version check when version is omitted (backward compat)', async () => {
+    const updated = { id: MAP_ID, title: 'New Title', version: 2 };
+    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]));
+    vi.mocked(db.select).mockReturnValue(drizzleChain([{ id: MAP_ID, userId: USER_ID }]));
+    const result = await makeCaller().update({ id: MAP_ID, title: 'New Title' });
+    expect(result!.version).toBe(2);
+  });
+
+  it('rejects version: 0 via Zod validation', async () => {
+    await expect(
+      makeCaller().update({ id: MAP_ID, title: 'X', version: 0 })
+    ).rejects.toThrow();
+  });
+
+  it('rejects version: -1 via Zod validation', async () => {
+    await expect(
+      makeCaller().update({ id: MAP_ID, title: 'X', version: -1 })
+    ).rejects.toThrow();
   });
 });
 

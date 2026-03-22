@@ -19,6 +19,7 @@ export const layersRouter = router({
         SELECT
           l.id, l.map_id AS "mapId", l.name, l.type, l.style, l.visible,
           l.z_index AS "zIndex", l.source_file_name AS "sourceFileName",
+          l.version,
           l.created_at AS "createdAt", l.updated_at AS "updatedAt",
           COALESCE(
             (SELECT COUNT(*) FROM features f WHERE f.layer_id = l.id),
@@ -42,6 +43,7 @@ export const layersRouter = router({
           sourceFileName: (row['sourceFileName'] as string | null) ?? null,
           createdAt:      row['createdAt'] as Date,
           updatedAt:      row['updatedAt'] as Date,
+          version:        Number(row['version'] ?? 1),
           featureCount:   Number(row['featureCount'] ?? 0),
         };
       });
@@ -82,9 +84,8 @@ export const layersRouter = router({
   update: protectedProcedure
     .input(z.object({ id: z.string().uuid() }).merge(UpdateLayerSchema))
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
+      const { id, version, ...data } = input;
 
-      // Verify ownership via map join
       const [layer] = await db
         .select({ id: layers.id, mapId: layers.mapId })
         .from(layers)
@@ -94,8 +95,11 @@ export const layersRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Layer not found.' });
       }
 
-      // Editor+ access required to update layers
       await requireMapAccess(ctx.user.id, layer.mapId, 'editor');
+
+      const whereClause = version !== undefined
+        ? and(eq(layers.id, id), eq(layers.version, version))
+        : eq(layers.id, id);
 
       const [updated] = await db
         .update(layers)
@@ -104,12 +108,16 @@ export const layersRouter = router({
           ...(data.style !== undefined && { style: data.style }),
           ...(data.visible !== undefined && { visible: data.visible }),
           ...(data.zIndex !== undefined && { zIndex: data.zIndex }),
+          version: sql`version + 1`,
         })
-        .where(eq(layers.id, id))
+        .where(whereClause)
         .returning();
 
       if (!updated) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update layer.' });
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'This layer was modified by another user. Please reload to see their changes.',
+        });
       }
       return updated;
     }),
@@ -137,23 +145,38 @@ export const layersRouter = router({
     .input(
       z.object({
         mapId: z.string().uuid(),
-        order: z.array(z.string().uuid()),
-      })
+        order: z.array(
+          z.object({ id: z.string().uuid(), version: z.number().int().positive() }),
+        ),
+      }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Editor+ access required to reorder layers
       await requireMapAccess(ctx.user.id, input.mapId, 'editor');
 
-      // Update z_index for each layer in the order array
-      await Promise.all(
-        input.order.map((layerId, index) =>
-          db
+      await db.transaction(async (tx) => {
+        for (const [i, entry] of input.order.entries()) {
+          const { id, version } = entry;
+          const [updated] = await tx
             .update(layers)
-            .set({ zIndex: index })
-            .where(and(eq(layers.id, layerId), eq(layers.mapId, input.mapId)))
-        )
-      );
+            .set({ zIndex: i, version: sql`version + 1` })
+            .where(
+              and(
+                eq(layers.id, id),
+                eq(layers.mapId, input.mapId),
+                eq(layers.version, version),
+              ),
+            )
+            .returning();
 
-      return { reordered: true };
+          if (!updated) {
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message: 'Layer order has changed. Please reload to see the latest order.',
+            });
+          }
+        }
+      });
+
+      return { success: true };
     }),
 });

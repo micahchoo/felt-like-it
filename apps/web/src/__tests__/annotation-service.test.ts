@@ -66,56 +66,70 @@ describe('annotationService.list', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('returns mapped annotation objects for a map', async () => {
-		vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+		vi.mocked(db.execute)
+			.mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]))   // rows query
+			.mockResolvedValueOnce(mockExecuteResult([{ cnt: '1' }])); // count query
 
 		const result = await annotationService.list({ userId: USER_ID, mapId: MAP_ID });
 
-		expect(result).toHaveLength(1);
-		expect(result[0]?.id).toBe(ANN_ID);
-		expect(result[0]?.mapId).toBe(MAP_ID);
-		expect(result[0]?.anchor.type).toBe('point');
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0]?.id).toBe(ANN_ID);
+		expect(result.items[0]?.mapId).toBe(MAP_ID);
+		expect(result.items[0]?.anchor.type).toBe('point');
+		expect(result.totalCount).toBe(1);
 	});
 
 	it('checks viewer access before querying', async () => {
-		vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+		vi.mocked(db.execute)
+			.mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]))
+			.mockResolvedValueOnce(mockExecuteResult([{ cnt: '1' }]));
 
 		await annotationService.list({ userId: USER_ID, mapId: MAP_ID });
 
 		expect(requireMapAccess).toHaveBeenCalledWith(USER_ID, MAP_ID, 'viewer');
 	});
 
-	it('returns empty array when map has no annotations', async () => {
-		vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([]));
+	it('returns empty items when map has no annotations', async () => {
+		vi.mocked(db.execute)
+			.mockResolvedValueOnce(mockExecuteResult([]))
+			.mockResolvedValueOnce(mockExecuteResult([{ cnt: '0' }]));
 
 		const result = await annotationService.list({ userId: USER_ID, mapId: MAP_ID });
 
-		expect(result).toEqual([]);
+		expect(result.items).toEqual([]);
+		expect(result.totalCount).toBe(0);
 	});
 
-	it('executes exactly one db query', async () => {
-		vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+	it('executes two db queries (rows + count)', async () => {
+		vi.mocked(db.execute)
+			.mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]))
+			.mockResolvedValueOnce(mockExecuteResult([{ cnt: '1' }]));
 
 		await annotationService.list({ userId: USER_ID, mapId: MAP_ID });
 
-		expect(db.execute).toHaveBeenCalledOnce();
+		expect(db.execute).toHaveBeenCalledTimes(2);
 	});
 
 	it('filters to root annotations when rootsOnly is true', async () => {
-		vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]));
+		vi.mocked(db.execute)
+			.mockResolvedValueOnce(mockExecuteResult([MOCK_ROW]))
+			.mockResolvedValueOnce(mockExecuteResult([{ cnt: '1' }]));
 
 		const result = await annotationService.list({ userId: USER_ID, mapId: MAP_ID, rootsOnly: true });
 
-		expect(result).toHaveLength(1);
-		expect(db.execute).toHaveBeenCalledOnce();
+		expect(result.items).toHaveLength(1);
+		expect(db.execute).toHaveBeenCalledTimes(2);
 	});
 
 	it('does not filter by parent when rootsOnly is undefined', async () => {
 		const replyRow = { ...MOCK_ROW, parent_id: ANN_ID };
-		vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([MOCK_ROW, replyRow]));
+		vi.mocked(db.execute)
+			.mockResolvedValueOnce(mockExecuteResult([MOCK_ROW, replyRow]))
+			.mockResolvedValueOnce(mockExecuteResult([{ cnt: '2' }]));
 
 		const result = await annotationService.list({ userId: USER_ID, mapId: MAP_ID });
 
-		expect(result).toHaveLength(2);
+		expect(result.items).toHaveLength(2);
 	});
 });
 

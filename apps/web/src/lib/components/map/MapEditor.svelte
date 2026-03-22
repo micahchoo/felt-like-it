@@ -377,8 +377,12 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       toastStore.success('Viewport saved.');
       // Fire-and-forget: log activity event (best-effort, never blocks the UI)
       trpc.events.log.mutate({ mapId, action: 'viewport.saved' }).catch(() => undefined);
-    } catch {
-      toastStore.error('Failed to save viewport.');
+    } catch (err: any) {
+      if (err?.data?.code === 'CONFLICT') {
+        toastStore.error('Map was modified by another user. Please reload.');
+      } else {
+        toastStore.error('Failed to save viewport.');
+      }
     } finally {
       savingViewport = false;
     }
