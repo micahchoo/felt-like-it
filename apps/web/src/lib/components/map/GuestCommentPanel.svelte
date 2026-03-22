@@ -113,6 +113,7 @@
       type="text"
       class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
     />
+    <p class="mt-1 text-xs text-on-surface-variant">Your name will be visible to anyone with this link.</p>
     <textarea
       bind:value={newBody}
       placeholder="Write a comment..."
