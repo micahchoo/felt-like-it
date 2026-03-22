@@ -188,7 +188,7 @@ describe('layers.reorder', () => {
 
   it('reorders layers within a transaction', async () => {
     vi.mocked(db.select).mockReturnValue(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.transaction).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+    vi.mocked(db.transaction).mockImplementation(async (fn: any) => {
       const tx = {
         update: vi.fn().mockReturnValue(drizzleChain([{ id: LAYER_ID, version: 2 }])),
       };
@@ -255,7 +255,7 @@ describe('layers.reorder optimistic concurrency', () => {
 
   it('reorders layers within a transaction', async () => {
     vi.mocked(db.select).mockReturnValue(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.transaction).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+    vi.mocked(db.transaction).mockImplementation(async (fn: any) => {
       const tx = {
         update: vi.fn().mockReturnValue(drizzleChain([{ id: LAYER_ID, version: 2 }])),
       };
@@ -271,7 +271,7 @@ describe('layers.reorder optimistic concurrency', () => {
 
   it('throws CONFLICT if any layer has stale version during reorder', async () => {
     vi.mocked(db.select).mockReturnValue(drizzleChain([MOCK_MAP]));
-    vi.mocked(db.transaction).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+    vi.mocked(db.transaction).mockImplementation(async (fn: any) => {
       const tx = {
         update: vi.fn().mockReturnValue(drizzleChain([])),
       };

@@ -59,4 +59,9 @@ export const layersStore = {
   getOrderedIds(): string[] {
     return _layers.map((l) => l.id);
   },
+
+  /** Get IDs + versions in current z-order for versioned reorder */
+  getOrderedIdsWithVersions(): Array<{ id: string; version: number }> {
+    return _layers.map((l) => ({ id: l.id, version: (l as any).version ?? 1 }));
+  },
 };

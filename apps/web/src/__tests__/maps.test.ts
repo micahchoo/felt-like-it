@@ -173,8 +173,8 @@ describe('maps.update optimistic concurrency', () => {
   beforeEach(() => vi.resetAllMocks());
 
   it('throws CONFLICT when version does not match', async () => {
-    db.update.mockReturnValue(drizzleChain([]));
-    db.select.mockReturnValue(drizzleChain([{ id: 'map-1', userId: 'user-1' }]));
+    vi.mocked(db.update).mockReturnValue(drizzleChain([]));
+    vi.mocked(db.select).mockReturnValue(drizzleChain([{ id: MAP_ID, userId: USER_ID }]));
     await expect(
       makeCaller().update({ id: MAP_ID, title: 'New Title', version: 1 })
     ).rejects.toThrow(/modified/i);
@@ -182,18 +182,18 @@ describe('maps.update optimistic concurrency', () => {
 
   it('succeeds when version matches', async () => {
     const updated = { id: MAP_ID, title: 'New Title', version: 2 };
-    db.update.mockReturnValue(drizzleChain([updated]));
-    db.select.mockReturnValue(drizzleChain([{ id: MAP_ID, userId: USER_ID }]));
+    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]));
+    vi.mocked(db.select).mockReturnValue(drizzleChain([{ id: MAP_ID, userId: USER_ID }]));
     const result = await makeCaller().update({ id: MAP_ID, title: 'New Title', version: 1 });
-    expect(result.version).toBe(2);
+    expect(result!.version).toBe(2);
   });
 
   it('skips version check when version is omitted (backward compat)', async () => {
     const updated = { id: MAP_ID, title: 'New Title', version: 2 };
-    db.update.mockReturnValue(drizzleChain([updated]));
-    db.select.mockReturnValue(drizzleChain([{ id: MAP_ID, userId: USER_ID }]));
+    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]));
+    vi.mocked(db.select).mockReturnValue(drizzleChain([{ id: MAP_ID, userId: USER_ID }]));
     const result = await makeCaller().update({ id: MAP_ID, title: 'New Title' });
-    expect(result.version).toBe(2);
+    expect(result!.version).toBe(2);
   });
 
   it('rejects version: 0 via Zod validation', async () => {

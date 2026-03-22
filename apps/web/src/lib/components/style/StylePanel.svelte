@@ -122,7 +122,7 @@
     if (!layer || !style) return;
     saving = true;
     try {
-      await trpc.layers.update.mutate({ id: layer.id, style });
+      await trpc.layers.update.mutate({ id: layer.id, style, version: (layer as any).version });
       toastStore.success('Style saved.');
       dirty = false;
     } catch {
@@ -245,7 +245,7 @@
 
     applyingChoropleth = true;
     try {
-      await trpc.layers.update.mutate({ id: layer.id, style: merged });
+      await trpc.layers.update.mutate({ id: layer.id, style: merged, version: (layer as any).version });
       styleStore.setStyle(layer.id, merged);
       layersStore.updateStyle(layer.id, merged);
       toastStore.success('Choropleth applied.');
@@ -295,7 +295,7 @@
     };
     applyingHeatmap = true;
     try {
-      await trpc.layers.update.mutate({ id: layer.id, style: newStyle });
+      await trpc.layers.update.mutate({ id: layer.id, style: newStyle, version: (layer as any).version });
       styleStore.setStyle(layer.id, newStyle);
       layersStore.updateStyle(layer.id, newStyle);
       toastStore.success('Heatmap applied.');
@@ -321,7 +321,7 @@
       config: undefined,
     };
     try {
-      await trpc.layers.update.mutate({ id: layer.id, style: newStyle });
+      await trpc.layers.update.mutate({ id: layer.id, style: newStyle, version: (layer as any).version });
       styleStore.setStyle(layer.id, newStyle);
       layersStore.updateStyle(layer.id, newStyle);
       toastStore.success('Reset to simple style.');

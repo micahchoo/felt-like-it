@@ -50,11 +50,15 @@
     if (!layer) return;
     layersStore.toggle(layerId);
     try {
-      await trpc.layers.update.mutate({ id: layerId, visible: !layer.visible });
-    } catch {
+      await trpc.layers.update.mutate({ id: layerId, visible: !layer.visible, version: (layer as any).version });
+    } catch (err: any) {
       // Revert optimistic update
       layersStore.toggle(layerId);
-      toastStore.error('Failed to update layer visibility.');
+      if (err?.data?.code === 'CONFLICT') {
+        toastStore.error('Layer was modified by another user. Please reload.');
+      } else {
+        toastStore.error('Failed to update layer visibility.');
+      }
     }
   }
 
@@ -67,10 +71,14 @@
     try {
       await trpc.layers.reorder.mutate({
         mapId,
-        order: layersStore.getOrderedIds(),
+        order: layersStore.getOrderedIdsWithVersions(),
       });
-    } catch {
-      toastStore.error('Failed to reorder layers.');
+    } catch (err: any) {
+      if (err?.data?.code === 'CONFLICT') {
+        toastStore.error('Layer order was modified by another user. Please reload.');
+      } else {
+        toastStore.error('Failed to reorder layers.');
+      }
     }
   }
 
