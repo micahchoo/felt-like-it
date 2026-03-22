@@ -22,7 +22,13 @@
   {#if threadQuery.isLoading}
     <p class="text-xs text-on-surface-variant/70">Loading replies…</p>
   {:else if threadQuery.isError}
-    <p class="text-xs text-red-400">Failed to load replies.</p>
+    <div class="flex items-center gap-2">
+      <p class="text-xs text-red-400">Failed to load replies.</p>
+      <button
+        onclick={() => threadQuery.refetch()}
+        class="text-xs text-primary hover:text-primary/80 underline transition-colors"
+      >Retry</button>
+    </div>
   {:else if threadQuery.data?.replies.length}
     {#each threadQuery.data.replies as reply (reply.id)}
       <div class="group flex items-start gap-2">

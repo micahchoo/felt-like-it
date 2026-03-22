@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fly } from 'svelte/transition';
   import { mapStore, BASEMAPS } from '$lib/stores/map.svelte.js';
 
   let open = $state(false);
@@ -32,6 +33,7 @@
 
     <ul
       class="absolute bottom-full mb-1 left-0 z-50 bg-surface-container rounded-lg shadow-xl ring-1 ring-surface-high py-1 min-w-40"
+      transition:fly={{ y: 8, duration: 150 }}
       role="listbox"
       aria-label="Basemap options"
     >

@@ -6,9 +6,11 @@
     layerId: string;
     /** Features from which to derive available property columns. */
     features: GeoJSONFeature[];
+    /** Number of features passing current filters (for display). */
+    filteredCount?: number | undefined;
   }
 
-  let { layerId, features }: Props = $props();
+  let { layerId, features, filteredCount }: Props = $props();
 
   // Derive available column names from the first 100 features
   const availableFields = $derived.by(() => {
@@ -100,6 +102,9 @@
         </li>
       {/each}
     </ul>
+    {#if filteredCount !== undefined}
+      <p class="text-[10px] text-on-surface-variant">Showing {filteredCount} of {features.length} features</p>
+    {/if}
   {/if}
 
   <!-- Add filter row -->

@@ -762,7 +762,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
             <span>Large layer ({(activeLayer.featureCount ?? 0).toLocaleString()} features) — rendered via vector tiles. {viewportStore.loading ? 'Loading…' : 'Use the table to inspect features in the current viewport.'}</span>
           </div>
         {:else if showFilterPanel}
-          <FilterPanel layerId={activeLayer.id} features={rawFeatures} />
+          <FilterPanel layerId={activeLayer.id} features={rawFeatures} filteredCount={filteredFeatures.length} />
         {/if}
         <div class="flex-1 min-h-0 overflow-hidden">
           {#if isLargeLayer(activeLayer)}

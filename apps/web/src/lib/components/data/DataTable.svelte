@@ -233,7 +233,7 @@
 
     {#if displayRows.length === 0}
       <p class="text-center text-on-surface-variant py-8 text-xs">
-        {mode === 'server' ? 'No features in current viewport.' : filterText ? 'No features match your filter.' : 'No features in this layer.'}
+        {mode === 'server' ? 'No features to display in current viewport.' : filterText ? 'No features match your filter.' : 'No features to display. Draw on the map or import data.'}
       </p>
     {/if}
   </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { fade } from 'svelte/transition';
 	import Button from './Button.svelte';
 
 	interface Props {
@@ -42,6 +43,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center"
+		transition:fade={{ duration: 150 }}
 		{onkeydown}
 		role="dialog"
 		aria-modal="true"

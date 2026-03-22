@@ -14,6 +14,7 @@
   let { mapId, onlayerchange }: Props = $props();
   let creatingLayer = $state(false);
   let newLayerName = $state('');
+  let loadErrors: Record<string, string> = $state({});
 
   async function createLayer() {
     const name = newLayerName.trim() || 'New Layer';
@@ -54,11 +55,11 @@
     } catch (err: any) {
       // Revert optimistic update
       layersStore.toggle(layerId);
-      if (err?.data?.code === 'CONFLICT') {
-        toastStore.error('Layer was modified by another user. Please reload.');
-      } else {
-        toastStore.error('Failed to update layer visibility.');
-      }
+      const msg = err?.data?.code === 'CONFLICT'
+        ? 'Modified by another user. Please reload.'
+        : 'Failed to update visibility.';
+      loadErrors = { ...loadErrors, [layerId]: msg };
+      toastStore.error(msg);
     }
   }
 
@@ -74,12 +75,18 @@
         order: layersStore.getOrderedIdsWithVersions(),
       });
     } catch (err: any) {
-      if (err?.data?.code === 'CONFLICT') {
-        toastStore.error('Layer order was modified by another user. Please reload.');
-      } else {
-        toastStore.error('Failed to reorder layers.');
-      }
+      const id = layersStore.all[targetIndex]?.id;
+      const msg = err?.data?.code === 'CONFLICT'
+        ? 'Order modified by another user. Please reload.'
+        : 'Failed to reorder layers.';
+      if (id) loadErrors = { ...loadErrors, [id]: msg };
+      toastStore.error(msg);
     }
+  }
+
+  function clearError(layerId: string) {
+    const { [layerId]: _, ...rest } = loadErrors;
+    loadErrors = rest;
   }
 
   const LAYER_TYPE_ICONS: Record<string, string> = {
@@ -123,7 +130,7 @@
                  ? 'bg-primary-container/20 ring-1 ring-primary/50'
                  : 'hover:bg-surface-high/60'}"
         role="button"
-        onclick={() => layersStore.setActive(layer.id)}
+        onclick={() => { clearError(layer.id); layersStore.setActive(layer.id); }}
         onkeydown={(e) => e.key === 'Enter' && layersStore.setActive(layer.id)}
         tabindex="0"
         aria-current={layersStore.activeLayerId === layer.id ? 'true' : undefined}
@@ -226,6 +233,9 @@
           </Tooltip>
         </div>
       </div>
+      {#if loadErrors[layer.id]}
+        <p class="text-[11px] text-error px-2 pb-1">{loadErrors[layer.id]}</p>
+      {/if}
     {/each}
   </div>
 

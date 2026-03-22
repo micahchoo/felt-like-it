@@ -223,6 +223,13 @@
   let showForm = $state(false);
   let creating = $state(false);
   let createError = $state<string | null>(null);
+  let fieldErrors: Record<string, string> = $state({});
+
+  function validateUrl(field: string, value: string) {
+    if (!value.trim()) { const { [field]: _, ...rest } = fieldErrors; fieldErrors = rest; return; }
+    try { new URL(value); const { [field]: _, ...rest } = fieldErrors; fieldErrors = rest; }
+    catch { fieldErrors = { ...fieldErrors, [field]: 'Enter a valid URL.' }; }
+  }
 
   // Form fields — content type selection
   let formType = $state<ContentType>('text');
@@ -464,6 +471,7 @@
     formLinkDesc = '';
     formManifestUrl = '';
     formIiifLabel = '';
+    fieldErrors = {};
     // Anchor state
     formAnchorType = 'point';
     formLng = 0;
@@ -553,7 +561,9 @@
         } catch (uploadErr) {
           uploading = false;
           const fileName = selectedImageFile.name;
-          createError = `Failed to upload ${fileName}: ${(uploadErr as { message?: string })?.message ?? 'unknown error'}`;
+          const msg = `Failed to upload ${fileName}: ${(uploadErr as { message?: string })?.message ?? 'unknown error'}`;
+          createError = msg;
+          toastStore.error(msg);
           creating = false;
           return;
         } finally {
@@ -788,9 +798,11 @@
             id="ann-gif-url"
             type="url"
             bind:value={formGifUrl}
+            onblur={() => validateUrl('gifUrl', formGifUrl)}
             placeholder="https://media.tenor.com/…"
             class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
+          {#if fieldErrors.gifUrl}<p class="text-[11px] text-error">{fieldErrors.gifUrl}</p>{/if}
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-xs text-on-surface-variant" for="ann-alt">
@@ -860,9 +872,11 @@
             id="ann-image-url"
             type="url"
             bind:value={formImageUrl}
+            onblur={() => validateUrl('imageUrl', formImageUrl)}
             placeholder="https://example.com/photo.jpg"
             class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
+          {#if fieldErrors.imageUrl}<p class="text-[11px] text-error">{fieldErrors.imageUrl}</p>{/if}
         </div>
 
         <div class="flex flex-col gap-1">
@@ -885,9 +899,11 @@
             id="ann-link-url"
             type="url"
             bind:value={formLinkUrl}
+            onblur={() => validateUrl('linkUrl', formLinkUrl)}
             placeholder="https://example.com"
             class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
+          {#if fieldErrors.linkUrl}<p class="text-[11px] text-error">{fieldErrors.linkUrl}</p>{/if}
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-xs text-on-surface-variant" for="ann-link-title">
@@ -921,9 +937,11 @@
             id="ann-manifest"
             type="url"
             bind:value={formManifestUrl}
+            onblur={() => validateUrl('manifestUrl', formManifestUrl)}
             placeholder="https://example.org/iiif/manifest.json"
             class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
+          {#if fieldErrors.manifestUrl}<p class="text-[11px] text-error">{fieldErrors.manifestUrl}</p>{/if}
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-xs text-on-surface-variant" for="ann-iiif-label">

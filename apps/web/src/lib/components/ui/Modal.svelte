@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { tick } from 'svelte';
+  import { fade } from 'svelte/transition';
 
   interface Props {
     open: boolean;
@@ -15,10 +16,12 @@
   let { open = $bindable(), title, dismissible = true, onclose, children, footer }: Props = $props();
 
   let dialogEl: HTMLDivElement | undefined;
+  let previousFocus: HTMLElement | null = null;
 
-  // Focus the first focusable element when the modal opens
+  // Capture focus before opening, restore on close
   $effect(() => {
     if (open && dialogEl) {
+      previousFocus = document.activeElement as HTMLElement | null;
       tick().then(() => {
         const focusable = dialogEl?.querySelectorAll<HTMLElement>(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -26,6 +29,10 @@
         focusable?.[0]?.focus();
       });
     }
+    return () => {
+      previousFocus?.focus();
+      previousFocus = null;
+    };
   });
 
   function handleKeydown(e: KeyboardEvent) {
@@ -64,6 +71,7 @@
   <!-- Backdrop -->
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+    transition:fade={{ duration: 150 }}
     role="dialog"
     aria-modal="true"
     aria-labelledby={title ? 'modal-title' : undefined}
