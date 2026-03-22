@@ -62,6 +62,6 @@ export const layersStore = {
 
   /** Get IDs + versions in current z-order for versioned reorder */
   getOrderedIdsWithVersions(): Array<{ id: string; version: number }> {
-    return _layers.map((l) => ({ id: l.id, version: (l as any).version ?? 1 }));
+    return _layers.map((l) => ({ id: l.id, version: l.version ?? 1 }));
   },
 };
