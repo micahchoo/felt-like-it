@@ -238,12 +238,20 @@
           } catch (e) {
             console.warn('[DrawingToolbar] removeFeatures during tool switch failed:', e);
           }
-          instance.setMode(mode);
+          try {
+            instance.setMode(mode);
+          } catch (e) {
+            console.warn('[DrawingToolbar] setMode failed:', e);
+          }
         }, 0);
         effectExit('DT:syncToolToTerraDraw');
         return;
       }
-      drawingStore.instance.setMode(mode);
+      try {
+        drawingStore.instance.setMode(mode);
+      } catch (e) {
+        console.warn('[DrawingToolbar] setMode failed:', e);
+      }
     }
     effectExit('DT:syncToolToTerraDraw');
   });
@@ -294,22 +302,27 @@
   }
 
   function setTool(tool: DrawTool) {
-    // Task 2.4: Confirm before switching tools if mid-draw
     if (isDrawing()) {
       const discard = window.confirm('You have an unfinished drawing. Discard it?');
       if (!discard) return;
+      // Clean up in-progress features now so the $effect sync won't prompt again
+      if (drawingStore.instance) {
+        const snapshot = drawingStore.instance.getSnapshot() ?? [];
+        const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
+        if (inProgress.length > 0) {
+          try {
+            drawingStore.instance.removeFeatures(inProgress.map((f: any) => f.id!));
+          } catch (e) {
+            console.warn('[DrawingToolbar] removeFeatures during tool switch failed:', e);
+          }
+        }
+      }
     }
 
+    // The $effect (DT:syncToolToTerraDraw) handles the actual Terra Draw mode switch.
+    // Calling setMode() here too creates a dual-write race where both paths fire
+    // and Terra Draw's select mode exit throws on stale internal state.
     selectionStore.setActiveTool(tool);
-    if (!drawingStore.instance) return;
-
-    switch (tool) {
-      case 'point': drawingStore.instance.setMode('point'); break;
-      case 'line': drawingStore.instance.setMode('linestring'); break;
-      case 'polygon': drawingStore.instance.setMode('polygon'); break;
-      case 'select': drawingStore.instance.setMode('select'); break;
-      default: drawingStore.instance.setMode('select'); break;
-    }
   }
 
   const tools: Array<{ id: DrawTool; label: string; helpText: string; icon: typeof MousePointer2; group: 'select' | 'draw' }> = [
