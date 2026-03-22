@@ -19,7 +19,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
     try { await requireMapAccess(auth.userId, mapId, 'viewer'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
   }
 
-  const rows = await typedExecute<any>(sql`
+  const rows = await typedExecute<Record<string, unknown>>(sql`
     SELECT l.id, l.map_id, l.name, l.type, l.visible, l.z_index,
       (SELECT COUNT(*)::int FROM features f WHERE f.layer_id = l.id) AS feature_count
     FROM layers l

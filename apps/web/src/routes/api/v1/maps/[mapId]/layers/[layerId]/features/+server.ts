@@ -22,7 +22,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
   }
 
   // Verify layer on map
-  const [layer] = await typedExecute<any>(sql`
+  const [layer] = await typedExecute<Record<string, unknown>>(sql`
     SELECT id, (SELECT COUNT(*)::int FROM features WHERE layer_id = ${layerId}::uuid) AS feature_count
     FROM layers WHERE id = ${layerId}::uuid AND map_id = ${mapId}::uuid
   `);
@@ -33,7 +33,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
     ? sql`AND (created_at, id) > (${cursor.createdAt}, ${cursor.id}::uuid)`
     : sql``;
 
-  const rows = await typedExecute<any>(sql`
+  const rows = await typedExecute<Record<string, unknown>>(sql`
     SELECT id, properties, GeometryType(geometry) AS geometry_type, created_at
     FROM features
     WHERE layer_id = ${layerId}::uuid ${cursorClause}

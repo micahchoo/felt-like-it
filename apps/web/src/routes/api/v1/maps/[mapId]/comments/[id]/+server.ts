@@ -20,7 +20,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
     try { await requireMapAccess(auth.userId, mapId, 'viewer'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
   }
 
-  const [row] = await typedExecute<any>(sql`
+  const [row] = await typedExecute<Record<string, unknown>>(sql`
     SELECT id, map_id, user_id, author_name, body, resolved, created_at, updated_at
     FROM comments
     WHERE id = ${id}::uuid AND map_id = ${mapId}::uuid

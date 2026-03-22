@@ -23,7 +23,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
   }
 
   // Verify layer belongs to map
-  const [layer] = await typedExecute<any>(sql`
+  const [layer] = await typedExecute<Record<string, unknown>>(sql`
     SELECT id FROM layers WHERE id = ${layerId}::uuid AND map_id = ${mapId}::uuid
   `);
   if (!layer) return toErrorResponse('LAYER_NOT_FOUND');
@@ -68,7 +68,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
   `);
   const totalFeatures = parseInt(countRow?.cnt ?? '0', 10);
 
-  const rows = await typedExecute<any>(sql`
+  const rows = await typedExecute<Record<string, unknown>>(sql`
     SELECT id, ST_AsGeoJSON(geometry)::json AS geometry, properties
     FROM features
     WHERE layer_id = ${layerId}::uuid ${bboxClause}
@@ -79,7 +79,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
   // Always buffer + cache (the DB query is the bottleneck, not serialization)
   const body = JSON.stringify({
     type: 'FeatureCollection',
-    features: rows.map((r: any) => ({
+    features: rows.map((r: Record<string, unknown>) => ({
       type: 'Feature',
       id: r.id,
       geometry: r.geometry,

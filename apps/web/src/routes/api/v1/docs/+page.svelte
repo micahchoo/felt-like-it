@@ -95,7 +95,7 @@
     <h2>Endpoints</h2>
     <p>Base URL: <code>{BASE}</code></p>
     <div class="endpoint-list">
-      {#each endpoints as ep}
+      {#each endpoints as ep (ep.method + ep.path)}
         <div class="endpoint">
           <span class="method" style="background: {methodColor(ep.method)}">{ep.method}</span>
           <code class="path">{BASE}{ep.path}</code>
@@ -173,7 +173,7 @@ file: <binary>   (max 50MB)`}</pre>
       <div class="error-header">
         <span>Code</span><span>Status</span><span>When</span>
       </div>
-      {#each errorCodes as err}
+      {#each errorCodes as err (err.code)}
         <div class="error-row">
           <code>{err.code}</code>
           <span class="status">{err.status}</span>

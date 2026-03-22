@@ -85,13 +85,24 @@ export const POST: RequestHandler = async ({ request, url, params }) => {
       envelope(toAnnotation(created), {}, annotationLinks(mapId, created.id)),
       201,
     );
-  } catch (e: any) {
-    if (e.code === 'PRECONDITION_FAILED' || e.message?.includes('Maximum')) {
-      return toErrorResponse('LIMIT_EXCEEDED', 'Annotation limit reached for this map');
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'code' in e) {
+      const code = (e as { code: string }).code;
+      const message = e instanceof Error ? e.message : '';
+      if (code === 'PRECONDITION_FAILED' || message.includes('Maximum')) {
+        return toErrorResponse('LIMIT_EXCEEDED', 'Annotation limit reached for this map');
+      }
+      if (code === 'NOT_FOUND' || code === '23503' || message.includes('foreign key') || message.includes('not found') || message.includes('violates')) {
+        return toErrorResponse('VALIDATION_ERROR', 'Invalid parentId: referenced annotation does not exist');
+      }
     }
-    // FK violation (invalid parentId) or NOT_FOUND from service
-    if (e.code === 'NOT_FOUND' || e.code === '23503' || e.message?.includes('foreign key') || e.message?.includes('not found') || e.message?.includes('violates')) {
-      return toErrorResponse('VALIDATION_ERROR', 'Invalid parentId: referenced annotation does not exist');
+    if (e instanceof Error) {
+      if (e.message.includes('Maximum')) {
+        return toErrorResponse('LIMIT_EXCEEDED', 'Annotation limit reached for this map');
+      }
+      if (e.message.includes('foreign key') || e.message.includes('not found') || e.message.includes('violates')) {
+        return toErrorResponse('VALIDATION_ERROR', 'Invalid parentId: referenced annotation does not exist');
+      }
     }
     throw e;
   }

@@ -27,7 +27,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
     ? sql`AND (created_at, id) > (${cursor.createdAt}, ${cursor.id}::uuid)`
     : sql``;
 
-  const rows = await typedExecute<any>(sql`
+  const rows = await typedExecute<Record<string, unknown>>(sql`
     SELECT id, map_id, user_id, author_name, body, resolved, created_at, updated_at
     FROM comments
     WHERE map_id = ${mapId}::uuid ${cursorClause}
@@ -67,8 +67,8 @@ export const POST: RequestHandler = async ({ request, url, params }) => {
   const { mapId } = params;
   try { await requireMapAccess(auth.userId, mapId, 'commenter'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
 
-  let body: any;
-  try { body = stripNullBytes(await request.json()); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
+  let body: Record<string, unknown>;
+  try { body = stripNullBytes(await request.json()) as Record<string, unknown>; } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
 
   if (!body.body || typeof body.body !== 'string') {
     return toErrorResponse('VALIDATION_ERROR', 'body is required and must be a string');
@@ -86,8 +86,12 @@ export const POST: RequestHandler = async ({ request, url, params }) => {
     })
     .returning();
 
+  if (!created) {
+    return toErrorResponse('VALIDATION_ERROR', 'Failed to create comment');
+  }
+
   return jsonResponse(
-    envelope(toComment(created!), {}, commentLinks(mapId, created!.id)),
+    envelope(toComment(created), {}, commentLinks(mapId, created.id)),
     201,
   );
 };

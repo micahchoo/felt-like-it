@@ -26,7 +26,7 @@ export const GET: RequestHandler = async ({ request, url, params }) => {
     }
   }
 
-  const [row] = await typedExecute<any>(sql`
+  const [row] = await typedExecute<Record<string, unknown>>(sql`
     SELECT id, title, description, viewport, basemap, created_at, updated_at
     FROM maps WHERE id = ${mapId}::uuid
   `);
