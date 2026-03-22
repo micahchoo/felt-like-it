@@ -156,3 +156,14 @@ jobs:
           tags: |
             ghcr.io/micahchoo/felt-like-it/worker:${{ steps.tag.outputs.sha }}
             ghcr.io/micahchoo/felt-like-it/worker:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Trigger Portainer stack redeploy
+        run: |
+          curl -sf -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}" \
+            || echo "::warning::Portainer webhook failed — redeploy manually"
