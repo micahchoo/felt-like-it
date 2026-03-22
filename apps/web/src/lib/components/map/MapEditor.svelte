@@ -835,7 +835,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
                    : 'text-on-surface-variant hover:text-on-surface'}"
           onclick={() => { analysisTab = 'process'; }}
         >
-          Process
+          Spatial Tools
         </button>
       </div>
 
@@ -877,7 +877,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     <SidePanel
       sections={[
         { id: 'annotations', label: 'Annotations', icon: 'M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z', count: annotationCount + commentCount, helpText: 'Add notes, comments, and observations to specific places on the map. Pin annotations to points, draw regions, or attach them to existing features.', content: annotationsContent },
-        { id: 'analysis', label: 'Analysis', icon: 'M.5 14.5a.5.5 0 0 1-.354-.854l13-13a.5.5 0 0 1 .708.708l-13 13A.5.5 0 0 1 .5 14.5zM11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM8 3.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM5 .5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1A.5.5 0 0 1 5 .5z', helpText: 'Measure distances and areas by drawing on the map, or run spatial operations like buffer and intersect to create new layers from existing data.', content: analysisContent },
+        { id: 'analysis', label: 'Measure & Tools', icon: 'M.5 14.5a.5.5 0 0 1-.354-.854l13-13a.5.5 0 0 1 .708.708l-13 13A.5.5 0 0 1 .5 14.5zM11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM8 3.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zM5 .5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1A.5.5 0 0 1 5 .5z', helpText: 'Measure distances and areas by drawing on the map, or run spatial operations to create new layers from existing data.', content: analysisContent },
         { id: 'activity', label: 'Activity', icon: 'M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm14.5 5.5h-13v1h13v-1zM2 4.5h12v1H2v-1zm0 4h8v1H2v-1z', count: eventCount, helpText: 'A timeline of all changes to this map — imports, edits, annotations, and viewport saves. Useful for tracking who did what and when.', content: activityContent },
       ]}
       {activeSection}

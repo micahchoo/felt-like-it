@@ -999,7 +999,7 @@
             Longitude
             {#if gpsExtracted && formType === 'image'}
               <span class="text-[10px] text-green-400 font-medium">EXIF</span>
-            {:else if formLng !== 0}
+            {:else}
               <span class="text-[10px] text-on-surface-variant/50 ml-1">(from map center)</span>
             {/if}
           </label>
@@ -1018,7 +1018,7 @@
             Latitude
             {#if gpsExtracted && formType === 'image'}
               <span class="text-[10px] text-green-400 font-medium">EXIF</span>
-            {:else if formLat !== 0}
+            {:else}
               <span class="text-[10px] text-on-surface-variant/50 ml-1">(from map center)</span>
             {/if}
           </label>

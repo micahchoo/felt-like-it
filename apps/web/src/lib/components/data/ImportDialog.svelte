@@ -212,7 +212,7 @@
 
         <div class="flex items-center gap-1.5">
           <Spinner size="sm" />
-          <p class="text-xs text-on-surface-variant">Processing your data…</p>
+          <p class="text-xs text-on-surface-variant">Importing your data…</p>
         </div>
       </div>
     </div>
