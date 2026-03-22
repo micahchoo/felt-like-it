@@ -10,9 +10,10 @@ vi.mock('$lib/server/db/index.js', () => ({
     update:  vi.fn(),
     delete:  vi.fn(),
     execute: vi.fn(),
+    transaction: vi.fn(),
   },
   maps:             { id: {}, userId: {} },
-  layers:           { id: {}, mapId: {}, zIndex: {}, style: {}, name: {}, type: {}, visible: {}, sourceFileName: {}, createdAt: {}, updatedAt: {} },
+  layers:           { id: {}, mapId: {}, zIndex: {}, style: {}, name: {}, type: {}, visible: {}, sourceFileName: {}, createdAt: {}, updatedAt: {}, version: {} },
   mapCollaborators: { mapId: {}, userId: {}, role: {} },
   users:            {},
 }));
@@ -185,36 +186,103 @@ describe('layers.delete', () => {
 describe('layers.reorder', () => {
   beforeEach(() => vi.resetAllMocks());
 
-  it('reorders layers and returns { reordered: true }', async () => {
-    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([MOCK_MAP]));
-
-    // Track z-index values passed to each set() call
-    const setArgs: unknown[] = [];
-    vi.mocked(db.update).mockImplementation(() => {
-      const c: Record<string, unknown> = {
-        then: (res: (v: unknown[]) => unknown, rej: (e: unknown) => unknown) =>
-          Promise.resolve([]).then(res, rej),
+  it('reorders layers within a transaction', async () => {
+    vi.mocked(db.select).mockReturnValue(drizzleChain([MOCK_MAP]));
+    vi.mocked(db.transaction).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        update: vi.fn().mockReturnValue(drizzleChain([{ id: LAYER_ID, version: 2 }])),
       };
-      for (const m of ['from', 'where', 'orderBy']) {
-        c[m] = vi.fn(() => c);
-      }
-      c['set'] = vi.fn((arg: unknown) => { setArgs.push(arg); return c; });
-      return c as unknown as ReturnType<typeof db.update>;
+      return fn(tx);
     });
 
-    const result = await makeCaller().reorder({ mapId: MAP_ID, order: [LAYER_ID, LAYER_ID2] });
-    expect(result).toEqual({ reordered: true });
-    // Should call db.update once per layer in the order array
-    expect(db.update).toHaveBeenCalledTimes(2);
-    // Verify sequential z-indices assigned in order: first layer gets 0, second gets 1
-    expect(setArgs).toEqual([{ zIndex: 0 }, { zIndex: 1 }]);
+    const result = await makeCaller().reorder({
+      mapId: MAP_ID,
+      order: [
+        { id: LAYER_ID, version: 1 },
+        { id: LAYER_ID2, version: 1 },
+      ],
+    });
+    expect(result).toEqual({ success: true });
+    expect(db.transaction).toHaveBeenCalled();
   });
 
   it('throws NOT_FOUND when map is not owned by caller', async () => {
     vi.mocked(db.select).mockReturnValueOnce(drizzleChain([]));
 
-    await expect(makeCaller().reorder({ mapId: MAP_ID, order: [] })).rejects.toMatchObject({
+    await expect(makeCaller().reorder({
+      mapId: MAP_ID,
+      order: [{ id: LAYER_ID, version: 1 }],
+    })).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
+  });
+});
+
+describe('layers.update optimistic concurrency', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('throws CONFLICT when version does not match', async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(drizzleChain([{ id: LAYER_ID, mapId: MAP_ID }]))
+      .mockReturnValueOnce(drizzleChain([MOCK_MAP]));
+    vi.mocked(db.update).mockReturnValue(drizzleChain([]));
+
+    await expect(
+      makeCaller().update({ id: LAYER_ID, name: 'Renamed', version: 1 })
+    ).rejects.toThrow(/modified/i);
+  });
+
+  it('skips version check when version is omitted', async () => {
+    const updated = { id: LAYER_ID, name: 'Renamed', version: 2 };
+    vi.mocked(db.select)
+      .mockReturnValueOnce(drizzleChain([{ id: LAYER_ID, mapId: MAP_ID }]))
+      .mockReturnValueOnce(drizzleChain([MOCK_MAP]));
+    vi.mocked(db.update).mockReturnValue(drizzleChain([updated]));
+
+    const result = await makeCaller().update({ id: LAYER_ID, name: 'Renamed' });
+    expect(result.version).toBe(2);
+  });
+
+  it('rejects version: 0 via Zod validation', async () => {
+    await expect(
+      makeCaller().update({ id: LAYER_ID, name: 'X', version: 0 })
+    ).rejects.toThrow();
+  });
+});
+
+describe('layers.reorder optimistic concurrency', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('reorders layers within a transaction', async () => {
+    vi.mocked(db.select).mockReturnValue(drizzleChain([MOCK_MAP]));
+    vi.mocked(db.transaction).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        update: vi.fn().mockReturnValue(drizzleChain([{ id: LAYER_ID, version: 2 }])),
+      };
+      return fn(tx);
+    });
+
+    await makeCaller().reorder({
+      mapId: MAP_ID,
+      order: [{ id: LAYER_ID, version: 1 }, { id: LAYER_ID2, version: 1 }],
+    });
+    expect(db.transaction).toHaveBeenCalled();
+  });
+
+  it('throws CONFLICT if any layer has stale version during reorder', async () => {
+    vi.mocked(db.select).mockReturnValue(drizzleChain([MOCK_MAP]));
+    vi.mocked(db.transaction).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        update: vi.fn().mockReturnValue(drizzleChain([])),
+      };
+      return fn(tx);
+    });
+
+    await expect(
+      makeCaller().reorder({
+        mapId: MAP_ID,
+        order: [{ id: LAYER_ID, version: 99 }],
+      })
+    ).rejects.toThrow(/reload/i);
   });
 });
