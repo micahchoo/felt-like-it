@@ -9,6 +9,7 @@
 	import StorageStats from '$lib/components/admin/StorageStats.svelte';
 	import ImportJobMonitor from '$lib/components/admin/ImportJobMonitor.svelte';
 	import Shield from 'lucide-svelte/icons/shield';
+	import { fade } from 'svelte/transition';
 
 	interface Props {
 		data: AdminData;
@@ -156,20 +157,24 @@
 				</div>
 
 				<!-- Tab content -->
-				<div class="bg-surface-container rounded-xl border border-white/5 overflow-hidden transition-opacity duration-150">
-					{#if activeTab === 'users'}
-						<UserList
-							users={userListRows}
-							ondisable={(id) => actions.onDisableUser(id)}
-							onenable={(id) => actions.onEnableUser(id)}
-						/>
-					{:else if activeTab === 'audit'}
-						<AuditLogViewer entries={auditEntries} />
-					{:else if activeTab === 'storage'}
-						<StorageStats stats={storageProps} />
-					{:else if activeTab === 'jobs'}
-						<ImportJobMonitor jobs={importJobRows} />
-					{/if}
+				<div class="bg-surface-container rounded-xl border border-white/5 overflow-hidden">
+					{#key activeTab}
+						<div in:fade={{ duration: 150 }}>
+							{#if activeTab === 'users'}
+								<UserList
+									users={userListRows}
+									ondisable={(id) => actions.onDisableUser(id)}
+									onenable={(id) => actions.onEnableUser(id)}
+								/>
+							{:else if activeTab === 'audit'}
+								<AuditLogViewer entries={auditEntries} />
+							{:else if activeTab === 'storage'}
+								<StorageStats stats={storageProps} />
+							{:else if activeTab === 'jobs'}
+								<ImportJobMonitor jobs={importJobRows} />
+							{/if}
+						</div>
+					{/key}
 				</div>
 			</div>
 		{/if}
