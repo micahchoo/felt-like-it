@@ -13,6 +13,7 @@ domains:
   - svelte
   - ux
   - ui
+  - data
 governance:
   max_entries: 100
   warn_entries: 150
