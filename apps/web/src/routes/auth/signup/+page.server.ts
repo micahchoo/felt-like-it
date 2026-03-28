@@ -44,10 +44,18 @@ export const actions: Actions = {
 
     const hashedPassword = await hashPassword(password);
 
-    const [user] = await db
-      .insert(users)
-      .values({ email, hashedPassword, name })
-      .returning({ id: users.id });
+    let user;
+    try {
+      [user] = await db
+        .insert(users)
+        .values({ email, hashedPassword, name })
+        .returning({ id: users.id });
+    } catch (err: unknown) {
+      if (err instanceof Error && 'code' in err && (err as { code: string }).code === '23505') {
+        return fail(400, { field: 'email', message: 'An account with this email already exists.' });
+      }
+      throw err;
+    }
 
     if (!user) {
       return fail(500, { field: '', message: 'Failed to create account. Please try again.' });

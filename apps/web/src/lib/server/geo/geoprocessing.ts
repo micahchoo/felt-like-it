@@ -26,6 +26,9 @@ function assertNever(x: never): never {
  * Caller is responsible for creating the output layer row before calling this.
  */
 export async function runGeoprocessing(op: GeoprocessingOp, newLayerId: string): Promise<void> {
+  // Guard against unbounded PostGIS operations on large datasets
+  await db.execute(sql`SET LOCAL statement_timeout = '30s'`);
+
   switch (op.type) {
     case 'buffer':
       await runBuffer(op.layerId, newLayerId, op.distanceKm * 1000);

@@ -1,25 +1,60 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, desc, lt, sql } from 'drizzle-orm';
 import { router, protectedProcedure, publicProcedure } from '../init.js';
 import { db, comments, shares } from '../../db/index.js';
 import { requireMapAccess, requireMapOwnership } from '../../geo/access.js';
 
+/** Shared pagination fields — optional so callers without them get the old flat-array behavior. */
+const paginationInput = {
+  limit: z.number().int().min(1).max(100).optional(),
+  cursor: z.string().uuid().optional(),
+};
+
 export const commentsRouter = router({
   /**
-   * Return all comments for a map in chronological order (oldest first).
+   * Return comments for a map in chronological order (oldest first).
+   * When `limit` is provided, returns a paginated response with `nextCursor`.
+   * When omitted, returns the flat array (backward-compatible).
    * Viewer+ access required.
    */
   list: protectedProcedure
-    .input(z.object({ mapId: z.string().uuid() }))
+    .input(z.object({ mapId: z.string().uuid(), ...paginationInput }))
     .query(async ({ ctx, input }) => {
       await requireMapAccess(ctx.user.id, input.mapId, 'viewer');
 
-      return db
+      if (input.limit == null) {
+        // Backward-compatible: return flat array.
+        return db
+          .select()
+          .from(comments)
+          .where(eq(comments.mapId, input.mapId))
+          .orderBy(asc(comments.createdAt));
+      }
+
+      const conditions = [eq(comments.mapId, input.mapId)];
+      if (input.cursor) {
+        conditions.push(
+          lt(
+            comments.createdAt,
+            sql`(SELECT ${comments.createdAt} FROM ${comments} WHERE ${comments.id} = ${input.cursor})`,
+          ),
+        );
+      }
+
+      const rows = await db
         .select()
         .from(comments)
-        .where(eq(comments.mapId, input.mapId))
-        .orderBy(asc(comments.createdAt));
+        .where(and(...conditions))
+        .orderBy(desc(comments.createdAt))
+        .limit(input.limit + 1);
+
+      const hasMore = rows.length > input.limit;
+      const items = hasMore ? rows.slice(0, input.limit) : rows;
+      return {
+        items,
+        nextCursor: hasMore ? items[items.length - 1]!.id : undefined,
+      };
     }),
 
   /**
@@ -107,11 +142,13 @@ export const commentsRouter = router({
     }),
 
   /**
-   * List all comments for a shared map.
+   * List comments for a shared map.
+   * When `limit` is provided, returns a paginated response with `nextCursor`.
+   * When omitted, returns the flat array (backward-compatible).
    * Public — no authentication required; validated via share token.
    */
   listForShare: publicProcedure
-    .input(z.object({ shareToken: z.string().min(1).max(255) }))
+    .input(z.object({ shareToken: z.string().min(1).max(255), ...paginationInput }))
     .query(async ({ input }) => {
       const [share] = await db
         .select({ mapId: shares.mapId })
@@ -122,11 +159,38 @@ export const commentsRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Share link not found.' });
       }
 
-      return db
+      if (input.limit == null) {
+        // Backward-compatible: return flat array.
+        return db
+          .select()
+          .from(comments)
+          .where(eq(comments.mapId, share.mapId))
+          .orderBy(asc(comments.createdAt));
+      }
+
+      const conditions = [eq(comments.mapId, share.mapId)];
+      if (input.cursor) {
+        conditions.push(
+          lt(
+            comments.createdAt,
+            sql`(SELECT ${comments.createdAt} FROM ${comments} WHERE ${comments.id} = ${input.cursor})`,
+          ),
+        );
+      }
+
+      const rows = await db
         .select()
         .from(comments)
-        .where(eq(comments.mapId, share.mapId))
-        .orderBy(asc(comments.createdAt));
+        .where(and(...conditions))
+        .orderBy(desc(comments.createdAt))
+        .limit(input.limit + 1);
+
+      const hasMore = rows.length > input.limit;
+      const items = hasMore ? rows.slice(0, input.limit) : rows;
+      return {
+        items,
+        nextCursor: hasMore ? items[items.length - 1]!.id : undefined,
+      };
     }),
 
   /**

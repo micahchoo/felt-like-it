@@ -93,6 +93,22 @@ async function processImportJob(job: Job<ImportJobPayload>): Promise<void> {
 
   logger.info({ jobId, fileName }, 'processing job');
 
+  // Clean up partial state from previous failed attempt (BullMQ retry)
+  const { rows: existingRows } = await pool.query<{ layer_id: string }>(
+    `SELECT layer_id FROM import_jobs WHERE id = $1 AND layer_id IS NOT NULL`,
+    [jobId]
+  );
+  if (existingRows[0]?.layer_id) {
+    const staleLayerId = existingRows[0].layer_id;
+    logger.info({ jobId, staleLayerId }, 'cleaning up partial layer from previous attempt');
+    await pool.query(`DELETE FROM features WHERE layer_id = $1`, [staleLayerId]);
+    await pool.query(`DELETE FROM layers WHERE id = $1`, [staleLayerId]);
+    await pool.query(
+      `UPDATE import_jobs SET layer_id = NULL WHERE id = $1`,
+      [jobId]
+    );
+  }
+
   await updateJobStatus(jobId, 'processing', 5);
 
   const ext = extname(fileName).toLowerCase();
