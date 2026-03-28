@@ -20,6 +20,22 @@ export const geoprocessingRouter = router({
         mapId: z.string().uuid(),
         op: GeoprocessingOpSchema,
         outputLayerName: z.string().min(1).max(255).trim(),
+      }).superRefine((data, ctx) => {
+        // Cross-field invariant: aggregate sum/avg require a non-empty `field`.
+        // GeoprocessingOpSchema uses the base schema (not the refined export) so that
+        // z.discriminatedUnion can inspect `.shape`. This superRefine is the single
+        // authoritative enforcement point for that constraint.
+        if (
+          data.op.type === 'aggregate' &&
+          data.op.aggregation !== 'count' &&
+          !data.op.field
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'field is required for sum and avg aggregations.',
+            path: ['op', 'field'],
+          });
+        }
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -43,20 +59,7 @@ export const geoprocessingRouter = router({
         })
       );
 
-      // 3 — Cross-field validation that Zod discriminated union can't enforce inline:
-      //     aggregate sum/avg require a non-empty `field`.
-      if (
-        input.op.type === 'aggregate' &&
-        input.op.aggregation !== 'count' &&
-        !input.op.field
-      ) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'field is required for sum and avg aggregations.',
-        });
-      }
-
-      // 4 — Determine z_index for output layer (next after current max)
+      // 3 — Determine z_index for output layer (next after current max)
       const existingLayers = await db
         .select({ zIndex: layers.zIndex })
         .from(layers)
@@ -64,7 +67,7 @@ export const geoprocessingRouter = router({
 
       const maxZ = existingLayers.reduce((max, l) => Math.max(max, l.zIndex), -1);
 
-      // 5 — Create the output layer
+      // 4 — Create the output layer
       const [newLayer] = await db
         .insert(layers)
         .values({
@@ -83,7 +86,7 @@ export const geoprocessingRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create output layer.' });
       }
 
-      // 6 — Run the PostGIS operation, writing into the new layer
+      // 5 — Run the PostGIS operation, writing into the new layer
       try {
         await runGeoprocessing(input.op, newLayer.id);
       } catch (err) {

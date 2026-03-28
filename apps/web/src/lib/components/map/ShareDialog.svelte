@@ -150,7 +150,7 @@
       await trpc.collaborators.invite.mutate({ mapId, email, role: inviteRole });
       inviteEmail = '';
       await loadCollaborators();
-      toastStore.success('Invitation sent.');
+      toastStore.success('Collaborator added.');
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message;
       collabError = msg ?? 'Failed to invite collaborator.';

@@ -45,6 +45,13 @@
     onSuccess: (_data: { upsertedIds: string[] }, variables: { layerId: string }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
     },
+    onError: (_err: unknown, variables: { layerId: string }, _context: unknown) => {
+      // Clear any hot features that may have been optimistically added for this layer.
+      // saveFeature() only adds to hotOverlay after a successful await, so this is
+      // defensive coverage for any call-site that doesn't use a try/catch wrapper.
+      hotOverlay.clearHotFeatures(variables.layerId);
+      toastStore.error('Failed to save feature. Please try again.');
+    },
   }));
 
   const featureDeleteMutation = createMutation(() => ({
@@ -52,6 +59,11 @@
       trpc.features.delete.mutate(input)) as any,
     onSuccess: (_data: unknown, variables: { layerId: string }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
+    },
+    onError: (_err: unknown, _variables: unknown, _context: unknown) => {
+      // The feature was NOT deleted — it still exists in the DB.
+      // No hotOverlay cleanup needed; notify the user so they can retry.
+      toastStore.error('Failed to delete feature. Please try again.');
     },
   }));
 

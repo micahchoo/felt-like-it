@@ -165,10 +165,10 @@ async function runIntersect(
       ST_Intersection(a.geometry, b.geometry),
       a.properties
     FROM features a
-    CROSS JOIN features b
-    WHERE a.layer_id = ${layerIdA}::uuid
-      AND b.layer_id = ${layerIdB}::uuid
+    JOIN features b
+      ON b.layer_id = ${layerIdB}::uuid
       AND ST_Intersects(a.geometry, b.geometry)
+    WHERE a.layer_id = ${layerIdA}::uuid
       AND NOT ST_IsEmpty(ST_Intersection(a.geometry, b.geometry))
   `);
 }
@@ -195,11 +195,11 @@ async function runClip(
       ST_Intersection(a.geometry, mask.geom),
       a.properties
     FROM features a
-    CROSS JOIN (
+    JOIN (
       SELECT ST_Union(geometry) AS geom FROM features WHERE layer_id = ${layerIdB}::uuid
     ) mask
+      ON ST_Intersects(a.geometry, mask.geom)
     WHERE a.layer_id = ${layerIdA}::uuid
-      AND ST_Intersects(a.geometry, mask.geom)
       AND NOT ST_IsEmpty(ST_Intersection(a.geometry, mask.geom))
   `);
 }

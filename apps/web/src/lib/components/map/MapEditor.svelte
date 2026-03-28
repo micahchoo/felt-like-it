@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
-  import { effectEnter, effectExit, mutation } from '$lib/debug/effect-tracker.js';
+  import { effectEnter, effectExit } from '$lib/debug/effect-tracker.js';
   import { trpc } from '$lib/utils/trpc.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { mapStore } from '$lib/stores/map.svelte.js';
@@ -11,8 +10,7 @@
   import MapCanvas from './MapCanvas.svelte';
   import LayerPanel from './LayerPanel.svelte';
   import BasemapPicker from './BasemapPicker.svelte';
-  import type { Layer, GeoJSONFeature, LayerStyle } from '@felt-like-it/shared-types';
-import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
+  import type { Layer, LayerStyle } from '@felt-like-it/shared-types';
   import DataTable from '$lib/components/data/DataTable.svelte';
   import FilterPanel from '$lib/components/data/FilterPanel.svelte';
   import ImportDialog from '$lib/components/data/ImportDialog.svelte';
@@ -34,32 +32,22 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   import { measureLine, measurePolygon } from '@felt-like-it/geo-engine';
   import MeasurementPanel from './MeasurementPanel.svelte';
   import DrawActionRow from './DrawActionRow.svelte';
+  import StatusBar from './StatusBar.svelte';
+  import { useDialogVisibility } from './useDialogVisibility.svelte.js';
+  import { useLayerDataManager } from './useLayerDataManager.svelte.js';
+  import { useInteractionBridge } from './useInteractionBridge.svelte.js';
+  import { useKeyboardShortcuts } from './useKeyboardShortcuts.svelte.js';
+  import { useViewportSave } from './useViewportSave.svelte.js';
   import type { Geometry } from 'geojson';
   import { PUBLIC_MARTIN_URL } from '$env/static/public';
   import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { queryKeys } from '$lib/utils/query-keys.js';
   import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
-  import { type InteractionState, type SelectedFeature, type PickedFeatureRef, interactionModes } from '$lib/stores/interaction-modes.svelte.js';
+  import { interactionModes } from '$lib/stores/interaction-modes.svelte.js';
 
   function isLargeLayer(layer: Layer): boolean {
     return PUBLIC_MARTIN_URL.length > 0 && (layer.featureCount ?? 0) > VECTOR_TILE_THRESHOLD;
-  }
-
-  /**
-   * TYPE_DEBT: features.list returns geometry as Record<string, unknown> from raw SQL;
-   * the actual runtime shape is always a valid GeoJSON FeatureCollection. This guard
-   * validates the structural contract so we can narrow without a double cast.
-   */
-  function isFeatureCollection(
-    data: unknown
-  ): data is { type: 'FeatureCollection'; features: GeoJSONFeature[] } {
-    return (
-      typeof data === 'object' &&
-      data !== null &&
-      (data as Record<string, unknown>)['type'] === 'FeatureCollection' &&
-      Array.isArray((data as Record<string, unknown>)['features'])
-    );
   }
 
   interface Props {
@@ -120,36 +108,33 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   });
 
   // ── Viewport persistence ──────────────────────────────────────────────────
-  // Save viewport to localStorage on moveend so the user returns to the same
-  // position after navigating away and back. Fires for all maps regardless of
-  // layer type (the large-layer moveend handler is separate and conditional).
-  $effect(() => {
-    const map = mapStore.mapInstance;
-    if (!map) return;
-
-    function persistViewport() {
-      mapStore.saveViewportLocally(mapId);
-    }
-
-    map.on('moveend', persistViewport);
-    return () => {
-      map.off('moveend', persistViewport);
-    };
+  useViewportSave({
+    mapId,
+    getMapInstance: () => mapStore.mapInstance ?? undefined,
+    saveViewportLocally: (id) => mapStore.saveViewportLocally(id),
   });
 
-  // GeoJSON data cache per layer
-  let layerData = $state<Record<string, { type: 'FeatureCollection'; features: GeoJSONFeature[] }>>({});
-  const loadGeneration: Record<string, number> = {};
-  const loadingLayers = new Set<string>();
+  // Layer data management (loading, caching, init)
+  const layerDataManager = useLayerDataManager({
+    getInitialLayers: () => initialLayers,
+    queryClient: mapQueryClient,
+    queryKeysFn: (layerId) => queryKeys.features.list({ layerId }),
+    fetchLayerFn: (layerId) => trpc.features.list.query({ layerId }),
+    isLargeLayer,
+    getMapInstance: () => mapStore.mapInstance ?? undefined,
+    layersStore,
+    onError: (msg) => toastStore.error(msg),
+  });
+  const { loadLayerData, handleLayerChange } = layerDataManager;
+  // Re-export layerData as a derived alias for template access
+  const layerData = $derived(layerDataManager.layerData);
   let showDataTable = $state(false);
   let activePanelIcon = $state<'layers' | 'processing' | 'tables' | 'export' | null>('layers');
   let cursorLat = $state<number | null>(null);
   let cursorLng = $state<number | null>(null);
   let currentZoom = $state(0);
   let showFilterPanel = $state(false);
-  let showImportDialog = $state(false);
-  let showExportDialog = $state(false);
-  let showShareDialog = $state(false);
+  const dialogs = useDialogVisibility();
   let measureResult = $state<MeasurementResult | null>(null);
   let savingViewport = $state(false);
 
@@ -192,89 +177,12 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
 
   let scrollToAnnotationFeatureId = $state<string | null>(null);
 
-  // Clean up stale modes when sidebar section changes
-  $effect(() => {
-    const section = activeSection; // track
-    effectEnter('ME:sectionCleanup', { section });
-    if (section !== 'annotations') {
-      const currentType = untrack(() => interactionState.type);
-      if (
-        currentType === 'drawRegion' ||
-        currentType === 'pickFeature' ||
-        currentType === 'pendingMeasurement'
-      ) {
-        transitionTo({ type: 'idle' });
-      }
-    }
-    effectExit('ME:sectionCleanup');
-  });
-
-  // Clean up when design mode toggles
-  $effect(() => {
-    effectEnter('ME:designModeCleanup', { designMode });
-    if (designMode) {
-      transitionTo({ type: 'idle' });
-      selectionStore.clearSelection();
-      selectionStore.setActiveTool('select');
-    }
-    effectExit('ME:designModeCleanup');
-  });
-
-  // Track selection → featureSelected
-  $effect(() => {
-    const feat = selectionStore.selectedFeature;
-    const lid = selectionStore.selectedLayerId;
-    effectEnter('ME:selectionToFeature', { featId: feat?.id, lid });
-    if (feat && lid) {
-      const geom = feat.geometry as Geometry | undefined;
-      const fid = resolveFeatureId(feat as any);
-      const currentType = untrack(() => interactionState.type);
-      if (geom && fid && (currentType === 'idle' || currentType === 'featureSelected')) {
-        transitionTo({ type: 'featureSelected', feature: { featureId: fid, layerId: lid, geometry: geom } });
-      }
-    } else {
-      const currentType = untrack(() => interactionState.type);
-      if (currentType === 'featureSelected') {
-        transitionTo({ type: 'idle' });
-      }
-    }
-    effectExit('ME:selectionToFeature');
-  });
-
-  // Dismiss featureSelected on drawing tool switch
-  $effect(() => {
-    const tool = selectionStore.activeTool;
-    effectEnter('ME:toolDismissFeature', { tool });
-    if (tool && tool !== 'select') {
-      const currentType = untrack(() => interactionState.type);
-      if (currentType === 'featureSelected') {
-        transitionTo({ type: 'idle' });
-      }
-      if (currentType === 'drawRegion' && tool !== 'polygon') {
-        transitionTo({ type: 'idle' });
-      }
-    }
-    effectExit('ME:toolDismissFeature');
-  });
-
-  // Feature pick capture
-  $effect(() => {
-    const feat = selectionStore.selectedFeature;
-    const lid = selectionStore.selectedLayerId;
-    effectEnter('ME:featurePickCapture', { featId: feat?.id, lid });
-    if (feat && lid) {
-      const current = untrack(() => interactionState);
-      if (current.type === 'pickFeature' && !current.picked) {
-        const fid = resolveFeatureId(feat as any);
-        if (fid) {
-          transitionTo({
-            type: 'pickFeature',
-            picked: { featureId: fid, layerId: lid },
-          });
-        }
-      }
-    }
-    effectExit('ME:featurePickCapture');
+  // Interaction bridge: 5 effects orchestrating interaction state machine
+  useInteractionBridge({
+    interactionModes,
+    selectionStore,
+    getActiveSection: () => activeSection,
+    getDesignMode: () => designMode,
   });
 
   // ── Annotation pin GeoJSON (derived from query cache) ──────────────────────
@@ -284,21 +192,6 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   // These derived values auto-update when any annotation mutation invalidates
   // the shared query cache — no manual refresh needed.
   const annotationGeo = createAnnotationGeoStore(() => annotationPinsQuery.data ?? []);
-
-  // Initialize layers
-  $effect(() => {
-    const layers = initialLayers;
-    effectEnter('ME:initLayers', { count: layers.length });
-    untrack(() => {
-      layersStore.set(layers);
-      for (const layer of layers) {
-        if (!isLargeLayer(layer)) {
-          loadLayerData(layer.id);
-        }
-      }
-    });
-    effectExit('ME:initLayers');
-  });
 
   // Viewport-based loading for large layers
   $effect(() => {
@@ -310,43 +203,6 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     return viewportStore.bindMap(map);
   });
 
-  async function loadLayerData(layerId: string) {
-    if (loadingLayers.has(layerId)) return;
-    loadingLayers.add(layerId);
-    const gen = (loadGeneration[layerId] = (loadGeneration[layerId] ?? 0) + 1);
-    try {
-      const fc = await trpc.features.list.query({ layerId });
-      if (gen !== loadGeneration[layerId]) return; // stale — newer load in progress
-      if (!isFeatureCollection(fc)) {
-        throw new Error(`Unexpected response shape from features.list for layer ${layerId}`);
-      }
-      layerData = { ...layerData, [layerId]: fc };
-
-      // Push data directly to the MapLibre source to bypass svelte-maplibre-gl's
-      // firstRun guard, which only sets data after the source is first registered.
-      const map = mapStore.mapInstance;
-      const src = map?.getSource(`source-${layerId}`);
-      if (src && 'setData' in src) {
-        (src as { setData: (_data: unknown) => void }).setData(fc);
-      }
-    } catch (err) {
-      if (gen !== loadGeneration[layerId]) return;
-      console.error('[loadLayerData] failed:', err);
-      toastStore.error(`Failed to load data for layer.`);
-    } finally {
-      loadingLayers.delete(layerId);
-    }
-  }
-
-  async function handleLayerChange() {
-    const activeLayer = layersStore.active;
-    if (!activeLayer) return;
-    if (isLargeLayer(activeLayer)) return; // vector tiles handle rendering
-    if (!layerData[activeLayer.id]) {
-      await loadLayerData(activeLayer.id);
-    }
-  }
-
   function logActivity(action: string, metadata?: Record<string, unknown>) {
     trpc.events.log.mutate({ mapId, action, metadata }).catch(() => undefined);
     activityRefreshTrigger++;
@@ -355,10 +211,11 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   async function handleFeatureDrawn(layerId: string, _feature: Record<string, unknown> & { id?: string | undefined }) {
     const drawnLayer = layersStore.all.find((l) => l.id === layerId);
     if (!drawnLayer || !isLargeLayer(drawnLayer)) {
-      // Invalidate the features query so the GeoJSON source refreshes with
-      // server data. For large layers, DrawingToolbar already added the feature
-      // to hotOverlay for immediate rendering via vector tiles + hot overlay.
-      mapQueryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId }) });
+      // loadLayerData now fetches via the TanStack Query cache (fetchQuery).
+      // DrawingToolbar's onSuccess already invalidated the cache entry, so
+      // fetchQuery will see it as stale and re-fetch fresh data from the server.
+      // No explicit invalidateQueries needed here — cache invalidation is the
+      // sole responsibility of the mutating component (DrawingToolbar).
       await loadLayerData(layerId);
     }
 
@@ -398,7 +255,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
   }
 
   async function handleImportComplete(layerId: string) {
-    showImportDialog = false;
+    dialogs.showImportDialog = false;
     layersStore.setActive(layerId);
     // Re-fetch layers to get updated featureCount, then load data if not large
     try {
@@ -416,50 +273,16 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     }
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (effectiveReadonly) return;
-
-    if (e.key === 'Escape') {
-      if (interactionState.type === 'drawRegion' || interactionState.type === 'pickFeature') {
-        transitionTo({ type: 'idle' });
-        return;
-      }
-    }
-
-    // Skip when focus is inside a text input
-    const tag = (e.target as HTMLElement)?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if ((e.target as HTMLElement)?.isContentEditable) return;
-
-    // Ctrl+\ — toggle design mode
-    if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
-      e.preventDefault();
-      designMode = !designMode;
-      return;
-    }
-
-    const mod = e.metaKey || e.ctrlKey;
-
-    if (mod && e.key.toLowerCase() === 'z') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        undoStore.redo();
-      } else {
-        undoStore.undo();
-      }
-      return;
-    }
-
-    // 1/2/3 — switch drawing tools (only in editing mode, no modifier keys, not in text inputs)
-    const tag2 = (e.target as HTMLElement)?.tagName;
-    if (!designMode && !mod && !e.shiftKey && !e.altKey && tag2 !== 'INPUT' && tag2 !== 'TEXTAREA' && !(e.target as HTMLElement)?.isContentEditable) {
-      switch (e.key) {
-        case '1': selectionStore.setActiveTool('select'); break;
-        case '2': selectionStore.setActiveTool('point'); break;
-        case '3': selectionStore.setActiveTool('polygon'); break;
-      }
-    }
-  }
+  // Keyboard shortcuts composable
+  const { handleKeydown } = useKeyboardShortcuts({
+    getEffectiveReadonly: () => effectiveReadonly,
+    getDesignMode: () => designMode,
+    getInteractionState: () => interactionState,
+    transitionTo,
+    undoStore,
+    selectionStore,
+    toggleDesignMode: () => { designMode = !designMode; },
+  });
 
   // Clear hot overlay features on component unmount
   $effect(() => {
@@ -527,7 +350,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
       </button>
       <button
         class="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-full text-on-surface-variant hover:bg-surface-high hover:text-on-surface"
-        onclick={() => { showExportDialog = true; }}
+        onclick={() => { dialogs.showExportDialog = true; }}
         title="Export"
       >
         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
@@ -571,7 +394,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
 
         {#if !designMode}
           <Tooltip content="Import — add data from files (GeoJSON, CSV, Shapefile, KML, GPX, GeoPackage)">
-            <Button variant="ghost" size="sm" onclick={() => (showImportDialog = true)}>
+            <Button variant="ghost" size="sm" onclick={() => (dialogs.showImportDialog = true)}>
               <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M.5 9.9a.5.5 0 01.5.5v2.5a1 1 0 001 1h12a1 1 0 001-1v-2.5a.5.5 0 011 0v2.5a2 2 0 01-2 2H2a2 2 0 01-2-2v-2.5a.5.5 0 01.5-.5z"/>
                 <path d="M7.646 1.146a.5.5 0 01.708 0l3 3a.5.5 0 01-.708.708L8.5 2.707V11.5a.5.5 0 01-1 0V2.707L5.354 4.854a.5.5 0 11-.708-.708l3-3z"/>
@@ -581,7 +404,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
           </Tooltip>
 
           <Tooltip content="Export — download layer data as GeoJSON, CSV, or other formats">
-            <Button variant="ghost" size="sm" onclick={() => (showExportDialog = true)}>
+            <Button variant="ghost" size="sm" onclick={() => (dialogs.showExportDialog = true)}>
               <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M.5 9.9a.5.5 0 01.5.5v2.5a1 1 0 001 1h12a1 1 0 001-1v-2.5a.5.5 0 011 0v2.5a2 2 0 01-2 2H2a2 2 0 01-2-2v-2.5a.5.5 0 01.5-.5z"/>
                 <path d="M7.646 11.854a.5.5 0 00.708 0l3-3a.5.5 0 00-.708-.708L8.5 10.293V1.5a.5.5 0 00-1 0v8.793L5.354 8.146a.5.5 0 10-.708.708l3 3z"/>
@@ -652,7 +475,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
             <Button
               variant="ghost"
               size="sm"
-              onclick={() => (showShareDialog = true)}
+              onclick={() => (dialogs.showShareDialog = true)}
             >
               <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M13.5 1a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM11 2.5a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zm-5.5 3a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM3 7a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zm9 4.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm-2.5 1.5a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0z"/>
@@ -743,22 +566,7 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
     </div>
 
     <!-- Status bar -->
-    <div class="flex items-center gap-4 px-3 py-1 bg-surface-lowest text-[10px] font-display uppercase tracking-wider text-on-surface-variant shrink-0 border-t border-surface-high">
-      {#if cursorLat !== null && cursorLng !== null}
-        <span>LAT {cursorLat.toFixed(4)}</span>
-        <span>LNG {cursorLng.toFixed(4)}</span>
-      {:else}
-        <span>LAT —</span>
-        <span>LNG —</span>
-      {/if}
-      <span class="text-on-surface-variant/50">|</span>
-      <span>CRS EPSG:4326</span>
-      <span>ZOOM {currentZoom.toFixed(1)}</span>
-      <span class="ml-auto flex items-center gap-1.5">
-        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 status-glow"></span>
-        CONNECTED
-      </span>
-    </div>
+    <StatusBar {cursorLat} {cursorLng} {currentZoom} />
 
     <!-- Data table + filter panel (collapsible bottom panel) -->
     {#if showDataTable && layersStore.active}
@@ -905,25 +713,25 @@ import { resolveFeatureId } from '$lib/utils/resolve-feature-id.js';
 </div>
 
 <!-- Dialogs -->
-{#if showImportDialog}
+{#if dialogs.showImportDialog}
   <ImportDialog
     {mapId}
-    bind:open={showImportDialog}
+    bind:open={dialogs.showImportDialog}
     onimported={handleImportComplete}
   />
 {/if}
 
-{#if showExportDialog}
+{#if dialogs.showExportDialog}
   <ExportDialog
     layers={layersStore.all}
-    bind:open={showExportDialog}
+    bind:open={dialogs.showExportDialog}
   />
 {/if}
 
 <ShareDialog
   {mapId}
-  bind:open={showShareDialog}
-  onclose={() => (showShareDialog = false)}
+  bind:open={dialogs.showShareDialog}
+  onclose={() => (dialogs.showShareDialog = false)}
   {isOwner}
   {...(userId !== undefined ? { userId } : {})}
 />
