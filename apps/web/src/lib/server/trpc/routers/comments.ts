@@ -4,6 +4,10 @@ import { eq, and, asc, desc, lt, sql } from 'drizzle-orm';
 import { router, protectedProcedure, publicProcedure } from '../init.js';
 import { db, comments, shares } from '../../db/index.js';
 import { requireMapAccess, requireMapOwnership } from '../../geo/access.js';
+import { createRateLimiter } from '../../rate-limit.js';
+
+/** 10 guest comments per share token per minute. */
+const guestCommentLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 10 });
 
 /** Shared pagination fields — optional so callers without them get the old flat-array behavior. */
 const paginationInput = {
@@ -207,6 +211,13 @@ export const commentsRouter = router({
       })
     )
     .mutation(async ({ input }) => {
+      if (!guestCommentLimiter.check(input.shareToken)) {
+        throw new TRPCError({
+          code: 'TOO_MANY_REQUESTS',
+          message: 'Too many comments. Please wait a moment before posting again.',
+        });
+      }
+
       const [share] = await db
         .select({ mapId: shares.mapId })
         .from(shares)

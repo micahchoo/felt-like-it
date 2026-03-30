@@ -11,7 +11,7 @@ import { Redis } from 'ioredis';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { sql } from 'drizzle-orm';
-import { extname } from 'path';
+import { extname, resolve } from 'path';
 import {
   parseGeoJSON,
   parseCSV,
@@ -20,7 +20,6 @@ import {
   parseKML,
   parseGPX,
   parseGeoPackage,
-  type ParsedFeature,
 } from '@felt-like-it/import-engine';
 import {
   detectLayerType,
@@ -30,7 +29,7 @@ import {
   geocodeBatch,
   type GeocodingOptions,
 } from '@felt-like-it/geo-engine';
-import type { ImportJobPayload } from '@felt-like-it/shared-types';
+import { ImportJobPayloadSchema, type ImportJobPayload } from '@felt-like-it/shared-types';
 import { logger } from './logger.js';
 
 // ─── Database connection ───────────────────────────────────────────────────────
@@ -49,10 +48,22 @@ const connection = new Redis(process.env['REDIS_URL'] ?? 'redis://localhost:6379
   enableReadyCheck: false,
 });
 
+// ─── Upload directory (must match the web app's UPLOAD_DIR) ───────────────────
+
+const UPLOAD_DIR = resolve(process.env['UPLOAD_DIR'] ?? '/tmp/felt-uploads');
+
 // ─── Job processor ────────────────────────────────────────────────────────────
 
 async function processImportJob(job: Job<ImportJobPayload>): Promise<void> {
-  const { jobId, mapId, layerName, filePath, fileName } = job.data;
+  const { jobId, mapId, layerName, filePath, fileName } = ImportJobPayloadSchema.parse(job.data);
+
+  // ── Path-traversal guard: reject paths outside the upload directory ────────
+  const resolvedPath = resolve(filePath);
+  if (!resolvedPath.startsWith(UPLOAD_DIR + '/')) {
+    throw new Error(
+      `Security: filePath "${filePath}" resolves outside UPLOAD_DIR ("${UPLOAD_DIR}"). Job rejected.`
+    );
+  }
 
   logger.info({ jobId, fileName }, 'processing job');
 

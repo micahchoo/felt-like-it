@@ -9,6 +9,7 @@ RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/geo-engine/package.json ./packages/geo-engine/
+COPY packages/import-engine/package.json ./packages/import-engine/
 COPY apps/web/package.json ./apps/web/
 COPY services/worker/package.json ./services/worker/
 
@@ -35,6 +36,7 @@ RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/geo-engine/package.json ./packages/geo-engine/
+COPY packages/import-engine/package.json ./packages/import-engine/
 COPY apps/web/package.json ./apps/web/
 COPY services/worker/package.json ./services/worker/
 
