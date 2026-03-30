@@ -87,7 +87,7 @@
   {#if activeFilters.length > 0}
     <ul class="flex flex-col gap-1">
       {#each activeFilters as filter, i (i)}
-        <li class="flex items-center gap-2 bg-surface-container-low border border-white/5 rounded px-2 py-1">
+        <li class="flex items-center gap-2 bg-surface-low border border-white/5 rounded px-2 py-1">
           <span class="font-mono text-primary/80">{filter.field}</span>
           <span class="text-on-surface-variant/70">{FILTER_OPERATOR_LABELS[filter.operator]}</span>
           <span class="flex-1 truncate text-amber-400/90 bg-amber-400/10 rounded px-1">{filter.value}</span>
@@ -113,7 +113,7 @@
       <!-- Field selector -->
       <select
         bind:value={newField}
-        class="flex-1 min-w-0 rounded bg-surface-container-low border border-white/5 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
+        class="flex-1 min-w-0 rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
       >
         {#each availableFields as field (field)}
           <option value={field}>{field}</option>
@@ -123,7 +123,7 @@
       <!-- Operator selector -->
       <select
         bind:value={newOperator}
-        class="w-24 rounded bg-surface-container-low border border-white/5 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
+        class="w-24 rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
       >
         {#each OPERATORS as op (op)}
           <option value={op}>{FILTER_OPERATOR_LABELS[op]}</option>
@@ -136,7 +136,7 @@
         bind:value={newValue}
         onkeydown={handleKeydown}
         placeholder="value"
-        class="w-28 rounded bg-surface-container-low border border-white/5 px-2 py-1 text-xs text-white placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+        class="w-28 rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-white placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
       />
 
       <button

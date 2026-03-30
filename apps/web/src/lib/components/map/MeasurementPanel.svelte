@@ -58,14 +58,14 @@
       <!-- Distance stat cards (2x2 grid, only 2 relevant) -->
       <div class="grid grid-cols-2 gap-2">
         <!-- Total Distance -->
-        <div class="col-span-2 rounded bg-surface-container-low border border-white/5 p-3">
+        <div class="col-span-2 rounded bg-surface-low border border-white/5 p-3">
           <span class="text-[10px] font-bold uppercase tracking-widest text-primary">Total Distance</span>
           <p class="text-3xl font-mono font-semibold text-on-surface tabular-nums leading-tight mt-1">
             {formatDistance(measureResult.distanceKm, distUnit)}
           </p>
         </div>
         <!-- Nodes / Segments -->
-        <div class="col-span-2 rounded bg-surface-container-low border border-white/5 p-3">
+        <div class="col-span-2 rounded bg-surface-low border border-white/5 p-3">
           <span class="text-[10px] font-bold uppercase tracking-widest text-primary">Nodes / Segments</span>
           <p class="text-3xl font-mono font-semibold text-on-surface tabular-nums leading-tight mt-1">
             {measureResult.vertexCount}
@@ -79,7 +79,7 @@
         {#each DISTANCE_UNITS as u (u.value)}
           <button
             type="button"
-            class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-all duration-150 {distUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-container-low border-white/5 text-on-surface-variant hover:border-white/20'}"
+            class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-all duration-150 {distUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-low border-white/5 text-on-surface-variant hover:border-white/20'}"
             onclick={() => { distUnit = u.value; }}
           >{u.label}</button>
         {/each}
@@ -88,21 +88,21 @@
       <!-- Area stat cards (2x2 grid) -->
       <div class="grid grid-cols-2 gap-2">
         <!-- Calculated Area -->
-        <div class="col-span-2 rounded bg-surface-container-low border border-white/5 p-3">
+        <div class="col-span-2 rounded bg-surface-low border border-white/5 p-3">
           <span class="text-[10px] font-bold uppercase tracking-widest text-primary">Calculated Area</span>
           <p class="text-3xl font-mono font-semibold text-on-surface tabular-nums leading-tight mt-1">
             {formatArea(measureResult.areaM2, areaUnit)}
           </p>
         </div>
         <!-- Perimeter -->
-        <div class="col-span-1 rounded bg-surface-container-low border border-white/5 p-3">
+        <div class="col-span-1 rounded bg-surface-low border border-white/5 p-3">
           <span class="text-[10px] font-bold uppercase tracking-widest text-primary">Perimeter</span>
           <p class="text-2xl font-mono font-semibold text-on-surface tabular-nums leading-tight mt-1">
             {formatDistance(measureResult.perimeterKm, periUnit)}
           </p>
         </div>
         <!-- Nodes / Segments -->
-        <div class="col-span-1 rounded bg-surface-container-low border border-white/5 p-3">
+        <div class="col-span-1 rounded bg-surface-low border border-white/5 p-3">
           <span class="text-[10px] font-bold uppercase tracking-widest text-primary">Nodes / Segs</span>
           <p class="text-2xl font-mono font-semibold text-on-surface tabular-nums leading-tight mt-1">
             {measureResult.vertexCount}
@@ -117,7 +117,7 @@
           {#each AREA_UNITS as u (u.value)}
             <button
               type="button"
-              class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-all duration-150 {areaUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-container-low border-white/5 text-on-surface-variant hover:border-white/20'}"
+              class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-all duration-150 {areaUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-low border-white/5 text-on-surface-variant hover:border-white/20'}"
               onclick={() => { areaUnit = u.value; }}
             >{u.label}</button>
           {/each}
@@ -127,7 +127,7 @@
           {#each DISTANCE_UNITS as u (u.value)}
             <button
               type="button"
-              class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-all duration-150 {periUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-container-low border-white/5 text-on-surface-variant hover:border-white/20'}"
+              class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border transition-all duration-150 {periUnit === u.value ? 'bg-primary/20 border-primary/50 text-primary' : 'bg-surface-low border-white/5 text-on-surface-variant hover:border-white/20'}"
               onclick={() => { periUnit = u.value; }}
             >{u.label}</button>
           {/each}
@@ -141,7 +141,7 @@
         <button
           type="button"
           onclick={() => { if (!window.confirm('Clear this measurement?')) return; onclear(); }}
-          class="flex-1 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded bg-surface-container-low border border-white/5 text-on-surface-variant hover:text-on-surface hover:border-white/20 transition-colors"
+          class="flex-1 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded bg-surface-low border border-white/5 text-on-surface-variant hover:text-on-surface hover:border-white/20 transition-colors"
         >
           Clear
         </button>

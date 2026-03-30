@@ -133,10 +133,10 @@
 									</thead>
 									<tbody>
 										{#each data.apiKeys as key (key.id)}
-											<tr class="hover:bg-surface-container-low transition-colors border-t border-white/5">
+											<tr class="hover:bg-surface-low transition-colors border-t border-white/5">
 												<td class="px-3 py-3 text-sm text-on-surface">{key.name}</td>
 												<td class="px-3 py-3 flex items-center gap-1.5">
-													<code class="font-mono text-xs text-primary bg-surface-container-low px-2 py-0.5 rounded">
+													<code class="font-mono text-xs text-primary bg-surface-low px-2 py-0.5 rounded">
 														{key.prefix}…
 													</code>
 													<button

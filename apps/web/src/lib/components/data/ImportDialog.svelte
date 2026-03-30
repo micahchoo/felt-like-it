@@ -187,7 +187,7 @@
       </div>
 
       <!-- Active job card -->
-      <div class="bg-surface-container-low rounded-lg border border-white/5 p-3 flex flex-col gap-2">
+      <div class="bg-surface-low rounded-lg border border-white/5 p-3 flex flex-col gap-2">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-semibold text-on-surface truncate flex-1">{selectedFile?.name}</span>
           <span class="text-[9px] font-bold uppercase tracking-wider text-primary bg-primary/10 border border-primary/20 rounded px-2 py-0.5">
@@ -251,7 +251,7 @@
     <!-- File selected -->
     <div class="flex flex-col gap-4">
       <!-- Selected file card -->
-      <div class="flex items-center gap-3 bg-surface-container-low rounded-lg border border-white/5 p-3">
+      <div class="flex items-center gap-3 bg-surface-low rounded-lg border border-white/5 p-3">
         <div class="flex items-center justify-center w-8 h-8 rounded bg-primary/10 border border-primary/20 flex-shrink-0">
           <svg class="w-4 h-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
@@ -278,7 +278,7 @@
           type="text"
           bind:value={layerName}
           placeholder="Layer name…"
-          class="rounded-lg bg-surface-container-low border border-white/5 px-3 py-2 text-xs text-on-surface placeholder-on-surface-variant/40 focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono"
+          class="rounded-lg bg-surface-low border border-white/5 px-3 py-2 text-xs text-on-surface placeholder-on-surface-variant/40 focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono"
         />
       </div>
     </div>

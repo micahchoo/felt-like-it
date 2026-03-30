@@ -43,7 +43,7 @@
 					placeholder="Your name"
 					bind:value={name}
 					autofocus
-					class="bg-surface-container-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
+					class="bg-surface-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
 				/>
 			</div>
 			<div class="flex flex-col gap-1.5">
@@ -53,7 +53,7 @@
 					type="email"
 					placeholder="you@example.com"
 					bind:value={email}
-					class="bg-surface-container-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
+					class="bg-surface-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
 				/>
 			</div>
 			<div class="flex flex-col gap-1.5">
@@ -64,7 +64,7 @@
 					placeholder="••••••••"
 					bind:value={password}
 					minlength="8"
-					class="bg-surface-container-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
+					class="bg-surface-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
 				/>
 				<p class="text-[10px] text-on-surface-variant/70">Must be at least 8 characters</p>
 			</div>
@@ -76,7 +76,7 @@
 					placeholder="••••••••"
 					bind:value={confirmPassword}
 					onblur={() => (confirmTouched = true)}
-					class="bg-surface-container-low border rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 w-full
+					class="bg-surface-low border rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 w-full
 						{passwordMismatch ? 'border-error focus:ring-error' : 'border-white/5 focus:ring-primary'}"
 				/>
 				{#if passwordMismatch}

@@ -89,7 +89,7 @@
 
   <!-- Coordinates stat pair -->
   {#if coords}
-    <div class="bg-surface-container-low border-t border-white/5 px-4 py-3 flex gap-4">
+    <div class="bg-surface-low border-t border-white/5 px-4 py-3 flex gap-4">
       <div class="flex-1 min-w-0">
         <div class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-0.5">Latitude</div>
         <div class="text-sm font-mono text-on-surface truncate">{coords.lat.toFixed(6)}</div>
@@ -103,7 +103,7 @@
 
   <!-- Properties -->
   {#if propEntries.length > 0}
-    <div class="bg-surface-container-low border-t border-white/5 px-4 py-3">
+    <div class="bg-surface-low border-t border-white/5 px-4 py-3">
       <dl class="space-y-1.5">
         {#each propEntries as [key, value] (key)}
           <div class="flex gap-2">

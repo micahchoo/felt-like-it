@@ -202,9 +202,9 @@
 
     {#if collabLoading}
       <div class="flex flex-col gap-2 mb-3">
-        <div class="animate-pulse bg-surface-container-low rounded-lg h-10"></div>
-        <div class="animate-pulse bg-surface-container-low rounded-lg h-10"></div>
-        <div class="animate-pulse bg-surface-container-low rounded-lg h-10"></div>
+        <div class="animate-pulse bg-surface-low rounded-lg h-10"></div>
+        <div class="animate-pulse bg-surface-low rounded-lg h-10"></div>
+        <div class="animate-pulse bg-surface-low rounded-lg h-10"></div>
       </div>
     {:else if collabError}
       <div class="text-red-400 text-xs mb-2">{collabError}</div>
@@ -217,7 +217,7 @@
         {#each collaborators as collab (collab.userId)}
           <li class="py-2.5 flex items-center gap-3">
             <!-- Avatar -->
-            <div class="w-7 h-7 rounded-full bg-surface-container-low border border-white/5 flex items-center justify-center shrink-0">
+            <div class="w-7 h-7 rounded-full bg-surface-low border border-white/5 flex items-center justify-center shrink-0">
               <span class="text-[10px] font-bold text-on-surface-variant uppercase">
                 {(collab.name || collab.email).charAt(0)}
               </span>
@@ -230,7 +230,7 @@
             {#if isOwner}
               <!-- Role dropdown (owner only) -->
               <select
-                class="text-[10px] font-bold uppercase tracking-wider bg-surface-container-low border border-white/5 rounded px-2 py-1 {roleColor(collab.role)} focus:outline-none focus:ring-1 focus:ring-primary"
+                class="text-[10px] font-bold uppercase tracking-wider bg-surface-low border border-white/5 rounded px-2 py-1 {roleColor(collab.role)} focus:outline-none focus:ring-1 focus:ring-primary"
                 value={collab.role}
                 title={collab.role === 'owner' ? 'Full control — can edit, share, and delete' : collab.role === 'editor' ? 'Can edit layers, features, and annotations' : collab.role === 'commenter' ? 'Can view and add comments' : 'Can view the map only'}
                 onchange={(e) => handleRoleChange(collab.userId, (e.target as HTMLSelectElement).value)}
@@ -264,11 +264,11 @@
             bind:value={inviteEmail}
             placeholder="user@example.com"
             type="email"
-            class="flex-1 rounded-lg bg-surface-container-low border border-white/5 px-3 py-2 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="flex-1 rounded-lg bg-surface-low border border-white/5 px-3 py-2 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <select
             bind:value={inviteRole}
-            class="rounded-lg bg-surface-container-low border border-white/5 px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+            class="rounded-lg bg-surface-low border border-white/5 px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
           >
             <option value="viewer">Viewer — can view</option>
             <option value="commenter">Commenter — can view & comment</option>
@@ -304,7 +304,7 @@
             type="text"
             readonly
             value={shareUrl}
-            class="flex-1 rounded-lg bg-surface-container-low border border-white/5 px-3 py-2 text-xs text-on-surface font-mono select-all focus:outline-none focus:ring-1 focus:ring-primary"
+            class="flex-1 rounded-lg bg-surface-low border border-white/5 px-3 py-2 text-xs text-on-surface font-mono select-all focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <button
             onclick={() => copyToClipboard(shareUrl, 'Share link', 'url')}
@@ -324,7 +324,7 @@
             type="text"
             readonly
             value={embedSnippet}
-            class="flex-1 rounded-lg bg-surface-container-low border border-white/5 px-3 py-2 text-xs text-on-surface font-mono select-all focus:outline-none focus:ring-1 focus:ring-primary"
+            class="flex-1 rounded-lg bg-surface-low border border-white/5 px-3 py-2 text-xs text-on-surface font-mono select-all focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <button
             onclick={() => copyToClipboard(embedSnippet, 'Embed code', 'embed')}

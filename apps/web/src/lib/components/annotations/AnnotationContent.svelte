@@ -144,7 +144,7 @@
         href={body.url}
         target="_blank"
         rel="noopener noreferrer"
-        class="block rounded border border-white/5 bg-surface-container-low px-3 py-2 hover:bg-surface-high transition-colors space-y-0.5"
+        class="block rounded border border-white/5 bg-surface-low px-3 py-2 hover:bg-surface-high transition-colors space-y-0.5"
       >
         {#if body.title}
           <p class="font-medium text-on-surface truncate text-sm">{body.title}</p>
@@ -159,7 +159,7 @@
 
     {:else if body.type === 'iiif'}
       <!-- IIIF manifest card: labelled badge + manifest link + navPlace summary -->
-      <div class="rounded border border-amber-400/30 bg-surface-container-low px-3 py-2 space-y-1.5">
+      <div class="rounded border border-amber-400/30 bg-surface-low px-3 py-2 space-y-1.5">
         <p class="text-[10px] font-bold text-amber-400 uppercase tracking-widest">IIIF Manifest</p>
         {#if body.label}
           <p class="font-medium text-on-surface text-sm">{body.label}</p>

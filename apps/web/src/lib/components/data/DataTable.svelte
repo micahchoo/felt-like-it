@@ -167,7 +167,7 @@
         type="search"
         bind:value={filterText}
         placeholder="Search…"
-        class="ml-auto w-44 rounded bg-surface-container-low border border-white/5 px-2 py-1 text-xs text-white placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+        class="ml-auto w-44 rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-white placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
       />
     {/if}
   </div>
@@ -175,7 +175,7 @@
   <!-- Table -->
   <div class="flex-1 overflow-auto scrollbar-thin">
     <table class="w-full text-xs border-collapse">
-      <thead class="sticky top-0 bg-surface-container-low z-10">
+      <thead class="sticky top-0 bg-surface-low z-10">
         <tr>
           {#each columns as col (col)}
             <th
@@ -251,7 +251,7 @@
     {#if mode === 'server'}
       <div class="flex items-center gap-2">
         <select
-          class="bg-surface-container-low border border-white/5 rounded px-1 py-0.5 text-xs text-on-surface"
+          class="bg-surface-low border border-white/5 rounded px-1 py-0.5 text-xs text-on-surface"
           value={serverPageSize}
           onchange={(e) => onPageSizeChange?.(Number((e.target as HTMLSelectElement).value))}
         >
@@ -260,13 +260,13 @@
           <option value={100}>100 / page</option>
         </select>
         <button
-          class="px-2 py-0.5 rounded bg-surface-container-low hover:bg-surface-high transition-colors disabled:opacity-40"
+          class="px-2 py-0.5 rounded bg-surface-low hover:bg-surface-high transition-colors disabled:opacity-40"
           disabled={serverPage <= 1}
           onclick={() => onPageChange?.(serverPage - 1)}
         >Prev</button>
         <span class="text-on-surface-variant/70">{serverPage} / {Math.max(1, Math.ceil(serverTotal / serverPageSize))}</span>
         <button
-          class="px-2 py-0.5 rounded bg-surface-container-low hover:bg-surface-high transition-colors disabled:opacity-40"
+          class="px-2 py-0.5 rounded bg-surface-low hover:bg-surface-high transition-colors disabled:opacity-40"
           disabled={serverPage * serverPageSize >= serverTotal}
           onclick={() => onPageChange?.(serverPage + 1)}
         >Next</button>

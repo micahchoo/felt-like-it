@@ -153,10 +153,6 @@ html {
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .status-glow { animation: none; }
-  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
-}
-
-@media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {

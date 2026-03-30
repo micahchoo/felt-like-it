@@ -379,7 +379,7 @@
       <!-- Mapping Mode tabs -->
       <div class="space-y-2">
         <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Mapping Mode</span>
-        <div class="flex rounded-lg bg-surface-container-low p-0.5">
+        <div class="flex rounded-lg bg-surface-low p-0.5">
           <span class="flex-1 text-center py-1.5 text-[10px] font-bold uppercase tracking-wide rounded-md transition-colors
                        {style.type === 'simple' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}">
             Simple
@@ -448,7 +448,7 @@
               id="fsl-label"
               value={style.config?.labelAttribute ?? ''}
               onchange={(e) => updateConfig({ labelAttribute: (e.target as HTMLSelectElement).value || undefined })}
-              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+              class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">None</option>
               {#each allProperties as prop (prop)}
@@ -477,7 +477,7 @@
                     updateConfig({ categoricalAttribute: undefined, categories: undefined });
                   }
                 }}
-                class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="">None</option>
                 {#each categoricalCandidates as prop (prop)}
@@ -556,7 +556,7 @@
               id="fsl-popup-title"
               value={style.popup?.titleAttribute ?? ''}
               onchange={(e) => updatePopup({ titleAttribute: (e.target as HTMLSelectElement).value || undefined })}
-              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+              class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">Default (all properties)</option>
               {#each allProperties as prop (prop)}
@@ -604,7 +604,7 @@
                   value={style.attributes?.[prop]?.displayName ?? ''}
                   placeholder={prop}
                   onchange={(e) => updateAttributes(prop, (e.target as HTMLInputElement).value)}
-                  class="flex-1 min-w-0 rounded bg-surface-container-low border border-white/5 px-1.5 py-1 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+                  class="flex-1 min-w-0 rounded bg-surface-low border border-white/5 px-1.5 py-1 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
             {/each}
@@ -623,7 +623,7 @@
             <select
               id="choro-attr"
               bind:value={choroplethAttr}
-              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+              class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
             >
               {#each numericProperties as prop (prop)}
                 <option value={prop}>{prop}</option>
@@ -676,7 +676,7 @@
             <select
               id="choro-method"
               bind:value={choroplethMethod}
-              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+              class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="quantile">Quantile</option>
               <option value="equal_interval">Equal Interval</option>
@@ -707,7 +707,7 @@
             <select
               id="heat-weight"
               bind:value={heatmapWeightAttr}
-              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+              class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">Uniform (all equal)</option>
               {#each numericProperties as prop (prop)}

@@ -117,7 +117,7 @@
 						{:else}
 							<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
 								{#each data.maps as map (map.id)}
-									<div class="bg-surface-container-low rounded-xl border border-white/5 hover:border-primary/20 transition-all overflow-hidden">
+									<div class="bg-surface-low rounded-xl border border-white/5 hover:border-primary/20 transition-all overflow-hidden">
 										<!-- Thumbnail placeholder -->
 										<div class="h-28 bg-surface-container flex items-center justify-center">
 											<MapIcon size={28} class="text-on-surface-variant/30" />
@@ -166,7 +166,7 @@
 						</div>
 						<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
 							{#each data.collaboratingMaps as map (map.id)}
-								<div class="bg-surface-container-low rounded-xl border border-white/5 hover:border-primary/20 transition-all overflow-hidden">
+								<div class="bg-surface-low rounded-xl border border-white/5 hover:border-primary/20 transition-all overflow-hidden">
 									<div class="h-28 bg-surface-container flex items-center justify-center">
 										<MapIcon size={28} class="text-on-surface-variant/30" />
 									</div>
@@ -216,7 +216,7 @@
 						{#if data.templates.length > 0}
 							<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
 								{#each data.templates as map (map.id)}
-									<div class="bg-surface-container-low rounded-xl border border-white/5 hover:border-primary/20 transition-all overflow-hidden">
+									<div class="bg-surface-low rounded-xl border border-white/5 hover:border-primary/20 transition-all overflow-hidden">
 										<div class="h-28 bg-surface-container flex items-center justify-center">
 											<MapIcon size={28} class="text-on-surface-variant/30" />
 										</div>
@@ -239,7 +239,7 @@
 								{/each}
 							</div>
 						{:else}
-							<div class="bg-surface-container-low rounded-xl border border-white/5 border-dashed p-8 flex flex-col items-center gap-3 text-center">
+							<div class="bg-surface-low rounded-xl border border-white/5 border-dashed p-8 flex flex-col items-center gap-3 text-center">
 								<span class="text-xs text-on-surface-variant">No templates yet. Create one from an existing map.</span>
 							</div>
 						{/if}

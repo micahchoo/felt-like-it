@@ -218,7 +218,7 @@
           class="flex flex-col items-center justify-center p-2 rounded-lg transition-all text-center
                  {opType === op
                    ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-                   : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-high'}"
+                   : 'bg-surface-low text-on-surface-variant hover:bg-surface-high'}"
         >
           <Icon size={16} strokeWidth={opType === op ? 2.5 : 1.5} />
           <span class="text-[8px] font-bold uppercase tracking-wider mt-1 leading-tight">{GEO_OP_LABELS[op]}</span>
@@ -234,7 +234,7 @@
       <select
         id="geo-layer-a"
         bind:value={layerIdA}
-        class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+        class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
       >
         {#each layers as layer (layer.id)}
           <option value={layer.id}>{layer.name}</option>
@@ -251,7 +251,7 @@
         <select
           id="geo-layer-b"
           bind:value={layerIdB}
-          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+          class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
         >
           {#each layers.filter((l) => l.id !== layerIdA) as layer (layer.id)}
             <option value={layer.id}>{layer.name}</option>
@@ -271,7 +271,7 @@
           max="1000"
           step="0.1"
           bind:value={distanceKm}
-          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+          class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
     {/if}
@@ -287,7 +287,7 @@
           type="text"
           placeholder="property name"
           bind:value={dissolveField}
-          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+          class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
     {/if}
@@ -299,7 +299,7 @@
         <select
           id="geo-agg"
           bind:value={aggregation}
-          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+          class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
         >
           <option value="count">Count</option>
           <option value="sum">Sum</option>
@@ -316,7 +316,7 @@
             type="text"
             placeholder="property name"
             bind:value={aggField}
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
       {/if}
@@ -329,7 +329,7 @@
           type="text"
           placeholder={aggregation}
           bind:value={aggOutputField}
-          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+          class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
     {/if}
@@ -341,7 +341,7 @@
         id="geo-name"
         type="text"
         bind:value={outputName}
-        class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+        class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
       />
     </div>
 

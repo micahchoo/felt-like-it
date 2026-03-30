@@ -18,7 +18,7 @@ import type { Layer } from '@felt-like-it/shared-types';
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 /** Minimal layer stub — only the fields the style functions inspect. */
-function makeLayer(overrides: Partial<Layer> & { style?: Record<string, unknown> | null }): Layer {
+function makeLayer(overrides: Partial<Omit<Layer, 'style'>> & { style?: Record<string, unknown> | null }): Layer {
   const { style: styleOverride, ...rest } = overrides;
   // Merge a default type:'simple' into style so callers don't have to repeat it.
   // Null/undefined style is passed through (tests null-safety).

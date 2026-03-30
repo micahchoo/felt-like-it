@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../init.js';
 import { annotationService } from '../../annotations/service.js';
+import { getChangelog, getChangelogMapId } from '../../annotations/changelog.js';
 import { requireMapAccess } from '../../geo/access.js';
 import {
   CreateAnnotationObjectSchema,
@@ -35,6 +36,33 @@ export const annotationsRouter = router({
     .input(z.object({ rootId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       return annotationService.getThread({ userId: ctx.user.id, rootId: input.rootId });
+    }),
+
+  /**
+   * Fetch the change history for an annotation object.
+   * Returns newest-first with cursor-based pagination.
+   * Requires viewer+ access to the parent map.
+   */
+  changelog: protectedProcedure
+    .input(z.object({
+      annotationId: z.string().uuid(),
+      limit: z.number().int().min(1).max(200).default(50),
+      cursor: z.string().uuid().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      // Resolve the map_id from the changelog table (works even if annotation is deleted)
+      const mapId = await getChangelogMapId(input.annotationId);
+      if (!mapId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'No changelog found for this annotation.' });
+      }
+
+      await requireMapAccess(ctx.user.id, mapId, 'viewer');
+
+      return getChangelog({
+        objectId: input.annotationId,
+        limit: input.limit,
+        ...(input.cursor !== undefined ? { cursor: input.cursor } : {}),
+      });
     }),
 
   create: protectedProcedure

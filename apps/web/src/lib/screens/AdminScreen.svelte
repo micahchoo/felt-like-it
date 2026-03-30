@@ -106,15 +106,15 @@
 						{data.auditLog.items?.length ?? 0}
 					</span>
 					<div class="grid grid-cols-3 gap-3 mt-2">
-						<div class="bg-surface-container-low rounded-lg border border-white/5 p-4">
+						<div class="bg-surface-low rounded-lg border border-white/5 p-4">
 							<p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">Shard Mode</p>
 							<p class="text-sm font-mono text-on-surface">Sequential</p>
 						</div>
-						<div class="bg-surface-container-low rounded-lg border border-white/5 p-4">
+						<div class="bg-surface-low rounded-lg border border-white/5 p-4">
 							<p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">Matrix</p>
 							<p class="text-sm font-mono text-on-surface">{data.storageStats.totalMaps ?? 0} Maps</p>
 						</div>
-						<div class="bg-surface-container-low rounded-lg border border-white/5 p-4">
+						<div class="bg-surface-low rounded-lg border border-white/5 p-4">
 							<p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">Active Log Gap</p>
 							<p class="text-sm font-mono text-on-surface">0ms</p>
 						</div>

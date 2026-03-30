@@ -209,7 +209,7 @@
       <h3 class="text-[10px] font-bold text-primary uppercase tracking-widest">Active Layers</h3>
       <div class="flex flex-col gap-1">
         {#each layers as layer (layer.id)}
-          <label class="flex items-center gap-2 rounded-lg border border-white/5 bg-surface-container-low px-3 py-2 cursor-pointer hover:bg-white/5 transition-colors">
+          <label class="flex items-center gap-2 rounded-lg border border-white/5 bg-surface-low px-3 py-2 cursor-pointer hover:bg-white/5 transition-colors">
             <input
               type="radio"
               name="selectedLayer"
@@ -259,7 +259,7 @@
           type="button"
           onclick={exportGpkg}
           disabled={!selectedLayerId || exportingGpkg}
-          class="flex items-start gap-3 rounded-lg border border-white/5 bg-surface-container-low px-3 py-2.5 text-left transition-colors hover:bg-white/5
+          class="flex items-start gap-3 rounded-lg border border-white/5 bg-surface-low px-3 py-2.5 text-left transition-colors hover:bg-white/5
             {exportingGpkg ? 'cursor-wait opacity-75' : ''}"
         >
           <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-white/20">
@@ -278,7 +278,7 @@
           type="button"
           onclick={exportShp}
           disabled={!selectedLayerId || exportingShp}
-          class="flex items-start gap-3 rounded-lg border border-white/5 bg-surface-container-low px-3 py-2.5 text-left transition-colors hover:bg-white/5
+          class="flex items-start gap-3 rounded-lg border border-white/5 bg-surface-low px-3 py-2.5 text-left transition-colors hover:bg-white/5
             {exportingShp ? 'cursor-wait opacity-75' : ''}"
         >
           <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-white/20">
@@ -297,7 +297,7 @@
           type="button"
           onclick={exportAnnotations}
           disabled={!mapId || exportingAnnotations}
-          class="flex items-start gap-3 rounded-lg border border-white/5 bg-surface-container-low px-3 py-2.5 text-left transition-colors hover:bg-white/5
+          class="flex items-start gap-3 rounded-lg border border-white/5 bg-surface-low px-3 py-2.5 text-left transition-colors hover:bg-white/5
             {exportingAnnotations ? 'cursor-wait opacity-75' : ''}"
         >
           <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-white/20">
@@ -320,7 +320,7 @@
           <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Exporting</span>
           <span class="text-xs text-on-surface-variant">Preparing file…</span>
         </div>
-        <div class="h-1.5 w-full rounded-full bg-surface-container-low">
+        <div class="h-1.5 w-full rounded-full bg-surface-low">
           <div class="h-1.5 w-2/3 rounded-full bg-primary animate-pulse"></div>
         </div>
         <div class="flex items-center justify-between text-xs text-on-surface-variant">

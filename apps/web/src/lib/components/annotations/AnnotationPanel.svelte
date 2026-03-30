@@ -741,7 +741,7 @@
             class="flex flex-col items-center justify-center p-2.5 rounded-lg transition-all
                    {formType === t
                      ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-                     : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-high'}"
+                     : 'bg-surface-low text-on-surface-variant hover:bg-surface-high'}"
           >
             {#if Icon}
               <Icon size={18} strokeWidth={formType === t ? 2.5 : 1.5} />
@@ -760,7 +760,7 @@
             bind:value={formText}
             rows={3}
             placeholder="Write your note…"
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
           ></textarea>
         </div>
 
@@ -774,7 +774,7 @@
               bind:value={formEmoji}
               placeholder="🌊"
               maxlength={10}
-              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-1 focus:ring-primary"
+              class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
           <div class="flex flex-col gap-1 flex-1">
@@ -786,7 +786,7 @@
               type="text"
               bind:value={formEmojiLabel}
               placeholder="Short label"
-              class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+              class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
         </div>
@@ -800,7 +800,7 @@
             bind:value={formGifUrl}
             onblur={() => validateUrl('gifUrl', formGifUrl)}
             placeholder="https://media.tenor.com/…"
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
           {#if fieldErrors.gifUrl}<p class="text-[11px] text-error">{fieldErrors.gifUrl}</p>{/if}
         </div>
@@ -813,7 +813,7 @@
             type="text"
             bind:value={formAltText}
             placeholder="Accessible description"
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
 
@@ -834,7 +834,7 @@
             type="file"
             accept="image/jpeg,image/png,image/webp,image/gif"
             onchange={handleImageFileSelect}
-            class="w-full text-xs text-on-surface file:mr-2 file:rounded file:border-0 file:bg-surface-container-low file:px-2 file:py-1 file:text-xs file:text-on-surface hover:file:bg-surface-high"
+            class="w-full text-xs text-on-surface file:mr-2 file:rounded file:border-0 file:bg-surface-low file:px-2 file:py-1 file:text-xs file:text-on-surface hover:file:bg-surface-high"
           />
         </div>
 
@@ -874,7 +874,7 @@
             bind:value={formImageUrl}
             onblur={() => validateUrl('imageUrl', formImageUrl)}
             placeholder="https://example.com/photo.jpg"
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
           {#if fieldErrors.imageUrl}<p class="text-[11px] text-error">{fieldErrors.imageUrl}</p>{/if}
         </div>
@@ -888,7 +888,7 @@
             type="text"
             bind:value={formCaption}
             placeholder="Caption"
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
 
@@ -901,7 +901,7 @@
             bind:value={formLinkUrl}
             onblur={() => validateUrl('linkUrl', formLinkUrl)}
             placeholder="https://example.com"
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
           {#if fieldErrors.linkUrl}<p class="text-[11px] text-error">{fieldErrors.linkUrl}</p>{/if}
         </div>
@@ -914,7 +914,7 @@
             type="text"
             bind:value={formLinkTitle}
             placeholder="Link title"
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <div class="flex flex-col gap-1">
@@ -926,7 +926,7 @@
             type="text"
             bind:value={formLinkDesc}
             placeholder="Brief description"
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
 
@@ -939,7 +939,7 @@
             bind:value={formManifestUrl}
             onblur={() => validateUrl('manifestUrl', formManifestUrl)}
             placeholder="https://example.org/iiif/manifest.json"
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
           {#if fieldErrors.manifestUrl}<p class="text-[11px] text-error">{fieldErrors.manifestUrl}</p>{/if}
         </div>
@@ -952,7 +952,7 @@
             type="text"
             bind:value={formIiifLabel}
             placeholder="Manuscript title"
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <p class="text-xs text-on-surface-variant/70 italic">NavPlace will be fetched automatically after saving.</p>
@@ -964,7 +964,7 @@
         <select
           id="ann-anchor-type"
           bind:value={formAnchorType}
-          class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+          class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
         >
           <option value="point">Pin (Point)</option>
           <option value="region">Region (Polygon)</option>
@@ -1001,7 +1001,7 @@
       <!-- Feature anchor -->
       {#if formAnchorType === 'feature'}
         {#if pickedFeature}
-          <div class="text-xs text-on-surface bg-surface-container-low rounded px-2 py-1 mt-1">
+          <div class="text-xs text-on-surface bg-surface-low rounded px-2 py-1 mt-1">
             Attached to feature <span class="font-mono text-amber-400">{pickedFeature.featureId.slice(0, 8)}…</span>
           </div>
         {:else}
@@ -1028,7 +1028,7 @@
             max="180"
             step="0.000001"
             bind:value={formLng}
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
         <div class="flex flex-col gap-1 flex-1">
@@ -1047,7 +1047,7 @@
             max="90"
             step="0.000001"
             bind:value={formLat}
-            class="w-full rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+            class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
       </div>
@@ -1169,7 +1169,7 @@
                 bind:value={replyText}
                 placeholder="Write a reply..."
                 rows={2}
-                class="flex-1 rounded bg-surface-container-low border border-white/5 px-2 py-1 text-xs text-on-surface placeholder-on-surface-variant/50 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                class="flex-1 rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-on-surface placeholder-on-surface-variant/50 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
               ></textarea>
               <Button
                 size="sm"
@@ -1265,7 +1265,7 @@
         <input
           bind:value={commentBody}
           placeholder="Leave a comment..."
-          class="flex-1 rounded bg-surface-container-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+          class="flex-1 rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <button
           type="submit"
