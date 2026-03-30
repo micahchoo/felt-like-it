@@ -59,8 +59,17 @@
 
   let saving = $state(false);
   let dirty = $state(false);
-  /** Last style acknowledged by the server — used to revert on save failure. */
+  /** Last style acknowledged by the server — used to revert on save failure or user request. */
   let lastSavedStyle = $state<LayerStyle | null>(null);
+
+  // Pending local edits for continuous inputs (color picker, opacity slider).
+  // Updated on every oninput — does NOT trigger layersStore (no map re-render per tick).
+  // Flushed to both stores on onchange (fires once per drag gesture).
+  let pendingColor = $state<string | null>(null);
+  let pendingOpacity = $state<number | null>(null);
+
+  const displayColor = $derived(pendingColor ?? getColor());
+  const displayOpacity = $derived(pendingOpacity ?? getOpacity());
 
   // Capture the server-acknowledged style when the panel opens (before any edits).
   $effect(() => {
@@ -93,38 +102,51 @@
     return typeof val === 'number' ? val : 0.85;
   }
 
-  function updateColor(color: string) {
-    if (!layer || !style) return;
-    const key = layer.type === 'line'
-      ? 'line-color'
-      : layer.type === 'polygon'
-      ? 'fill-color'
-      : 'circle-color';
+  function colorKey(): string {
+    return layer?.type === 'line' ? 'line-color' : layer?.type === 'polygon' ? 'fill-color' : 'circle-color';
+  }
 
-    const newStyle: LayerStyle = {
-      ...style,
-      paint: { ...(style.paint as Record<string, unknown>), [key]: color },
-    };
-    styleStore.setStyle(layer.id, newStyle);
-    layersStore.updateStyle(layer.id, newStyle);
+  function opacityKey(): string {
+    return layer?.type === 'line' ? 'line-opacity' : layer?.type === 'polygon' ? 'fill-opacity' : 'circle-opacity';
+  }
+
+  /** oninput: update local preview only — no map re-render per tick. */
+  function previewColor(color: string) {
+    pendingColor = color;
     dirty = true;
   }
 
-  function updateOpacity(opacity: number) {
+  /** onchange: flush to stores once per drag gesture — triggers one map re-render. */
+  function commitColor(color: string) {
+    pendingColor = null;
     if (!layer || !style) return;
-    const key = layer.type === 'line'
-      ? 'line-opacity'
-      : layer.type === 'polygon'
-      ? 'fill-opacity'
-      : 'circle-opacity';
-
-    const newStyle: LayerStyle = {
-      ...style,
-      paint: { ...(style.paint as Record<string, unknown>), [key]: opacity },
-    };
+    const newStyle: LayerStyle = { ...style, paint: { ...(style.paint as Record<string, unknown>), [colorKey()]: color } };
     styleStore.setStyle(layer.id, newStyle);
     layersStore.updateStyle(layer.id, newStyle);
+  }
+
+  /** oninput: update local preview only — no map re-render per tick. */
+  function previewOpacity(opacity: number) {
+    pendingOpacity = opacity;
     dirty = true;
+  }
+
+  /** onchange: flush to stores once per drag gesture — triggers one map re-render. */
+  function commitOpacity(opacity: number) {
+    pendingOpacity = null;
+    if (!layer || !style) return;
+    const newStyle: LayerStyle = { ...style, paint: { ...(style.paint as Record<string, unknown>), [opacityKey()]: opacity } };
+    styleStore.setStyle(layer.id, newStyle);
+    layersStore.updateStyle(layer.id, newStyle);
+  }
+
+  function revertStyle() {
+    if (!lastSavedStyle || !layer) return;
+    styleStore.setStyle(layer.id, lastSavedStyle);
+    layersStore.updateStyle(layer.id, lastSavedStyle);
+    pendingColor = null;
+    pendingOpacity = null;
+    dirty = false;
   }
 
   async function saveStyle() {
@@ -402,12 +424,13 @@
           <div class="flex items-center gap-2">
             <input
               type="color"
-              value={getColor()}
-              oninput={(e) => updateColor((e.target as HTMLInputElement).value)}
+              value={displayColor}
+              oninput={(e) => previewColor((e.target as HTMLInputElement).value)}
+              onchange={(e) => commitColor((e.target as HTMLInputElement).value)}
               class="h-8 w-10 rounded cursor-pointer border-0 bg-transparent p-0"
               aria-label="Layer color"
             />
-            <span class="text-xs text-on-surface-variant font-mono">{getColor()}</span>
+            <span class="text-xs text-on-surface-variant font-mono">{displayColor}</span>
           </div>
         </div>
       {/if}
@@ -422,15 +445,16 @@
             <span class="w-3 h-3 rounded-full border-2 border-primary"></span>
             <span class="text-xs text-on-surface">Fill Overlay</span>
           </div>
-          <span class="text-[10px] text-on-surface-variant font-mono">{Math.round(getOpacity() * 100)}% opacity</span>
+          <span class="text-[10px] text-on-surface-variant font-mono">{Math.round(displayOpacity * 100)}% opacity</span>
         </div>
         <input
           type="range"
           min="0"
           max="1"
           step="0.05"
-          value={getOpacity()}
-          oninput={(e) => updateOpacity(parseFloat((e.target as HTMLInputElement).value))}
+          value={displayOpacity}
+          oninput={(e) => previewOpacity(parseFloat((e.target as HTMLInputElement).value))}
+          onchange={(e) => commitOpacity(parseFloat((e.target as HTMLInputElement).value))}
           class="w-full accent-primary"
           aria-label="Layer opacity"
         />
@@ -776,8 +800,13 @@
 
     <!-- Simple style save (opacity) -->
     {#if style.type === 'simple'}
-      <div class="px-3 py-3 border-t border-white/5">
-        <Button variant="primary" size="sm" class="w-full" onclick={saveStyle} loading={saving}>
+      <div class="px-3 py-3 border-t border-white/5 flex gap-2">
+        {#if dirty && lastSavedStyle}
+          <Button variant="ghost" size="sm" class="flex-1" onclick={revertStyle} disabled={saving}>
+            Revert
+          </Button>
+        {/if}
+        <Button variant="primary" size="sm" class={dirty && lastSavedStyle ? 'flex-1' : 'w-full'} onclick={saveStyle} loading={saving}>
           Save Style
         </Button>
       </div>
