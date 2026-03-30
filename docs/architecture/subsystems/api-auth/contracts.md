@@ -1,3 +1,4 @@
+<!-- Verified accurate as of 2026-03-29 -->
 # API + Auth Cluster -- Contracts (Zoom Level 6)
 
 > Interface boundaries of the auth subsystem. What each component promises to its consumers.

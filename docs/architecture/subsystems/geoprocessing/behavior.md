@@ -1,6 +1,8 @@
 # Geoprocessing Subsystem — Behavior (Zoom Level 8)
 
 > Flow traces through the geoprocessing subsystem: PostGIS operations, spatial joins, measurement, error handling, and activity logging.
+>
+> Verified accurate as of 2026-03-29. Updated: §3 measurement flow — interaction state now via MapEditorState class (map-editor-state.svelte.ts), line numbers corrected.
 
 **Cross-references:** [components](components.md) | [data-pipeline behavior](../data-pipeline/behavior.md) | [map-editor behavior](../map-editor/behavior.md)
 
@@ -88,12 +90,13 @@ Measurement is distinct from geoprocessing — it runs client-side via `geo-engi
 
 ```
 User clicks "Measure & Tools" section in SidePanel
-  → MapEditor.svelte:727 sets activeSection='analysis', analysisTab='measure'
+  → MapEditor.svelte sets activeSection='analysis', analysisTab='measure'
   → measureActive = $derived(activeSection === 'analysis' && analysisTab === 'measure' && !designMode)
-    (MapEditor.svelte:179)
+    (MapEditor.svelte:167)
 
 measureActive → DrawingToolbar activates measurement mode
-  → Interaction state machine: transitionTo('pendingMeasurement')
+  → Interaction state via MapEditorState class (map-editor-state.svelte.ts)
+  → transitionTo() destructured from editorState (MapEditorState context)
   → Terra Draw enters line/polygon drawing mode
 
 User draws on map (line for distance, polygon for area)

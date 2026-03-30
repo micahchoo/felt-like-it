@@ -1,3 +1,4 @@
+<!-- Verified accurate as of 2026-03-29 -->
 # API + Auth Cluster — Components & Security
 
 ## Auth Architecture

@@ -1,5 +1,27 @@
 # Ecosystem
 
+## Monorepo Package Graph
+
+```
+root (felt-like-it)
+├── apps/web          (@felt-like-it/web)
+│   ├── @felt-like-it/shared-types   workspace:*
+│   ├── @felt-like-it/geo-engine     workspace:*
+│   └── @felt-like-it/import-engine  workspace:*   ← NEW
+├── services/worker   (@felt-like-it/worker)
+│   ├── @felt-like-it/shared-types   workspace:*
+│   ├── @felt-like-it/geo-engine     workspace:*
+│   └── @felt-like-it/import-engine  workspace:*   ← NEW
+└── packages/
+    ├── shared-types
+    ├── geo-engine
+    └── import-engine  (@felt-like-it/import-engine)  ← NEW
+        ├── @felt-like-it/shared-types   workspace:*
+        └── @felt-like-it/geo-engine     workspace:*
+```
+
+**import-engine** extracts format parsers (CSV, GeoJSON, Shapefile, GeoPackage, KML, GPX) and sanitization into a shared package consumed by both web and worker. This is an in-progress extraction — web and worker still retain direct dependencies on the same parsing libraries (`papaparse`, `shpjs`, `sql.js`, `@tmcw/togeojson`, `@xmldom/xmldom`). Once migration completes, those direct deps should be removed from consumers.
+
 ## Dependency Map
 
 ### Framework / App Shell
@@ -36,14 +58,17 @@
 | wkx | ^0.5.0 | WKT/WKB geometry parsing |
 
 ### Data Import/Export
-| Package | Version | Purpose |
-|---------|---------|---------|
-| shpjs | ^6.2.0 | Shapefile parsing |
-| @mapbox/shp-write | ^0.4.3 | Shapefile export |
-| @tmcw/togeojson | ^7.1.2 | KML/GPX → GeoJSON |
-| papaparse | ^5.4.1 | CSV parsing |
-| sql.js | ^1.14.0 | SQLite in WASM (GeoPackage) |
-| exifr | ^7.1.3 | EXIF metadata extraction |
+| Package | Version | Where | Purpose |
+|---------|---------|-------|---------|
+| shpjs | ^6.1.0 / ^6.2.0 | import-engine / web+worker | Shapefile parsing (version drift — see note) |
+| @mapbox/shp-write | ^0.4.3 | web | Shapefile export |
+| @tmcw/togeojson | ^7.1.2 | web, worker | KML/GPX → GeoJSON (legacy — being replaced by import-engine) |
+| fast-xml-parser | ^4.5.0 | import-engine | **NEW** — streaming XML parser for KML/GPX (replaces @xmldom/xmldom in import-engine) |
+| papaparse | ^5.4.1 | import-engine, web, worker | CSV parsing |
+| sql.js | ^1.12.0 / ^1.14.0 | import-engine / web+worker | SQLite in WASM (GeoPackage) (version drift — see note) |
+| exifr | ^7.1.3 | web | EXIF metadata extraction |
+
+> **Version drift note:** import-engine pins older ranges for `shpjs` (^6.1.0) and `sql.js` (^1.12.0) vs web/worker (^6.2.0, ^1.14.0). These should be aligned to avoid duplicate installs and inconsistent behavior.
 
 ### Job Queue
 | Package | Version | Purpose |
@@ -108,16 +133,25 @@
 
 ## Security Surface
 
-| Concern | Library | Risk Notes |
-|---------|---------|-----------|
-| Password hashing | @node-rs/argon2 | Native Rust binding. Also in worker (audit: needed?) |
-| Session management | lucia | Sessions stored in PostgreSQL via Drizzle adapter |
-| Input validation | zod | Shared schemas across web + worker |
-| XML parsing | @xmldom/xmldom | Parses untrusted KML/GPX — XXE risk if external entities not disabled |
-| EXIF extraction | exifr | Parses untrusted images — metadata injection surface |
-| SQLite (WASM) | sql.js | GeoPackage parsing — verify parameterized queries |
-| File format parsing | shpjs, papaparse | User-uploaded files parsed in-process |
-| tRPC procedures | @trpc/server | All procedures need auth middleware audit |
+| Concern | Library | Where | Risk Notes |
+|---------|---------|-------|-----------|
+| Password hashing | @node-rs/argon2 | root, web, worker | Native Rust binding. Also in worker (audit: needed?) |
+| Session management | lucia | web | Sessions stored in PostgreSQL via Drizzle adapter |
+| Input validation | zod | web, worker | Shared schemas across web + worker |
+| XML parsing (legacy) | @xmldom/xmldom | web, worker | Parses untrusted KML/GPX — XXE risk if external entities not disabled |
+| XML parsing (new) | fast-xml-parser | import-engine | **NEW** — parses untrusted KML/GPX. Default config disables entity expansion but verify `processEntities: false` and `allowBooleanAttributes` settings. Different attack surface than @xmldom/xmldom |
+| EXIF extraction | exifr | web | Parses untrusted images — metadata injection surface |
+| SQLite (WASM) | sql.js | import-engine, web, worker | GeoPackage parsing — verify parameterized queries |
+| File format parsing | shpjs, papaparse | import-engine, web, worker | User-uploaded files parsed in-process |
+| tRPC procedures | @trpc/server | web | All procedures need auth middleware audit |
+
+### Import-Engine Security Notes
+
+The import-engine extraction creates a **single audit point** for all format parsing — a security improvement over the previous pattern where web and worker each had independent parsing code. However, during the transition period:
+
+1. **Dual XML parsers** — `@xmldom/xmldom` (web/worker direct) and `fast-xml-parser` (import-engine) coexist. Both parse untrusted user input. Both need hardening audit.
+2. **fast-xml-parser defaults** — by default does not process external entities, which is safer than @xmldom/xmldom. Verify `processEntities` is not enabled in KML/GPX parser config.
+3. **Duplicate parsing paths** — until legacy direct deps are removed from web/worker, there are two code paths that can parse the same format, doubling the attack surface.
 
 ## Sister Projects
 

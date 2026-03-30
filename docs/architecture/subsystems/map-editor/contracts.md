@@ -1,479 +1,385 @@
 # Map Editor Cluster — Contracts
 
 > Zoom level 6: every promise the map-editor subsystem makes to itself and its neighbours.
-> Cross-ref: [components](components.md) | [behavior](behavior.md) | [decomposition](decomposition.md)
+> Cross-ref: [components](components.md) | [behavior](behavior.md)
+>
+> **Re-scanned 2026-03-29** after MapEditorState consolidation.
+> Previous version documented 3 separate stores + useInteractionBridge. This version reflects the unified class.
 
 ---
 
-## 1. Store-to-Store Contracts
+## 1. MapEditorState — The Single Contract Point
 
-### Reactive Dependency Graph
+### What Changed
 
+The previous contract surface comprised:
+- `selectionStore` (module-level singleton) — selection, activeTool, popup
+- `interactionModes` (module-level singleton) — InteractionState FSM, `transitionTo()`
+- `drawingStore` (module-level singleton) — Terra Draw lifecycle
+- `useInteractionBridge` (composable) — 5 `$effect` blocks bridging the above
+
+All four are **deleted**. A single `MapEditorState` class now owns all interaction, selection, and drawing state. It is distributed via Svelte context (`setContext`/`getContext`), not module-level singletons.
+
+### Public Interface
+
+```typescript
+class MapEditorState {
+  // ── Reactive getters ──────────────────────────────────────────────
+  get interactionState(): InteractionState;   // discriminated union FSM
+  get selectedFeature(): GeoJSONFeature | null;
+  get selectedFeatureIds(): Set<string>;
+  get activeTool(): DrawTool;                 // 'point'|'line'|'polygon'|'select'|null
+  get popupCoords(): { lng: number; lat: number } | null;
+  get selectedLayerId(): string | null;
+  get hasSelection(): boolean;
+  get drawingStatus(): 'idle' | 'importing' | 'ready' | 'stopped';
+  get isDrawingReady(): boolean;
+  get drawingInstance(): TerraDraw | null;
+
+  // ── Atomic mutation methods ───────────────────────────────────────
+  // Each updates ALL affected state synchronously — no $effect chains.
+  transitionTo(next: InteractionState): void;     // FSM + tool sync
+  selectFeature(feature, coords?, layerId?): void; // selection + FSM transition
+  clearSelection(): void;                          // selection + FSM (featureSelected→idle)
+  setActiveTool(tool: DrawTool): void;             // tool + clear selection if draw tool + FSM
+  toggleFeatureId(id: string): void;               // multi-select toggle
+
+  // ── Context-driven reactions ──────────────────────────────────────
+  handleSectionChange(section: string | null): void;  // replaces ME:sectionCleanup
+  handleDesignModeChange(designMode: boolean): void;  // replaces ME:designModeCleanup
+
+  // ── Drawing lifecycle ─────────────────────────────────────────────
+  initDrawing(map: MapLibreMap): Promise<TerraDraw | null>;  // generation-guarded
+  stopDrawing(): void;
+  reset(): void;  // full teardown — test isolation + unmount
+}
+
+// Context wiring
+function setMapEditorState(): MapEditorState;  // called by MapEditor (provider)
+function getMapEditorState(): MapEditorState;  // called by children (consumers)
 ```
-interactionModes ──imports──> selectionStore
-       |                          ^
-       | $effect: syncs            |
-       | activeTool on state       |
-       | transitions               |
-       v                          |
-  (writes to selectionStore       |
-   .setActiveTool)                |
-                                  |
-undoStore ──closures──> [any store]
-       |
-       | Command.undo/redo closures
-       | capture references to
-       | arbitrary stores at
-       | push() time
-       v
-  (runtime coupling, not import-time)
 
-All other stores: ZERO import-time cross-dependencies
+### InteractionState — Discriminated Union
+
+```typescript
+type InteractionState =
+  | { type: 'idle' }
+  | { type: 'featureSelected'; feature: SelectedFeature }
+  | { type: 'drawRegion'; geometry?: Polygon }
+  | { type: 'pickFeature'; picked?: PickedFeatureRef }
+  | { type: 'pendingMeasurement'; anchor: MeasurementAnchor; content: MeasurementContent };
 ```
 
-### Per-Store Contract Table
+All types are exported from `map-editor-state.svelte.ts`. Narrowing via `state.type` provides full type safety.
 
-| Store | File:Line | Reads from other stores | Exposes (public API) | Circular deps? |
-|-------|-----------|------------------------|---------------------|----------------|
-| **mapStore** | `stores/map.svelte.ts:54` | None | `center`, `zoom`, `bearing`, `pitch`, `basemapId`, `basemapUrl`, `interactionMode`, `mapInstance`, `mapContainerEl`, `viewportVersion`; `setViewport()`, `loadViewport()`, `setMapInstance()`, `setMapContainerEl()`, `setBasemap()`, `setInteractionMode()`, `saveViewportLocally()`, `loadViewportLocally()`, `getViewportSnapshot()` | No |
-| **layersStore** | `stores/layers.svelte.ts:6` | None | `all`, `active`, `activeLayerId`; `set()`, `add()`, `update()`, `remove()`, `toggle()`, `setActive()`, `updateStyle()`, `reorder()`, `getOrderedIds()`, `getOrderedIdsWithVersions()` | No |
-| **filterStore** | `stores/filters.svelte.ts:96` | None | `get()`, `add()`, `remove()`, `clear()`, `hasFilters()`, `applyToFeatures()`, `toMapLibreFilter()`, `fslFiltersToMapLibre()`; standalone `saveFilters()`, `loadFilters()` | No |
-| **styleStore** | `stores/style.svelte.ts:8` | None | `showLegend`, `editingLayerId`; `getStyle()`, `setStyle()`, `clearStyle()`, `toggleLegend()`, `setEditingLayer()` | No |
-| **selectionStore** | `stores/selection.svelte.ts:12` | None | `selectedFeatureIds`, `selectedFeature`, `activeTool`, `popupCoords`, `selectedLayerId`, `hasSelection`; `selectFeature()`, `clearSelection()`, `setActiveTool()`, `toggleFeatureId()` | No (but _written to_ by interactionModes) |
-| **interactionModes** | `stores/interaction-modes.svelte.ts:65` | **selectionStore** (import, L1) | `state` (InteractionState); `transitionTo()` | **One-way**: interactionModes imports selectionStore and writes to it via `$effect` (L45-63). selectionStore does NOT import interactionModes. |
-| **drawingStore** | `stores/drawing.svelte.ts:13` | None (takes `MapLibreMap` as arg) | `state`, `isReady`, `instance`; `init(map)`, `stop()`, `reset()` | No |
-| **undoStore** | `stores/undo.svelte.ts:12` | **Runtime only**: Command closures capture arbitrary store refs | `canUndo`, `canRedo`, `undoLabel`, `redoLabel`; `push()`, `undo()`, `redo()`, `clear()` | **Latent**: closures reference drawingStore, layersStore, hotOverlay at push-time |
+### Key Architectural Properties
 
-### Utility Stores (not in the 8-store rings)
+1. **Atomic mutations**: `selectFeature()` updates 6 fields + FSM transition in one synchronous call. No intermediate reactive states observable.
+2. **No $effect bridges**: The 5 bridge effects from `useInteractionBridge` are inlined into mutation methods. `handleSectionChange()` and `handleDesignModeChange()` are called explicitly by MapEditor's 2 remaining bridge effects.
+3. **Context-scoped, not global**: `setContext()`/`getContext()` scoping means multiple MapEditor instances would each get isolated state. Previous module singletons were app-global.
+4. **Generation-guarded async**: `initDrawing()` uses `#drawingGeneration` counter to abort stale imports, same pattern as the old `drawingStore`.
+
+---
+
+## 2. Consumer Read/Write Matrix
+
+### Provider
+
+| Component | Role | Wiring |
+|-----------|------|--------|
+| **MapEditor** | Provider | `setMapEditorState()` — creates instance, sets in Svelte context |
+
+### Consumers
+
+| Consumer | File | Reads | Writes | Boundary |
+|----------|------|-------|--------|----------|
+| **MapEditor** | `components/map/MapEditor.svelte` | `interactionState`, `selectedFeature`, `selectedLayerId`, `activeTool`, `hasSelection`, `isDrawingReady`, `drawingInstance` | `transitionTo()`, `selectFeature()`, `clearSelection()`, `setActiveTool()`, `handleSectionChange()`, `handleDesignModeChange()`, `initDrawing()`, `stopDrawing()` | Provider — reads + writes all facets |
+| **MapCanvas** | `components/map/MapCanvas.svelte` | `selectedFeature`, `popupCoords`, `activeTool` | `selectFeature()`, `clearSelection()` | Internal child — selection + popup |
+| **DrawingToolbar** | `components/map/DrawingToolbar.svelte` | `activeTool`, `isDrawingReady`, `drawingInstance`, `drawingStatus` | `setActiveTool()`, `initDrawing()`, `stopDrawing()` | Internal child — drawing lifecycle |
+| **DataTable** | `components/data/DataTable.svelte` | `selectedFeatureIds` | `toggleFeatureId()`, `selectFeature()` | **Cross-boundary** — data panel reading map-editor state |
+| **useKeyboardShortcuts** | `components/map/useKeyboardShortcuts.svelte.ts` | (via deps interface) `interactionState` | (via deps interface) `transitionTo()`, `setActiveTool()` | Internal composable — injected deps, not direct import |
+
+### God-Component Assessment
+
+MapEditor still reads/writes all facets, but this is **structural** — it is the context provider and orchestrator. The key improvement: it no longer writes to 3 separate stores + a bridge; it writes to one object with atomic methods. The "god component" smell is replaced by a "controller" pattern.
+
+**Remaining leaks** (MapEditor writes that conceptually belong elsewhere):
+- `setActiveTool()` via keyboard shortcuts — mitigated by `useKeyboardShortcuts` composable extraction
+- `clearSelection()` on design mode toggle — correctly lives in MapEditor as orchestrator
+- `handleSectionChange()` / `handleDesignModeChange()` — explicitly owned by MapEditor (sidebar state lives here)
+
+---
+
+## 3. Remaining Store Contracts (Unchanged)
+
+These stores were NOT consolidated into MapEditorState. They remain module-level singletons:
+
+| Store | File | Public API | Reads from MapEditorState? |
+|-------|------|-----------|--------------------------|
+| **mapStore** | `stores/map.svelte.ts` | `center`, `zoom`, `bearing`, `pitch`, `basemapId`, `basemapUrl`, `interactionMode`, `mapInstance`, `mapContainerEl`, `viewportVersion`; `setViewport()`, `loadViewport()`, `setMapInstance()`, `setMapContainerEl()`, `setBasemap()`, `setInteractionMode()`, `saveViewportLocally()`, `loadViewportLocally()`, `getViewportSnapshot()` | No |
+| **layersStore** | `stores/layers.svelte.ts` | `all`, `active`, `activeLayerId`; `set()`, `add()`, `update()`, `remove()`, `toggle()`, `setActive()`, `updateStyle()`, `reorder()`, `getOrderedIds()`, `getOrderedIdsWithVersions()` | No |
+| **filterStore** | `stores/filters.svelte.ts` | `get()`, `add()`, `remove()`, `clear()`, `hasFilters()`, `applyToFeatures()`, `toMapLibreFilter()`, `fslFiltersToMapLibre()`; `saveFilters()`, `loadFilters()` | No |
+| **styleStore** | `stores/style.svelte.ts` | `showLegend`, `editingLayerId`; `getStyle()`, `setStyle()`, `clearStyle()`, `toggleLegend()`, `setEditingLayer()` | No |
+| **undoStore** | `stores/undo.svelte.ts` | `canUndo`, `canRedo`, `undoLabel`, `redoLabel`; `push()`, `undo()`, `redo()`, `clear()` | **Runtime only**: closures capture MapEditorState refs at `push()` time |
+
+### Utility Stores
 
 | Store | File | Role | Reads |
 |-------|------|------|-------|
-| **viewport** | `stores/viewport.svelte.ts` | Factory `createViewportStore(deps)` for paginating features by map bounds (DataTable) | Injected via `deps`: `fetchFn`, `getActiveLayer`, `isLargeLayer`, `getMap` |
-| **annotation-geo** | `stores/annotation-geo.svelte.ts` | Pure derivation: `AnnotationObject[]` to GeoJSON FeatureCollections | None (takes `() => AnnotationObject[]` factory) |
-| **hotOverlay** | `utils/map-sources.svelte.ts:5` | In-memory `Feature[]` per layer for live drawing preview | None |
-
-### The One True Store Coupling
-
-`interactionModes` L45-63 contains a `$effect` that watches `_interactionState` and calls `selectionStore.setActiveTool()`:
-
-```
-drawRegion       -> selectionStore.setActiveTool('polygon')
-pickFeature      -> selectionStore.setActiveTool('select')
-idle (from draw) -> selectionStore.setActiveTool('select')
-```
-
-This is the **only** import-time store-to-store dependency. All other coordination happens inside components (MapEditor orchestrates).
+| **viewport** | `stores/viewport.svelte.ts` | Viewport-based feature pagination for DataTable | Injected deps: `fetchFn`, `getActiveLayer`, `isLargeLayer`, `getMap` |
+| **annotation-geo** | `stores/annotation-geo.svelte.ts` | `AnnotationObject[]` → GeoJSON FeatureCollections | None (factory arg) |
+| **hotOverlay** | `utils/map-sources.svelte.ts` | In-memory `Feature[]` per layer for live drawing preview | None |
 
 ---
 
-## 2. Component-to-Store Contracts
+## 4. Knot Analysis — Boundary Crossings
 
-### Read/Write Matrix
+### Subsystem Boundary Definition
 
-| Component | Reads | Writes | Concern |
-|-----------|-------|--------|---------|
-| **MapEditor** | `mapStore` (mapInstance, center, zoom, basemapId, mapContainerEl), `layersStore` (all, active, activeLayerId), `filterStore` (get, hasFilters, applyToFeatures), `styleStore` (editingLayerId), `selectionStore` (selectedFeature, selectedLayerId, activeTool), `interactionModes` (state), `undoStore` (canUndo, canRedo, undoLabel, redoLabel), `hotOverlay` (clearHotFeatures) | `mapStore.setMapContainerEl()`, `mapStore.saveViewportLocally()`, `layersStore.set()`, `layersStore.setActive()`, `selectionStore.clearSelection()`, `selectionStore.setActiveTool()`, `interactionModes.transitionTo()`, `undoStore.undo()`, `undoStore.redo()`, `hotOverlay.clearHotFeatures()`, `filterStore.get()` (reactive dep), `loadFilters()`, `saveFilters()` | **God component**: reads 8/8 stores, writes to 6 stores + 2 utilities |
-| **MapCanvas** | `mapStore` (center, zoom, bearing, pitch, viewportVersion, basemapUrl, mapInstance), `layersStore` (all), `selectionStore` (selectedFeature, activeTool, popupCoords), `filterStore` (toMapLibreFilter), `hotOverlay` (getCollection) | `mapStore.setMapInstance()`, `mapStore.setViewport()`, `selectionStore.selectFeature()`, `selectionStore.clearSelection()` | Reads 5 stores, writes to 2 |
-| **DrawingToolbar** | `selectionStore` (activeTool), `layersStore` (active), `drawingStore` (isReady, instance, state) | `drawingStore.init()`, `drawingStore.reset()`, `drawingStore.stop()`, `selectionStore.setActiveTool()`, `undoStore.push()`, `hotOverlay.addHotFeature()`, `hotOverlay.removeHotFeature()` | Owns Terra Draw lifecycle, writes to 4 stores |
-| **LayerPanel** | `layersStore` (all, activeLayerId) | `layersStore.add()`, `layersStore.remove()`, `layersStore.toggle()`, `layersStore.setActive()`, `layersStore.reorder()`, `styleStore.clearStyle()`, `styleStore.setEditingLayer()` | Layer CRUD, writes to 2 stores |
-| **StylePanel** | `styleStore` (getStyle, editingLayerId), `layersStore` (all, active) | `styleStore.setStyle()`, `layersStore.updateStyle()` via trpc callback | Reads 2, writes 2 |
+```
+INSIDE map-editor subsystem:
+  apps/web/src/lib/stores/map-editor-state.svelte.ts
+  apps/web/src/lib/components/map/MapEditor.svelte
+  apps/web/src/lib/components/map/MapCanvas.svelte
+  apps/web/src/lib/components/map/DrawingToolbar.svelte
+  apps/web/src/lib/components/map/useKeyboardShortcuts.svelte.ts
 
-### God Component Leaks
+OUTSIDE (neighbours):
+  apps/web/src/lib/components/data/DataTable.svelte
+  apps/web/src/lib/stores/map.svelte.ts (mapStore)
+  apps/web/src/lib/stores/layers.svelte.ts (layersStore)
+  apps/web/src/lib/stores/filters.svelte.ts (filterStore)
+  apps/web/src/lib/stores/style.svelte.ts (styleStore)
+  apps/web/src/lib/stores/undo.svelte.ts (undoStore)
+  apps/web/src/lib/stores/viewport.svelte.ts (viewportStore)
+  apps/web/src/lib/utils/map-sources.svelte.ts (hotOverlay)
+```
 
-MapEditor writes to stores that conceptually belong to child domains:
+### Crossing Count
 
-| Write | Belongs to | Why it leaks |
-|-------|-----------|-------------|
-| `selectionStore.setActiveTool('select'/'point'/'polygon')` | DrawingToolbar | Keyboard shortcuts (L457-459) bypass DrawingToolbar entirely |
-| `selectionStore.clearSelection()` | MapCanvas popup | Design mode cleanup (L217) |
-| `interactionModes.transitionTo()` | Should be interaction-mode bridge | 5 separate `$effect` blocks in MapEditor orchestrate mode transitions |
-| `hotOverlay.clearHotFeatures()` | DrawingToolbar | Cleanup on unmount (L469) |
-| `layersStore.set()` | LayerPanel | `handleImportComplete` re-fetches layers and sets (L402-406) |
+| # | Crossing | Direction | Type | Era | Separability |
+|---|----------|-----------|------|-----|-------------|
+| 1 | DataTable → MapEditorState | inbound read | `getMapEditorState()` → `selectedFeatureIds`, `toggleFeatureId()`, `selectFeature()` | 2024+ | **Medium** — could pass via props but context is cleaner for deep nesting |
+| 2 | MapEditor → mapStore | outbound read/write | Module import — viewport, basemap, mapInstance | 2024+ | **Low** — fundamental dependency, mapStore is infrastructure |
+| 3 | MapEditor → layersStore | outbound read/write | Module import — layer CRUD, active layer | 2024+ | **Low** — fundamental dependency |
+| 4 | MapEditor → filterStore | outbound read/write | Module import — filter state | 2024+ | **Low** — fundamental dependency |
+| 5 | MapEditor → styleStore | outbound read | Module import — editingLayerId | 2024+ | **High** — only reads one field |
+| 6 | MapEditor → undoStore | outbound read/write | Module import — undo/redo, push commands | 2024+ | **Medium** — commands capture refs at push time |
+| 7 | MapEditor → hotOverlay | outbound write | Module import — clearHotFeatures on unmount | 2024+ | **High** — single cleanup call |
+| 8 | MapCanvas → mapStore | outbound read/write | Module import — viewport sync | 2024+ | **Low** — fundamental dependency |
+| 9 | MapCanvas → layersStore | outbound read | Module import — layer rendering | 2024+ | **Low** — fundamental dependency |
+| 10 | MapCanvas → filterStore | outbound read | Module import — filter expressions | 2024+ | **Low** — fundamental dependency |
+| 11 | DrawingToolbar → hotOverlay | outbound write | Module import — addHotFeature/removeHotFeature | 2024+ | **Medium** — drawing preview overlay |
+| 12 | DrawingToolbar → undoStore | outbound write | Module import — push undo commands | 2024+ | **Medium** — undo integration |
+| 13 | useKeyboardShortcuts → MapEditorState | inbound (type-only) | Type import only — deps injected at call site | 2024+ | **High** — already dependency-injected |
+
+### Crossing Summary
+
+| Metric | Value |
+|--------|-------|
+| Total crossings | 13 |
+| Inbound (outside → map-editor state) | 2 (DataTable, useKeyboardShortcuts type-only) |
+| Outbound (map-editor → outside stores) | 11 |
+| Era distance | Uniform 2024+ — no era-weighted penalties |
+| Highly separable | 3 (#5, #7, #13) |
+| Infrastructure (non-separable) | 6 (#2, #3, #4, #8, #9, #10) |
+
+### vs Previous Version
+
+| Metric | Before (3 stores + bridge) | After (MapEditorState) |
+|--------|---------------------------|----------------------|
+| Internal store-to-store deps | 1 (interactionModes → selectionStore via $effect) | **0** — unified class |
+| Bridge effects | 5 ($effect blocks in useInteractionBridge) | **0** — inlined into atomic methods |
+| Module-level singletons for interaction | 3 (selection, interaction, drawing) | **0** — context-scoped class |
+| MapEditor $effect blocks for interaction | 5 (section cleanup, design mode, selection→feature, tool dismiss, feature pick) | **2** (section change, design mode change) |
+| Boundary crossings (external) | ~15 (each consumer imported each store separately) | **13** (all via one `getMapEditorState()` import) |
+
+### Security Pins
+
+| Pin | Location | Assessment |
+|-----|----------|------------|
+| **Feature ID resolution** | `MapEditorState.selectFeature()` calls `resolveFeatureId()` | `resolveFeatureId` handles missing/numeric/string IDs. No user-controlled string interpolation into queries. Feature IDs flow from MapLibre click events (trusted source) to tRPC mutations (parameterized). **No injection vector.** |
+| **Terra Draw instance access** | `MapEditorState.drawingInstance` getter | Returns the raw TerraDraw instance. Consumers (DrawingToolbar) call `setMode()`, `getSnapshot()`, `removeFeatures()`. These are sandboxed to the canvas — no server interaction. **No escalation risk.** |
+| **Context isolation** | `setContext(Symbol())` | Symbol key prevents external context hijacking. Only code that calls `getContext()` within the same component tree can access the state. **Adequate isolation.** |
+| **queueMicrotask in MapCanvas** | `handleFeatureClick` defers `selectFeature()` | Timing-based: click data captured synchronously, state write deferred by one microtask. Feature + coords are captured in closure — no TOCTOU window for data mutation. **Safe.** |
 
 ---
 
-## 3. Props Contracts at Each Decomposition Seam
+## 5. tRPC Mutation/Query Boundaries
 
-### Seam 1: StatusBar
+### Cache Unification (New)
 
-```typescript
-// Extracted: <MapStatusBar>
-interface StatusBarProps {
-  cursorLat: number;
-  cursorLng: number;
-  currentZoom: number;
-}
-// No callbacks. Pure display. Read-only from mapStore.mapInstance events.
-// Currently: MapEditor L471-488 ($effect wiring mousemove/zoom listeners)
+The previous version documented a **cache invalidation gap**: DrawingToolbar invalidated TanStack cache keys, but MapEditor's `loadLayerData()` fetched directly via `trpc.features.list.query()`.
+
+This is now **resolved**. MapEditor's `loadLayerData()` fetches via `fetchQuery()` through the TanStack Query cache. The comment at MapEditor.svelte:212-216 documents the pattern:
+
+```
+// loadLayerData now fetches via the TanStack Query cache (fetchQuery).
+// DrawingToolbar's onSuccess already invalidated the cache entry, so
+// fetchQuery will see it as stale and re-fetch fresh data from the server.
+// No explicit invalidateQueries needed here — cache invalidation is the
+// coordination mechanism.
 ```
 
-### Seam 2: DialogVisibility
-
-```typescript
-// Extracted: useDialogVisibility() composable
-interface DialogState {
-  showImportDialog: boolean;
-  showExportDialog: boolean;
-  showShareDialog: boolean;
-}
-interface DialogActions {
-  openImport(): void;
-  openExport(): void;
-  openShare(): void;
-  closeImport(): void;
-  closeExport(): void;
-  closeShare(): void;
-}
-// Currently: 3 boolean $state vars + toggling in MapEditor template
-```
-
-### Seam 3: LayerDataManager
-
-```typescript
-// Extracted: createLayerDataManager() composable
-interface LayerDataManagerDeps {
-  getMapInstance: () => MapLibreMap | undefined;
-  getLayers: () => Layer[];
-  isLargeLayer: (layer: Layer) => boolean;
-  fetchFeatures: (layerId: string) => Promise<FeatureCollection>;
-  onError: (msg: string) => void;
-}
-interface LayerDataManager {
-  readonly layerData: Record<string, FeatureCollection>;
-  loadLayerData(layerId: string): Promise<void>;
-  handleLayerChange(): Promise<void>;
-}
-// Dependencies: layersStore.all (read), mapStore.mapInstance (read for getSource().setData()),
-//   trpc.features.list.query (read)
-// Race guard: loadGeneration counter per layerId (MapEditor L318)
-// Direct MapLibre call: map.getSource(`source-${layerId}`).setData(fc) (MapEditor L327)
-```
-
-### Seam 4: InteractionModeBridge
-
-```typescript
-// Extracted: useInteractionOrchestrator() composable
-interface InteractionOrchestratorDeps {
-  getInteractionState: () => InteractionState;
-  transitionTo: (state: InteractionState) => void;
-  getSelectedFeature: () => GeoJSONFeature | null;
-  getSelectedLayerId: () => string | null;
-  getActiveTool: () => DrawTool;
-  getActiveSection: () => string;
-  getDesignMode: () => boolean;
-  resolveFeatureId: (feat: unknown) => string | undefined;
-}
-// Owns 5 $effect blocks:
-//   ME:sectionCleanup    — reset mode when sidebar section changes
-//   ME:designModeCleanup — reset to idle on design mode toggle
-//   ME:selectionToFeature — selection -> featureSelected transition
-//   ME:toolDismissFeature — drawing tool -> dismiss featureSelected
-//   ME:featurePickCapture — pick mode capture
-// All write to: interactionModes.transitionTo(), selectionStore.clearSelection(),
-//   selectionStore.setActiveTool()
-```
-
-### Seam 5: KeyboardShortcuts
-
-```typescript
-// Extracted: useKeyboardShortcuts() composable
-interface KeyboardShortcutDeps {
-  readonly: boolean;
-  getInteractionState: () => InteractionState;
-  transitionTo: (state: InteractionState) => void;
-  getDesignMode: () => boolean;
-  toggleDesignMode: () => void;
-  undo: () => void;
-  redo: () => void;
-  setActiveTool: (tool: DrawTool) => void;
-}
-// Returns: (e: KeyboardEvent) => void  (for <svelte:window onkeydown>)
-// Key mappings:
-//   Escape -> transitionTo(idle) from drawRegion/pickFeature
-//   Ctrl+D -> toggleDesignMode
-//   Ctrl+Z / Ctrl+Shift+Z -> undo/redo
-//   1/2/3 -> select/point/polygon tool
-// Guard: skips INPUT/TEXTAREA/contentEditable targets
-// Currently: MapEditor L419-464
-```
-
-### Seam 6: ViewportServerSave
-
-```typescript
-// Extracted: into mapStore.saveToServer(mapId) or standalone
-interface ViewportSaveDeps {
-  mapId: string;
-  getViewportSnapshot: () => ViewportSnapshot;
-  getBasemapId: () => BasemapId;
-  mutateFn: (input: { id: string; viewport: ViewportSnapshot; basemap: BasemapId }) => Promise<void>;
-  logActivity: (action: string) => void;
-  onSuccess: () => void;
-  onError: (msg: string) => void;
-}
-// Currently: MapEditor saveViewport() L378-398
-// tRPC: trpc.maps.update.mutate({ id, viewport, basemap })
-```
-
----
-
-## 4. tRPC Mutation/Query Boundaries
+**Cache strategy is now unified**: all feature data flows through TanStack Query. DrawingToolbar's mutation `onSuccess` invalidates `queryKeys.features.list({ layerId })`, and MapEditor's `loadLayerData` observes that invalidation via `fetchQuery`.
 
 ### Queries (Read)
 
-| Call | Component | File:Line | Store state dependency | Cache key |
-|------|-----------|-----------|----------------------|-----------|
-| `trpc.annotations.list.query({ mapId })` | MapEditor | MapEditor.svelte:91 | `mapId` prop | `queryKeys.annotations.list({ mapId })` |
-| `trpc.features.list.query({ layerId })` | MapEditor | MapEditor.svelte:318 | `layersStore.all` (active layer) | Manual reload, not TanStack-cached |
-| `trpc.features.listPaged.query(params)` | MapEditor (viewportStore) | MapEditor.svelte:158 | `layersStore.active`, `mapStore.mapInstance` (bounds) | Via viewportStore debounced fetch |
-| `trpc.layers.list.query({ mapId })` | MapEditor | MapEditor.svelte:405, 875 | `mapId` prop | Manual (re-sets layersStore) |
-| `trpc.shares.getForMap.query({ mapId })` | ShareDialog | ShareDialog.svelte:79 | `mapId` prop | Local state (not TanStack) |
-| `trpc.collaborators.list.query({ mapId })` | ShareDialog | ShareDialog.svelte:134 | `mapId` prop | Local state |
-| `trpc.annotations.getThread.query({ rootId })` | AnnotationThread | AnnotationThread.svelte:17 | Annotation selection | TanStack query |
-| `trpc.annotations.fetchIiifNavPlace.query(...)` | AnnotationPanel | AnnotationPanel.svelte:625 | Annotation data | One-shot |
-| `trpc.events.list.query(...)` | ActivityFeed | ActivityFeed.svelte:75 | `mapId` prop | TanStack query |
+| Call | Component | Cache Strategy |
+|------|-----------|---------------|
+| `trpc.annotations.list.query({ mapId })` | MapEditor | TanStack `createQuery` — auto-refresh on invalidation |
+| `trpc.features.list` (via `fetchQuery`) | MapEditor (layerDataManager) | **TanStack fetchQuery** — unified with DrawingToolbar invalidation |
+| `trpc.features.listPaged.query(params)` | MapEditor (viewportStore) | Debounced fetch via viewportStore |
+| `trpc.layers.list.query({ mapId })` | MapEditor | Manual → `layersStore.set()` |
 
-### Mutations (Write)
+### Mutations (Write) — Map-Editor Boundary Only
 
-| Call | Component | File:Line | Triggers | Cache invalidation |
-|------|-----------|-----------|----------|-------------------|
-| `trpc.features.upsert.mutate(...)` | DrawingToolbar | DrawingToolbar.svelte:44 | `draw.on('finish')` | `queryClient.invalidateQueries(queryKeys.features.list({ layerId }))` |
-| `trpc.features.delete.mutate(...)` | DrawingToolbar | DrawingToolbar.svelte:52 | Undo action | `queryClient.invalidateQueries(queryKeys.features.list({ layerId }))` |
-| `trpc.maps.update.mutate(...)` | MapEditor | MapEditor.svelte:381 | Save viewport button | None (viewport is local-first) |
-| `trpc.layers.create.mutate(...)` | LayerPanel | LayerPanel.svelte:24 | Create layer button | `layersStore.add()` (optimistic) |
-| `trpc.layers.delete.mutate(...)` | LayerPanel | LayerPanel.svelte:40 | Delete layer confirm | `layersStore.remove()`, `styleStore.clearStyle()` |
-| `trpc.layers.update.mutate(...)` | LayerPanel | LayerPanel.svelte:57 | Toggle visibility | `layersStore.toggle()` rollback on error |
-| `trpc.layers.update.mutate(...)` | StylePanel | StylePanel.svelte:134,261,315,345 | Style changes | `layersStore.updateStyle()` + `styleStore.setStyle()` |
-| `trpc.layers.reorder.mutate(...)` | LayerPanel | LayerPanel.svelte:78 | Drag reorder | `layersStore.reorder()` (optimistic) |
-| `trpc.events.log.mutate(...)` | MapEditor | MapEditor.svelte:351,388,411 | Fire-and-forget | None (best-effort telemetry) |
-| `trpc.shares.create.mutate(...)` | ShareDialog | ShareDialog.svelte:91 | Create share | Local state refresh |
-| `trpc.shares.delete.mutate(...)` | ShareDialog | ShareDialog.svelte:108 | Delete share | Local state refresh |
-| `trpc.collaborators.invite.mutate(...)` | ShareDialog | ShareDialog.svelte:150 | Invite collaborator | Local list refresh |
-| `trpc.collaborators.remove.mutate(...)` | ShareDialog | ShareDialog.svelte:168 | Remove collaborator | Local list refresh |
-| `trpc.annotations.create.mutate(...)` | AnnotationPanel | AnnotationPanel.svelte:491,530 | Create annotation | `queryKeys.annotations.list` invalidation |
-| `trpc.annotations.delete.mutate(...)` | AnnotationPanel | AnnotationPanel.svelte:498 | Delete annotation | `queryKeys.annotations.list` invalidation |
-| `trpc.annotations.update.mutate(...)` | AnnotationPanel | AnnotationPanel.svelte:522 | Edit annotation | `queryKeys.annotations.list` invalidation |
-| `trpc.annotations.convertToPoint.mutate(...)` | AnnotationPanel | AnnotationPanel.svelte:539 | Convert region to point | `queryKeys.annotations.list` invalidation |
-
-### Subscriptions
-
-None. The map editor uses polling/manual refresh, not WebSocket subscriptions.
-
-### Cache Invalidation Pattern
-
-Two distinct strategies coexist:
-
-1. **TanStack Query** (annotations, features): `createMutation` with `onSuccess` calling `queryClient.invalidateQueries()`. The shared `queryKeys` module ensures MapEditor's `annotationPinsQuery` auto-refreshes when AnnotationPanel mutates.
-
-2. **Manual store reload** (layers): After `trpc.layers.list.query()`, the result is pushed directly into `layersStore.set()`. No TanStack caching -- each call is a fresh fetch.
-
-**Gap**: Feature data uses a hybrid: `trpc.features.list.query()` is called directly (not via TanStack), but DrawingToolbar's mutations invalidate via TanStack `queryKeys.features.list`. This means `loadLayerData()` in MapEditor is NOT automatically triggered by DrawingToolbar's cache invalidation -- MapEditor must explicitly call `loadLayerData()` after `handleFeatureDrawn`.
+| Call | Component | Invalidation |
+|------|-----------|-------------|
+| `trpc.features.upsert.mutate(...)` | DrawingToolbar | `queryClient.invalidateQueries(queryKeys.features.list({ layerId }))` |
+| `trpc.features.delete.mutate(...)` | DrawingToolbar | `queryClient.invalidateQueries(queryKeys.features.list({ layerId }))` |
+| `trpc.maps.update.mutate(...)` | MapEditor | None (viewport is local-first) |
+| `trpc.events.log.mutate(...)` | MapEditor | None (best-effort telemetry) |
 
 ---
 
-## 5. Terra Draw Contract
+## 6. Terra Draw Contract
 
-### Adapter Interface
-
-```
-TerraDrawMapLibreGLAdapter({ map: MapLibreMap })
-  -> TerraDraw({ adapter, modes: [...] })
-```
-
-Terra Draw is dynamically imported (`await import('terra-draw')`) in `drawingStore.init()` (drawing.svelte.ts:22-23). The adapter bridges Terra Draw's rendering to MapLibre's canvas.
-
-### Lifecycle (drawingStore state machine)
+### Lifecycle (now in MapEditorState)
 
 ```
-idle ──init(map)──> importing ──await imports──> ready ──stop()──> stopped
-  ^                    |                           |
-  |                    | (gen !== _generation)      |
-  |                    v                           |
-  |                 [aborted, returns null]        |
-  +───────────────reset()──────────────────────────+
+idle ──initDrawing(map)──> importing ──await imports──> ready ──stopDrawing()──> stopped
+  ^                           |                           |
+  |                           | (gen !== #drawingGeneration)
+  |                           v                           |
+  |                        [aborted, returns null]        |
+  +──────────────────reset()──────────────────────────────+
 ```
 
-**Generation counter** (`_generation`): incremented on every `init()` call. If a newer `init()` starts while the async import is in-flight, the stale init aborts by checking `gen !== _generation` (drawing.svelte.ts:26).
+**Owner change**: Terra Draw lifecycle moved from standalone `drawingStore` into `MapEditorState.initDrawing()` / `.stopDrawing()` / `.reset()`. The generation counter pattern is preserved.
 
 ### Who Manages What
 
 | Aspect | Owner | Notes |
 |--------|-------|-------|
-| Terra Draw instance creation | `drawingStore.init()` | Called by DrawingToolbar `$effect` (DT:initTerraDraw) |
-| Mode registration | `drawingStore.init()` | Point, LineString, Polygon, Select modes hardcoded |
-| Mode switching | DrawingToolbar | `draw.instance.setMode(mode)` via DT:syncToolToTerraDraw `$effect` |
-| Feature capture | DrawingToolbar | `draw.on('finish', id => ...)` callback registered in DT:initTerraDraw |
-| Feature snapshot | DrawingToolbar | `draw.instance.getSnapshotFeature(id)` to extract geometry |
-| Feature removal from canvas | DrawingToolbar | `draw.instance.removeFeatures([id])` after save |
-| In-progress cleanup | DrawingToolbar | `draw.instance.getSnapshot()` to find `drawing` state features |
-| start/stop | `drawingStore` | `draw.start()` in init, `draw.stop()` in stop/reset |
-| Re-init on basemap swap | DrawingToolbar | `map.on('style.load', startDraw)` -- Terra Draw sources/layers are wiped on style reload |
-
-### Event Callbacks
-
-| Event | Handler | Location |
-|-------|---------|----------|
-| `draw.on('finish', id)` | Captures drawn feature, routes to `saveFeature()`, `measureFeature()`, or `onregiondrawn()` callback | DrawingToolbar.svelte:72-104 |
-
-Terra Draw does **not** expose `change`, `select`, or `deselect` events to the app. The only event consumed is `finish`.
-
-### App vs Terra Draw State
-
-| State | Managed by |
-|-------|-----------|
-| Active drawing mode (point/line/polygon/select) | **Both**: `selectionStore.activeTool` (app) synced to `draw.setMode()` (Terra Draw) via DT:syncToolToTerraDraw `$effect` |
-| In-progress drawing vertices | **Terra Draw** only (internal canvas overlay) |
-| Completed feature geometry | **App** after `getSnapshotFeature()` extracts it |
-| Feature persistence | **App** via `trpc.features.upsert.mutate()` |
-| Drawing canvas rendering | **Terra Draw** via MapLibre sources/layers it manages |
-| Hot overlay (immediate preview for VT layers) | **App** via `hotOverlay` store |
+| Instance creation | `MapEditorState.initDrawing()` | Called by DrawingToolbar `$effect` |
+| Mode registration | `MapEditorState.initDrawing()` | Point, LineString, Polygon, Select modes |
+| Mode switching | DrawingToolbar | `editorState.drawingInstance.setMode(mode)` |
+| Feature capture | DrawingToolbar | `draw.on('finish', id => ...)` |
+| Feature snapshot | DrawingToolbar | `draw.getSnapshotFeature(id)` |
+| Feature removal | DrawingToolbar | `draw.removeFeatures([id])` |
+| start/stop | `MapEditorState` | `.initDrawing()` calls `draw.start()`, `.stopDrawing()` calls `draw.stop()` |
+| Re-init on basemap swap | DrawingToolbar | `map.on('style.load', ...)` |
 
 ---
 
-## 6. MapLibre Contract
+## 7. MapLibre Contract
 
-### How the App Talks to MapLibre
+Unchanged from previous scan. Three access patterns:
 
-Three distinct access patterns:
-
-#### Pattern A: svelte-maplibre-gl Declarative (Primary)
-
-MapCanvas uses `svelte-maplibre-gl` components (`<MapLibre>`, `<GeoJSONSource>`, `<FillLayer>`, `<LineLayer>`, `<CircleLayer>`, `<SymbolLayer>`, `<VectorTileSource>`, `<Popup>`) in the template. State flows via props:
-
-- `style={mapStore.basemapUrl}` -- basemap URL
-- `bind:map={mapInstance}` -- binds the MapLibre instance to local state
-- `center`, `zoom`, `bearing`, `pitch` -- viewport (bidirectional via bind)
-- `data={layerData[layer.id]}` -- GeoJSON per source
-- `paint`, `layout`, `filter` -- layer styling from `layerRenderCache`
-
-#### Pattern B: Store-Mediated (Viewport Sync)
-
-MapCanvas mediates between MapLibre events and `mapStore`:
-
-```
-MapLibre move event -> local $state (mapCenter, mapZoom, ...)
-  -> MC:localToStore $effect -> mapStore.setViewport()     [terminal, no cycle]
-
-mapStore.loadViewport() -> increments viewportVersion
-  -> MC:storeToLocal $effect -> local $state -> library binding updates map
-```
-
-The `viewportVersion` counter (mapStore L46) is the **cycle breaker**: `MC:storeToLocal` tracks ONLY `viewportVersion`, reading center/zoom/bearing/pitch inside `untrack()`. This prevents the bidirectional sync from becoming an infinite loop.
-
-#### Pattern C: Direct MapLibre API (Escape Hatch)
-
-| Call | Location | Why |
-|------|----------|-----|
-| `map.getSource('source-${layerId}').setData(fc)` | MapEditor.svelte:327 | Bypass svelte-maplibre-gl's `firstRun` guard for immediate data push |
-| `map.getStyle().layers.find(...)` | MapCanvas.svelte:172 | Find first symbol layer for sandwich ordering |
-| `map.on('style.load', ...)` | MapCanvas.svelte:179, DrawingToolbar.svelte:119 | Re-init label layer ID / Terra Draw on basemap swap |
-| `map.on('moveend', ...)` | MapEditor.svelte:131, viewport.svelte.ts:120 | Persist viewport to localStorage; DataTable refresh |
-| `map.on('mousemove', ...)` | MapEditor.svelte:477 | Status bar cursor coordinates |
-| `map.on('zoom', ...)` | MapEditor.svelte:481 | Status bar zoom level |
-| `map.getBounds()` | viewport.svelte.ts:27 (via deps) | DataTable viewport-based pagination |
-
-### Who Calls Map Methods Directly
-
-| Caller | Direct API calls | Risk |
-|--------|-----------------|------|
-| **MapEditor** | `getSource().setData()`, `on('moveend')`, `on('mousemove')`, `on('zoom')` | Medium: `getSource().setData()` bypasses declarative layer, could desync |
-| **MapCanvas** | `getStyle().layers`, `on('style.load')` | Low: read-only introspection |
-| **DrawingToolbar** | `on('style.load')`, `isStyleLoaded()` | Low: lifecycle coordination only |
-| **viewportStore** | `on('moveend')`, `getBounds()` | Low: read-only via injected dep |
+1. **Declarative** (svelte-maplibre-gl components in MapCanvas template)
+2. **Store-mediated** (viewport sync via `viewportVersion` cycle breaker)
+3. **Direct API** (escape hatches: `getSource().setData()`, event listeners)
 
 ### Race Condition Surface
 
-1. **Viewport sync cycle** (MITIGATED): `viewportVersion` counter prevents MC:localToStore <-> MC:storeToLocal infinite loop. Documented in MapCanvas.svelte:109-126.
-
-2. **Layer data push** (PARTIAL): `map.getSource().setData()` at MapEditor.svelte:327 writes directly while svelte-maplibre-gl also manages the source. The `firstRun` guard comment suggests this is a workaround -- could conflict if svelte-maplibre-gl also pushes data on the same tick.
-
-3. **Terra Draw re-init** (MITIGATED): On basemap swap (`style.load`), MapLibre destroys all sources/layers. DrawingToolbar re-inits Terra Draw on `style.load`. Generation counter guards against stale inits.
-
-4. **Feature click during effect flush** (MITIGATED): `handleFeatureClick` uses `queueMicrotask()` to defer state writes, avoiding Svelte 5's 1000-iteration depth limit during initial mount (MapCanvas.svelte:468-481).
-
-5. **Multiple callers for `moveend`**: Both MapEditor (viewport localStorage persistence) and viewportStore (DataTable pagination) attach `moveend` listeners. No conflict (read-only), but cleanup must be symmetric.
+| # | Risk | Status |
+|---|------|--------|
+| 1 | Viewport sync cycle | MITIGATED — `viewportVersion` counter |
+| 2 | Layer data push (dual-write via `getSource().setData()`) | PARTIAL — still present in MapEditor |
+| 3 | Terra Draw re-init on basemap swap | MITIGATED — generation counter |
+| 4 | Feature click during effect flush | MITIGATED — `queueMicrotask()` deferral |
+| 5 | Multiple `moveend` listeners | No conflict — read-only |
 
 ---
 
-## Appendix: Effect Block Inventory
+## 8. Effect Block Inventory (Post-Consolidation)
 
-### MapEditor (14 $effect blocks)
+### MapEditor (~10 $effect blocks, down from 14)
 
-| Tag | Deps (tracked) | Writes to | Purpose |
-|-----|----------------|-----------|---------|
-| ME:mapContainerEl | `mapAreaEl` | `mapStore.setMapContainerEl()` | Sync DOM ref for export |
+| Tag | Deps | Writes to | Purpose |
+|-----|------|-----------|---------|
+| ME:mapContainerEl | `mapAreaEl` | `mapStore.setMapContainerEl()` | Sync DOM ref |
 | ME:loadFilters | `mapId` | `loadFilters()` | One-shot filter restore |
-| ME:saveFilters | `layersStore.all`, `filterStore.get()` | `saveFilters()` | Persist filters to localStorage |
-| ME:viewportPersist | `mapStore.mapInstance` | `mapStore.saveViewportLocally()` via moveend | Persist viewport to localStorage |
-| ME:measureActive | `activeSection`, `analysisTab`, `designMode` | `measureResult` | Clear measurement on tab switch |
-| ME:sectionCleanup | `activeSection` | `interactionModes.transitionTo()` | Reset mode on sidebar change |
-| ME:designModeCleanup | `designMode` | `transitionTo()`, `selectionStore` | Reset to idle on design toggle |
-| ME:selectionToFeature | `selectionStore.selectedFeature`, `.selectedLayerId` | `interactionModes.transitionTo()` | Selection -> featureSelected |
-| ME:toolDismissFeature | `selectionStore.activeTool` | `interactionModes.transitionTo()` | Drawing tool -> dismiss selection |
-| ME:featurePickCapture | `selectionStore.selectedFeature`, `.selectedLayerId` | `interactionModes.transitionTo()` | Pick mode -> capture feature |
-| ME:initLayers | `initialLayers` | `layersStore.set()`, `loadLayerData()` | Bootstrap layer data |
-| ME:viewportLoading | `mapStore.mapInstance`, `layersStore.active` | viewportStore | Large-layer viewport pagination |
-| ME:hotOverlayCleanup | (none, cleanup only) | `hotOverlay.clearHotFeatures()` | Unmount cleanup |
-| ME:statusBar | `mapStore.mapInstance` | `cursorLat`, `cursorLng`, `currentZoom` | Cursor/zoom tracking |
+| ME:saveFilters | `layersStore.all`, `filterStore.get()` | `saveFilters()` | Persist filters |
+| ME:viewportPersist | `mapStore.mapInstance` | localStorage via moveend | Persist viewport |
+| ME:measureActive | `activeSection`, `analysisTab`, `designMode` | `measureResult` | Clear measurement |
+| ME:sectionChange | `activeSection` | `editorState.handleSectionChange()` | **Replaced 5 bridge effects** |
+| ME:designModeChange | `designMode` | `editorState.handleDesignModeChange()` | **Replaced 5 bridge effects** |
+| ME:initLayers | `initialLayers` | `layersStore.set()`, `loadLayerData()` | Bootstrap |
+| ME:viewportLoading | `mapStore.mapInstance`, `layersStore.active` | viewportStore | Viewport pagination |
+| ME:statusBar | `mapStore.mapInstance` | cursor/zoom local state | Status bar |
 
-### MapCanvas (4 $effect blocks)
+**Eliminated**: ME:selectionToFeature, ME:toolDismissFeature, ME:featurePickCapture, ME:designModeCleanup, ME:sectionCleanup — all inlined into MapEditorState atomic methods.
+
+### MapCanvas (4 $effect blocks — unchanged)
 
 | Tag | Deps | Writes to | Purpose |
 |-----|------|-----------|---------|
-| MC:syncMapInstance | `mapInstance` | `mapStore.setMapInstance()` | Push map ref to global store |
-| MC:storeToLocal | `mapStore.viewportVersion` | local `mapCenter`, `mapZoom`, `mapBearing`, `mapPitch` | Programmatic viewport changes |
-| MC:localToStore | `mapCenter`, `mapZoom` | `mapStore.setViewport()` | User pan/zoom -> store |
-| MC:firstLabelLayer | `mapInstance` | `firstLabelLayerId` | Basemap label layer discovery |
+| MC:syncMapInstance | `mapInstance` | `mapStore.setMapInstance()` | Push map ref |
+| MC:storeToLocal | `mapStore.viewportVersion` | local viewport vars | Programmatic viewport |
+| MC:localToStore | `mapCenter`, `mapZoom` | `mapStore.setViewport()` | User pan/zoom |
+| MC:firstLabelLayer | `mapInstance` | `firstLabelLayerId` | Basemap label discovery |
 
-### DrawingToolbar (3 $effect blocks)
+### DrawingToolbar (3 $effect blocks — unchanged count, updated deps)
 
 | Tag | Deps | Writes to | Purpose |
 |-----|------|-----------|---------|
-| DT:initTerraDraw | `map` prop | `drawingStore.init()`, event handlers | Terra Draw lifecycle |
-| DT:syncToolToTerraDraw | `selectionStore.activeTool`, `drawingStore.isReady` | `draw.setMode()` | Sync app tool to Terra Draw mode |
-| (unnamed cleanup) | `map` prop | `drawingStore.stop()` | Cleanup on unmount |
+| DT:initTerraDraw | `map` prop | `editorState.initDrawing()` | Terra Draw lifecycle |
+| DT:syncToolToTerraDraw | `editorState.activeTool`, `editorState.isDrawingReady` | `drawingInstance.setMode()` | Sync app tool to Terra Draw |
+| (cleanup) | `map` prop | `editorState.stopDrawing()` | Cleanup on unmount |
 
 ---
 
-## Proposed Seeds
+## 9. Props Contracts at Decomposition Seams
 
-```json
-[
-  {
-    "title": "Extract InteractionModeBridge composable from MapEditor",
-    "type": "task",
-    "priority": "medium",
-    "labels": ["decomposition", "map-editor", "contracts"],
-    "description": "5 $effect blocks (ME:sectionCleanup, ME:designModeCleanup, ME:selectionToFeature, ME:toolDismissFeature, ME:featurePickCapture) all orchestrate interactionModes.transitionTo() from MapEditor. Extract into useInteractionOrchestrator() composable per decomposition.md seam 4. Props contract defined in contracts.md section 3."
-  },
-  {
-    "title": "Resolve feature data cache invalidation gap",
-    "type": "bug",
-    "priority": "high",
-    "labels": ["data-integrity", "map-editor", "contracts"],
-    "description": "DrawingToolbar invalidates TanStack queryKeys.features.list after upsert/delete, but MapEditor's loadLayerData() does NOT use TanStack — it calls trpc.features.list.query() directly. This means cache invalidation from DrawingToolbar does not trigger a data reload in MapEditor. Currently works because handleFeatureDrawn() explicitly calls loadLayerData(), but this is a fragile coupling. Unify on one cache strategy."
-  },
-  {
-    "title": "Audit direct MapLibre getSource().setData() bypass",
-    "type": "task",
-    "priority": "medium",
-    "labels": ["tech-debt", "map-editor", "contracts"],
-    "description": "MapEditor.svelte:327 calls map.getSource().setData() directly to bypass svelte-maplibre-gl's firstRun guard. This creates a dual-write path (declarative via GeoJSONSource data prop + imperative via setData). Investigate whether svelte-maplibre-gl has been updated to handle this case, or document the invariant that the direct call must always run AFTER the declarative source is registered."
-  },
-  {
-    "title": "Extract KeyboardShortcuts composable from MapEditor",
-    "type": "task",
-    "priority": "low",
-    "labels": ["decomposition", "map-editor", "contracts"],
-    "description": "handleKeydown (MapEditor L419-464) reads from undoStore, selectionStore, interactionModes, and designMode. Clean extraction boundary defined in contracts.md section 3 seam 5. Zero risk — no store writes beyond what deps interface exposes."
-  },
-  {
-    "title": "Eliminate god-component store write leaks in MapEditor",
-    "type": "task",
-    "priority": "medium",
-    "labels": ["decomposition", "map-editor", "contracts"],
-    "description": "MapEditor writes to selectionStore.setActiveTool() (keyboard shortcuts), hotOverlay.clearHotFeatures() (unmount), and layersStore.set() (import complete) — all of which conceptually belong to child components. These writes should move to the extracted composables (KeyboardShortcuts, LayerDataManager) per the decomposition plan."
-  }
-]
+### Seam: KeyboardShortcuts (Extracted)
+
+```typescript
+interface KeyboardShortcutsDeps {
+  getEffectiveReadonly: () => boolean;
+  getDesignMode: () => boolean;
+  getInteractionState: () => InteractionState;
+  transitionTo: (next: InteractionState) => void;
+  undoStore: { undo: () => void; redo: () => void; };
+  selectionStore: { setActiveTool: (tool: DrawTool) => void; };
+  toggleDesignMode: () => void;
+}
+// Returns: (e: KeyboardEvent) => void
+// Note: `selectionStore` in deps name is a vestigial label —
+// MapEditor passes `editorState` as both `selectionStore` and
+// supplies `transitionTo` from `editorState.transitionTo`.
 ```
 
-**See also:** [components](components.md) | [behavior](behavior.md) | [decomposition](decomposition.md)
+### Seam: StatusBar (Not Yet Extracted)
+
+Same as previous scan — `cursorLat`, `cursorLng`, `currentZoom` from MapLibre events.
+
+### Seam: DialogVisibility (Not Yet Extracted)
+
+Same as previous scan — 3 boolean `$state` vars + toggle functions.
+
+### Seam: ViewportServerSave (Not Yet Extracted)
+
+Same as previous scan — `mapId`, viewport snapshot, basemap, tRPC mutation.
+
+---
+
+## Interface Explicitness Assessment
+
+| Interface | Explicit (typed)? | Notes |
+|-----------|-------------------|-------|
+| MapEditorState class | **Yes** — fully typed with TypeScript | All getters typed, method signatures enforce parameter types, InteractionState is a discriminated union |
+| Context wiring (`set`/`getMapEditorState`) | **Yes** — typed Symbol key, typed return | Compile-time safety for consumers |
+| useKeyboardShortcuts deps | **Yes** — `KeyboardShortcutsDeps` interface | Dependency injection with typed contract |
+| MapCanvas → MapEditorState | **Implicit (convention)** — calls `getMapEditorState()` directly | No interface — depends on full class. Could be narrowed to a read-only subset. |
+| DrawingToolbar → MapEditorState | **Implicit (convention)** — calls `getMapEditorState()` directly | Same — depends on full class |
+| DataTable → MapEditorState | **Implicit (convention)** — calls `getMapEditorState()` directly, **cross-boundary** | This is the highest-risk implicit crossing |
+| Terra Draw ↔ App | **Implicit (runtime)** — `draw.on('finish')`, `draw.setMode()` | Third-party API, not typed beyond terra-draw's own types |
+| MapLibre escape hatches | **Implicit (runtime)** — `map.getSource().setData()` | Cast-heavy, runtime errors on missing source |
+
+**Recommendation**: Define narrow read-only interfaces (e.g., `MapEditorSelectionReader`) for cross-boundary consumers like DataTable, reducing coupling surface.
+
+---
+
+**See also:** [components](components.md) | [behavior](behavior.md)

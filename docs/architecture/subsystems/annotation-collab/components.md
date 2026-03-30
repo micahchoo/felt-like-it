@@ -4,9 +4,11 @@
 
 ### Annotations
 ```
-AnnotationPanel (~1200 LOC, 40 commits)  — self-contained form + list
-  ├── AnnotationContent (renders content by type in list)
-  └── [inline form: anchor selector, content editor, EXIF GPS, thread UI]
+AnnotationPanel (~1280 LOC)  — self-contained form + list
+  ├── AnnotationThread (56 LOC) — threaded replies via annotations.getThread tRPC query
+  │     └── AnnotationContent (renders each reply)
+  ├── AnnotationContent (198 LOC) — renders content by type in list
+  └── [inline form: anchor selector, content editor, EXIF GPS]
 
 MapCanvas
   └── AnnotationContent (in-map popup rendering)
@@ -18,15 +20,16 @@ MapCanvas
 **Anchor types:** point | region | feature | viewport
 - Feature anchor stores `featureDeleted: boolean` with convertToPoint rescue path
 
-### Collaboration (active vs dead)
+### Collaboration
 ```
-Active (map/):                    Dead stubs (collaboration/):
-├── ShareDialog (195 LOC, tRPC)   ├── ShareDialog (55 LOC, props-only)
-├── ActivityFeed (230 LOC, tRPC)  ├── ActivityFeed (55 LOC, stub)
-└── GuestCommentPanel             └── GuestCommentPanel
+map/:
+├── ShareDialog (358 LOC, tRPC)
+├── ActivityFeed (230 LOC, tRPC)
+└── GuestCommentPanel
 ```
 
-Only `map/` versions are imported by MapEditor. `collaboration/` directory contains earlier drafts never cleaned up.
+All collaboration components live in `map/` and are imported by MapEditor.
+Dead stubs in `collaboration/` (flagged in prior scan) have been deleted — that directory no longer exists.
 
 ## Data Model: v1 vs v2
 

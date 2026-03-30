@@ -14,10 +14,13 @@ Felt Like It is a self-hosted collaborative GIS platform for data-sovereign orga
 - Layers as typed geometry containers (point/line/polygon/mixed), z-ordering, visibility
 - Features as individual geometries (PostGIS `geometry(Geometry, 4326)` + JSONB properties)
 - Drawing tools via Terra Draw; undo/redo stack
-- Optimistic concurrency via version column
+- **MapEditorState**: single class consolidating interaction modes, selection, and drawing state (replaces former separate `drawing.svelte.ts`, `selection.svelte.ts`, `interaction-modes.svelte.ts` stores and the `useInteractionBridge` adapter). State machine with typed interaction states: `idle | featureSelected | drawRegion | pickFeature | pendingMeasurement`
+- TanStack Query cache as single source of truth for server state (optimistic concurrency via version column)
 
 ### Data Import & Export
 - BullMQ job pipeline: GeoJSON, CSV, Shapefile, KML, GPX, GeoPackage → PostGIS
+- **Import Engine** (`@felt-like-it/import-engine`): shared parser package extracted to `packages/import-engine/`. Pure parsing logic (no DB access) producing `ParsedFeature` (GeoJSON geometry + properties) or `ParsedWkbFeature` (WKB hex + SRID for GeoPackage). Web app importers and the BullMQ worker are now thin wrappers calling import-engine parsers.
+- Filename sanitization (`sanitizeFilename`) shared between web and worker via import-engine
 - CSV geocoding via Nominatim (address column detection)
 - Export: GeoJSON, GeoPackage, Shapefile, PDF, PNG screenshot
 
@@ -52,6 +55,9 @@ Felt Like It is a self-hosted collaborative GIS platform for data-sovereign orga
 | Layer | Typed geometry container (point/line/polygon/mixed) within a map |
 | Feature | Single GIS geometry + properties JSON blob stored in PostGIS |
 | Import Job | Async BullMQ task parsing an uploaded file into features |
+| Import Engine | Shared parser package (`@felt-like-it/import-engine`) — pure parsing, no DB. Produces `ParsedFeature` or `ParsedWkbFeature` |
+| ParsedFeature | Standard import output: `{ geometry: Geometry, properties: Record<string, unknown> }` |
+| MapEditorState | Consolidated client-side state machine managing interaction modes, feature selection, and drawing lifecycle |
 | Style (FSL) | Felt Style Language descriptor: visualization type + paint rules |
 | Geoprocessing | Server-side PostGIS spatial operation producing a new output layer |
 | Annotation | Geographically anchored media object (text, image, IIIF, etc.) |
@@ -90,5 +96,16 @@ audit_log (global hash chain: entity_type + entity_id)
 ```
 
 All PKs are UUIDs (self-hosted portability). Geometry columns use SRID 4326 (WGS84).
+
+### Package Boundaries
+
+```
+packages/shared-types     — Zod schemas + branded types (Feature, Layer, Map, Style, etc.)
+packages/geo-engine       — Auto-styling, coordinate detection, spatial helpers
+packages/import-engine    — Format parsers (GeoJSON, CSV, Shapefile, KML, GPX, GeoPackage)
+                            Returns ParsedFeature[] / ParsedWkbFeature[] — no DB dependency
+```
+
+Client-side editor state lives in `MapEditorState` (single Svelte 5 runes class), not spread across multiple stores. Server state cached via TanStack Query as single source of truth.
 
 **See also:** [ecosystem](ecosystem.md) | [subsystems](subsystems.md)

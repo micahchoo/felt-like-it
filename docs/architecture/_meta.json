@@ -1,168 +1,329 @@
 {
   "schema_version": 1,
-  "last_full_run": "2026-03-28T00:00:00Z",
+  "last_full_run": "2026-03-30",
   "project_shape": "monorepo",
   "docs": {
     "overview.md": {
-      "git_hash": "5a15228c6307bc06113cc39a06b6698bafe00a91",
-      "source_glob": ["apps/web/src/lib/**", "packages/**", "services/**"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["docs/architecture/**"],
       "zoom_level": "domain",
       "subsystem": null,
-      "last_updated": "2026-03-28T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "domain.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
-      "source_glob": ["apps/web/src/lib/server/db/schema.ts", "docs/**"],
+      "git_hash": "9b494ae9ddad3b42aba9fb85c410c2ce29fabb80",
+      "source_glob": ["apps/web/src/lib/server/db/schema.ts", "packages/shared-types/src/**", "README.md"],
       "zoom_level": "domain",
       "subsystem": null,
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "ecosystem.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
-      "source_glob": ["**/package.json"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["package.json", "apps/web/package.json", "services/worker/package.json", "packages/*/package.json", "pnpm-lock.yaml"],
       "zoom_level": "ecosystem",
       "subsystem": null,
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "infrastructure.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
-      "source_glob": ["docker/**", ".github/**", "scripts/**"],
+      "git_hash": "9b494ae9ddad3b42aba9fb85c410c2ce29fabb80",
+      "source_glob": [".github/workflows/**", "docker/**", "turbo.json"],
       "zoom_level": "infrastructure",
       "subsystem": null,
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
-      "source_glob": ["apps/web/src/lib/**"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["apps/web/src/lib/**", "packages/**", "services/**"],
       "zoom_level": "subsystem",
       "subsystem": null,
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/map-editor/components.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
-      "source_glob": ["apps/web/src/lib/components/map/**", "apps/web/src/lib/stores/**"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["apps/web/src/lib/components/map/**", "apps/web/src/lib/stores/map-editor-state.svelte.ts"],
       "zoom_level": "component",
       "subsystem": "map-editor",
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/map-editor/behavior.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
-      "source_glob": ["apps/web/src/lib/components/map/**", "apps/web/src/lib/stores/**"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["apps/web/src/lib/components/map/**", "apps/web/src/lib/stores/map-editor-state.svelte.ts"],
       "zoom_level": "behavior",
       "subsystem": "map-editor",
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/map-editor/contracts.md": {
-      "git_hash": "5a15228c6307bc06113cc39a06b6698bafe00a91",
-      "source_glob": ["apps/web/src/lib/components/map/**", "apps/web/src/lib/stores/**"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["apps/web/src/lib/components/map/**", "apps/web/src/lib/stores/map-editor-state.svelte.ts"],
       "zoom_level": "contract",
       "subsystem": "map-editor",
-      "last_updated": "2026-03-28T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/map-canvas/components.md": {
+      "git_hash": "ad9e97d374cb1babf1686479e169e23d2f54dbe8",
+      "source_glob": ["apps/web/src/lib/components/map/MapCanvas.svelte"],
+      "zoom_level": "component",
+      "subsystem": "map-canvas",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/map-canvas/contracts.md": {
+      "git_hash": "ad9e97d374cb1babf1686479e169e23d2f54dbe8",
+      "source_glob": ["apps/web/src/lib/components/map/MapCanvas.svelte"],
+      "zoom_level": "contract",
+      "subsystem": "map-canvas",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/map-canvas/behavior.md": {
+      "git_hash": "ad9e97d374cb1babf1686479e169e23d2f54dbe8",
+      "source_glob": ["apps/web/src/lib/components/map/MapCanvas.svelte"],
+      "zoom_level": "behavior",
+      "subsystem": "map-canvas",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/drawing-tools/components.md": {
+      "git_hash": "f15feb022485c1d54449b01b48ce4b7ac2feafcf",
+      "source_glob": ["apps/web/src/lib/components/map/DrawingToolbar.svelte"],
+      "zoom_level": "component",
+      "subsystem": "drawing-tools",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/drawing-tools/contracts.md": {
+      "git_hash": "f15feb022485c1d54449b01b48ce4b7ac2feafcf",
+      "source_glob": ["apps/web/src/lib/components/map/DrawingToolbar.svelte"],
+      "zoom_level": "contract",
+      "subsystem": "drawing-tools",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/drawing-tools/behavior.md": {
+      "git_hash": "f15feb022485c1d54449b01b48ce4b7ac2feafcf",
+      "source_glob": ["apps/web/src/lib/components/map/DrawingToolbar.svelte"],
+      "zoom_level": "behavior",
+      "subsystem": "drawing-tools",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/layer-management/components.md": {
+      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
+      "source_glob": ["apps/web/src/lib/components/map/LayerPanel.svelte", "apps/web/src/lib/stores/layers*"],
+      "zoom_level": "component",
+      "subsystem": "layer-management",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/layer-management/contracts.md": {
+      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
+      "source_glob": ["apps/web/src/lib/components/map/LayerPanel.svelte", "apps/web/src/lib/stores/layers*"],
+      "zoom_level": "contract",
+      "subsystem": "layer-management",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/layer-management/behavior.md": {
+      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
+      "source_glob": ["apps/web/src/lib/components/map/LayerPanel.svelte", "apps/web/src/lib/stores/layers*"],
+      "zoom_level": "behavior",
+      "subsystem": "layer-management",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/collaboration/components.md": {
+      "git_hash": "9b494ae9ddad3b42aba9fb85c410c2ce29fabb80",
+      "source_glob": ["apps/web/src/routes/share/**", "apps/web/src/lib/server/trpc/routers/comments.ts", "apps/web/src/lib/server/trpc/routers/shares.ts"],
+      "zoom_level": "component",
+      "subsystem": "collaboration",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/collaboration/contracts.md": {
+      "git_hash": "9b494ae9ddad3b42aba9fb85c410c2ce29fabb80",
+      "source_glob": ["apps/web/src/routes/share/**", "apps/web/src/lib/server/trpc/routers/comments.ts", "apps/web/src/lib/server/trpc/routers/shares.ts"],
+      "zoom_level": "contract",
+      "subsystem": "collaboration",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/collaboration/behavior.md": {
+      "git_hash": "9b494ae9ddad3b42aba9fb85c410c2ce29fabb80",
+      "source_glob": ["apps/web/src/routes/share/**", "apps/web/src/lib/server/trpc/routers/comments.ts", "apps/web/src/lib/server/trpc/routers/shares.ts"],
+      "zoom_level": "behavior",
+      "subsystem": "collaboration",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/rest-api/components.md": {
+      "git_hash": "bcd06fd4ad59f07210330d99968905ad75213221",
+      "source_glob": ["apps/web/src/routes/api/v1/**", "apps/web/src/lib/server/api/**"],
+      "zoom_level": "component",
+      "subsystem": "rest-api",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/rest-api/contracts.md": {
+      "git_hash": "bcd06fd4ad59f07210330d99968905ad75213221",
+      "source_glob": ["apps/web/src/routes/api/v1/**", "apps/web/src/lib/server/api/**"],
+      "zoom_level": "contract",
+      "subsystem": "rest-api",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/rest-api/behavior.md": {
+      "git_hash": "bcd06fd4ad59f07210330d99968905ad75213221",
+      "source_glob": ["apps/web/src/routes/api/v1/**", "apps/web/src/lib/server/api/**"],
+      "zoom_level": "behavior",
+      "subsystem": "rest-api",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/shared-types/components.md": {
+      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
+      "source_glob": ["packages/shared-types/src/**"],
+      "zoom_level": "component",
+      "subsystem": "shared-types",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/shared-types/contracts.md": {
+      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
+      "source_glob": ["packages/shared-types/src/**"],
+      "zoom_level": "contract",
+      "subsystem": "shared-types",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/import-worker/components.md": {
+      "git_hash": "9b494ae9ddad3b42aba9fb85c410c2ce29fabb80",
+      "source_glob": ["services/worker/src/**"],
+      "zoom_level": "component",
+      "subsystem": "import-worker",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/import-worker/contracts.md": {
+      "git_hash": "9b494ae9ddad3b42aba9fb85c410c2ce29fabb80",
+      "source_glob": ["services/worker/src/**"],
+      "zoom_level": "contract",
+      "subsystem": "import-worker",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/import-worker/behavior.md": {
+      "git_hash": "9b494ae9ddad3b42aba9fb85c410c2ce29fabb80",
+      "source_glob": ["services/worker/src/**"],
+      "zoom_level": "behavior",
+      "subsystem": "import-worker",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/import-engine/components.md": {
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["packages/import-engine/src/**"],
+      "zoom_level": "component",
+      "subsystem": "import-engine",
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "subsystems/import-engine/contracts.md": {
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["packages/import-engine/src/**"],
+      "zoom_level": "contract",
+      "subsystem": "import-engine",
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/data-pipeline/components.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
-      "source_glob": ["apps/web/src/lib/server/import/**", "apps/web/src/lib/server/export/**", "apps/web/src/lib/server/geo/**", "services/worker/**", "packages/geo-engine/**"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["apps/web/src/lib/server/import/**", "apps/web/src/lib/server/export/**", "services/worker/src/**", "packages/import-engine/src/**"],
       "zoom_level": "component",
       "subsystem": "data-pipeline",
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/data-pipeline/behavior.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
-      "source_glob": ["apps/web/src/lib/server/import/**", "services/worker/**"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["apps/web/src/lib/server/import/**", "apps/web/src/lib/server/export/**", "services/worker/src/**", "packages/import-engine/src/**"],
       "zoom_level": "behavior",
       "subsystem": "data-pipeline",
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/data-pipeline/contracts.md": {
-      "git_hash": "5a15228c6307bc06113cc39a06b6698bafe00a91",
-      "source_glob": ["apps/web/src/lib/server/import/**", "apps/web/src/lib/server/jobs/**", "services/worker/**", "packages/shared-types/**", "packages/geo-engine/**"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["apps/web/src/lib/server/import/**", "apps/web/src/lib/server/export/**", "services/worker/src/**", "packages/import-engine/src/**"],
       "zoom_level": "contract",
       "subsystem": "data-pipeline",
-      "last_updated": "2026-03-28T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/data-pipeline/modules.md": {
-      "git_hash": "5a15228c6307bc06113cc39a06b6698bafe00a91",
-      "source_glob": ["apps/web/src/lib/server/import/**", "apps/web/src/lib/server/export/**", "services/worker/**"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["apps/web/src/lib/server/import/**", "apps/web/src/lib/server/export/**", "services/worker/src/**", "packages/import-engine/src/**"],
       "zoom_level": "module",
       "subsystem": "data-pipeline",
-      "last_updated": "2026-03-28T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/annotation-collab/components.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
-      "source_glob": ["apps/web/src/lib/components/annotations/**", "apps/web/src/lib/server/annotations/**", "apps/web/src/lib/components/collaboration/**"],
+      "git_hash": "547b33e2894a029c348dbdd2e11e2eebf6ccd8f5",
+      "source_glob": ["apps/web/src/lib/components/annotations/**", "apps/web/src/lib/server/annotations/**"],
       "zoom_level": "component",
       "subsystem": "annotation-collab",
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/annotation-collab/behavior.md": {
-      "git_hash": "5a15228c6307bc06113cc39a06b6698bafe00a91",
-      "source_glob": ["apps/web/src/lib/components/annotations/**", "apps/web/src/lib/server/trpc/routers/**", "apps/web/src/routes/share/**"],
+      "git_hash": "547b33e2894a029c348dbdd2e11e2eebf6ccd8f5",
+      "source_glob": ["apps/web/src/lib/components/annotations/**", "apps/web/src/lib/server/annotations/**"],
       "zoom_level": "behavior",
       "subsystem": "annotation-collab",
-      "last_updated": "2026-03-28T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/annotation-collab/contracts.md": {
-      "git_hash": "5a15228c6307bc06113cc39a06b6698bafe00a91",
-      "source_glob": ["apps/web/src/lib/components/annotations/**", "apps/web/src/lib/components/collaboration/**", "apps/web/src/lib/server/trpc/routers/**"],
+      "git_hash": "547b33e2894a029c348dbdd2e11e2eebf6ccd8f5",
+      "source_glob": ["apps/web/src/lib/components/annotations/**", "apps/web/src/lib/server/annotations/**"],
       "zoom_level": "contract",
       "subsystem": "annotation-collab",
-      "last_updated": "2026-03-28T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/api-auth/components.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
-      "source_glob": ["apps/web/src/lib/server/auth/**", "apps/web/src/lib/server/trpc/**", "apps/web/src/routes/api/v1/**", "apps/web/src/lib/server/audit/**"],
+      "git_hash": "f15feb022485c1d54449b01b48ce4b7ac2feafcf",
+      "source_glob": ["apps/web/src/lib/server/auth/**", "apps/web/src/lib/server/trpc/**", "apps/web/src/routes/api/**"],
       "zoom_level": "component",
       "subsystem": "api-auth",
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/api-auth/behavior.md": {
-      "git_hash": "5a15228c6307bc06113cc39a06b6698bafe00a91",
-      "source_glob": ["apps/web/src/lib/server/auth/**", "apps/web/src/routes/(auth)/**", "apps/web/src/hooks.server.ts"],
+      "git_hash": "f15feb022485c1d54449b01b48ce4b7ac2feafcf",
+      "source_glob": ["apps/web/src/lib/server/auth/**", "apps/web/src/lib/server/trpc/**", "apps/web/src/routes/api/**"],
       "zoom_level": "behavior",
       "subsystem": "api-auth",
-      "last_updated": "2026-03-28T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/api-auth/contracts.md": {
-      "git_hash": "5a15228c6307bc06113cc39a06b6698bafe00a91",
-      "source_glob": ["apps/web/src/lib/server/auth/**", "apps/web/src/lib/server/trpc/**", "apps/web/src/routes/api/v1/**"],
+      "git_hash": "f15feb022485c1d54449b01b48ce4b7ac2feafcf",
+      "source_glob": ["apps/web/src/lib/server/auth/**", "apps/web/src/lib/server/trpc/**", "apps/web/src/routes/api/**"],
       "zoom_level": "contract",
       "subsystem": "api-auth",
-      "last_updated": "2026-03-28T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/geoprocessing/components.md": {
-      "git_hash": "5a15228c6307bc06113cc39a06b6698bafe00a91",
-      "source_glob": ["apps/web/src/lib/components/geoprocessing/**", "apps/web/src/lib/server/geo/**", "packages/geo-engine/**"],
+      "git_hash": "f15feb022485c1d54449b01b48ce4b7ac2feafcf",
+      "source_glob": ["apps/web/src/lib/components/geoprocessing/**", "apps/web/src/lib/server/geo/**", "packages/geo-engine/src/**"],
       "zoom_level": "component",
       "subsystem": "geoprocessing",
-      "last_updated": "2026-03-28T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "subsystems/geoprocessing/behavior.md": {
-      "git_hash": "5a15228c6307bc06113cc39a06b6698bafe00a91",
+      "git_hash": "f15feb022485c1d54449b01b48ce4b7ac2feafcf",
       "source_glob": ["apps/web/src/lib/components/geoprocessing/**", "apps/web/src/lib/server/geo/**"],
       "zoom_level": "behavior",
       "subsystem": "geoprocessing",
-      "last_updated": "2026-03-28T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "cross-cutting/patterns.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
+      "git_hash": "UNCOMMITTED",
       "source_glob": ["apps/web/src/lib/**"],
       "zoom_level": "component",
       "subsystem": null,
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "cross-cutting/security.md": {
-      "git_hash": "185a6538f22f46f86c0ccfcdd2b22bd395d3d770",
-      "source_glob": ["apps/web/src/lib/**", "services/**"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["apps/web/src/lib/**"],
       "zoom_level": "contract",
       "subsystem": null,
-      "last_updated": "2026-03-26T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
     },
     "risk-map.md": {
-      "git_hash": "5a15228c6307bc06113cc39a06b6698bafe00a91",
-      "source_glob": ["apps/web/src/lib/**", "services/**", "docker/**", ".github/**"],
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["apps/web/src/lib/**", "services/**", "packages/**"],
       "zoom_level": "subsystem",
       "subsystem": null,
-      "last_updated": "2026-03-28T00:00:00Z"
+      "last_updated": "2026-03-30T00:00:00Z"
+    },
+    "evolution.md": {
+      "git_hash": "UNCOMMITTED",
+      "source_glob": ["apps/web/src/lib/**", "services/**", "packages/**"],
+      "zoom_level": "domain",
+      "subsystem": null,
+      "last_updated": "2026-03-30T00:00:00Z"
     }
   }
 }

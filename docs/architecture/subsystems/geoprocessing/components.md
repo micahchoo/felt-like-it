@@ -1,6 +1,8 @@
 # Geoprocessing Subsystem — Components (Zoom Level 5)
 
 > Inventory of every component in the geoprocessing subsystem: UI panels, server functions, PostGIS operations, spatial joins, measurement utilities, and state management.
+>
+> Verified accurate as of 2026-03-29. Updated: §1.4 line numbers, §6.1 interaction-modes.svelte.ts → map-editor-state.svelte.ts (MapEditorState class).
 
 ## Subsystem Map
 
@@ -80,17 +82,18 @@ When `onmeasured` prop is provided (line 29), the toolbar enters measurement mod
 
 **File:** `apps/web/src/lib/components/map/MapEditor.svelte`
 
-Owns the tab/panel state that wires everything together:
+Owns the tab/panel state that wires everything together. Interaction state is provided by the unified `MapEditorState` class (see §6.1):
 
-- **`activeSection`** (line 170): `SectionId | null` — SidePanel section, `'analysis'` hosts both tabs
-- **`analysisTab`** (line 171): `'measure' | 'process'` — toggles between MeasurementPanel and GeoprocessingPanel
-- **`measureResult`** (line 153): `MeasurementResult | null` — ephemeral measurement state
-- **`measureActive`** (line 179): derived — `activeSection === 'analysis' && analysisTab === 'measure' && !designMode`
-- When `measureActive`, passes `onmeasured` callback to MapCanvas (line 677), which threads it to DrawingToolbar
-- Clears `measureResult` when leaving measurement mode (line 183)
-- "Measure Feature" action in DrawActionRow (line 722-728): calls `measureLine`/`measurePolygon` directly on selected feature geometry, then switches to analysis/measure tab
-- GeoprocessingPanel mounted at line 870 with `embedded` prop, receives `layers={layersStore.all}`
-- `onlayercreated` callback (line 875-882) logs activity event `'geoprocessing.completed'`
+- **`activeSection`** (line 158): `SectionId | null` — SidePanel section, `'analysis'` hosts both tabs
+- **`analysisTab`** (line 159): `'measure' | 'process'` — toggles between MeasurementPanel and GeoprocessingPanel
+- **`measureResult`** (line 141): `MeasurementResult | null` — ephemeral measurement state
+- **`measureActive`** (line 167): derived — `activeSection === 'analysis' && analysisTab === 'measure' && !designMode`
+- `transitionTo` destructured from `editorState` (MapEditorState, line 177); `interactionState` is a `$derived` from `editorState.interactionState`
+- When `measureActive`, passes `onmeasured` callback to MapCanvas (line 498), which threads it to DrawingToolbar
+- Clears `measureResult` when leaving measurement mode (line 171)
+- "Measure Feature" action in DrawActionRow: calls `measureLine`/`measurePolygon` directly on selected feature geometry (lines 544-546), then switches to analysis/measure tab
+- GeoprocessingPanel mounted with `embedded` prop, receives `layers={layersStore.all}`
+- `onlayercreated` callback logs activity event `'geoprocessing.completed'`
 
 ### 1.5 MapCanvas.svelte (Measurement Rendering)
 
@@ -225,13 +228,17 @@ Adaptive formatting: `adaptiveFormat()` adjusts decimal places by magnitude (0 f
 
 ## 6. State Management
 
-### 6.1 Interaction Modes Store
+### 6.1 MapEditorState (Unified State Class)
 
-**File:** `apps/web/src/lib/stores/interaction-modes.svelte.ts`
+**File:** `apps/web/src/lib/stores/map-editor-state.svelte.ts`
 
-The `InteractionState` discriminated union includes a `pendingMeasurement` variant (line 21-30) that carries measurement anchor geometry and content (type, value, unit, displayValue). This state is used when saving a measurement as an annotation — `MeasurementPanel.onsaveasannotation` triggers `transitionTo({ type: 'pendingMeasurement', ... })`.
+> *Replaces the former `interaction-modes.svelte.ts`, `selection.svelte.ts`, and `drawing.svelte.ts` stores (all deleted). State is now consolidated into a single `MapEditorState` class provided via Svelte 5 context.*
+
+The `InteractionState` discriminated union is defined inside this file and includes a `pendingMeasurement` variant that carries measurement anchor geometry and content (type, value, unit, displayValue). This state is used when saving a measurement as an annotation — `MeasurementPanel.onsaveasannotation` triggers `transitionTo({ type: 'pendingMeasurement', ... })`.
 
 Other relevant states: `idle`, `featureSelected`, `drawRegion`, `pickFeature`.
+
+The class exposes `interactionState` (getter), `transitionTo()`, `handleSectionChange()`, and `handleDesignModeChange()` — all consumed by MapEditor via destructuring from the context-provided instance.
 
 ### 6.2 MapEditor Local State
 
