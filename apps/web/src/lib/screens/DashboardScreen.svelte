@@ -27,7 +27,7 @@
 		if (creatingMap) return;
 		creatingMap = true;
 		try {
-			await handleCreate(title);
+			await actions.onCreate(title);
 		} finally {
 			creatingMap = false;
 		}

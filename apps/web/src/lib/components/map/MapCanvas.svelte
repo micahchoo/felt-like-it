@@ -1,10 +1,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { effectEnter, effectExit, mutation } from '$lib/debug/effect-tracker.js';
-  import { MapLibre, GeoJSONSource, VectorTileSource, CircleLayer, LineLayer, FillLayer, SymbolLayer, Popup } from 'svelte-maplibre-gl';
+  import { MapLibre, FeatureState, Popup } from 'svelte-maplibre-gl';
   import maplibregl from 'maplibre-gl';
-  import type { Map as MapLibreMap, MapMouseEvent, FillLayerSpecification, LineLayerSpecification, CircleLayerSpecification, SymbolLayerSpecification } from 'maplibre-gl';
-  import { PUBLIC_MARTIN_URL } from '$env/static/public';
+  import type { Map as MapLibreMap, MapMouseEvent, SymbolLayerSpecification } from 'maplibre-gl';
   import { mapStore } from '$lib/stores/map.svelte.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { getMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
@@ -13,7 +12,7 @@
   import { fslFiltersToMapLibre } from '@felt-like-it/geo-engine';
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
   import {
-    getLayerPaint as getLayerPaintBase,
+    getHoverAwarePaint,
     applyHighlight,
     getLabelAttribute,
     isLayerClickable,
@@ -23,53 +22,19 @@
     getLayerFilter as getLayerFilterBase,
   } from './map-styles.js';
   import { filterStore } from '$lib/stores/filters.svelte.js';
-  import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
   import DrawingToolbar from './DrawingToolbar.svelte';
   import FeaturePopup from './FeaturePopup.svelte';
-  import AnnotationContent from '$lib/components/annotations/AnnotationContent.svelte';
   import DeckGLOverlay from './DeckGLOverlay.svelte';
-  import { AnnotationObjectContentSchema } from '@felt-like-it/shared-types';
-  import type { AnnotationObjectContent } from '@felt-like-it/shared-types';
+  import DataLayerRenderer from './DataLayerRenderer.svelte';
+  import AnnotationRenderer from './AnnotationRenderer.svelte';
   import type { HeatmapLayerDef } from './DeckGLOverlay.svelte';
   import type { LayerStyle } from '@felt-like-it/shared-types';
+  import type { AnnotationPinCollection, AnnotationRegionCollection } from './AnnotationRenderer.svelte';
+  import { PUBLIC_MARTIN_URL } from '$env/static/public';
 
-  /**
-   * GeoJSON representation of annotation pins passed in from MapEditor.
-   * Each feature's `properties` embeds the content as a JSON string so the
-   * popup can render it without a separate data fetch.
-   */
-  interface AnnotationPinProperties {
-    authorName: string;
-    createdAt: string;
-    /** JSON.stringify(AnnotationContent) — parsed on click. */
-    contentJson: string;
-    anchorType?: string;
-  }
-
-  interface AnnotationPin {
-    type: 'Feature';
-    /** Annotation UUID — used as the MapLibre feature id for click identification. */
-    id: string;
-    geometry: { type: 'Point'; coordinates: [number, number] };
-    properties: AnnotationPinProperties;
-  }
-
-  export interface AnnotationPinCollection {
-    type: 'FeatureCollection';
-    features: AnnotationPin[];
-  }
-
-  interface AnnotationRegion {
-    type: 'Feature';
-    id: string;
-    geometry: { type: 'Polygon'; coordinates: number[][][] };
-    properties: AnnotationPinProperties;
-  }
-
-  export interface AnnotationRegionCollection {
-    type: 'FeatureCollection';
-    features: AnnotationRegion[];
-  }
+  // ── Annotated feature highlight + badge computations ────────────────────
+  import { centroid } from '@turf/turf';
+  import type { Feature, Point } from 'geojson';
 
   interface Props {
     readonly?: boolean;
@@ -115,33 +80,12 @@
   });
 
   // ── Viewport sync: unidirectional during interaction, push on loadViewport ─
-  // Data flow during user pan/zoom (unidirectional, no cycle):
-  //   MapLibre move handler → bound local $state (mapCenter, mapZoom, …)
-  //   → MC:localToStore effect → mapStore.setViewport()        [terminal]
-  //
-  // Data flow on programmatic change (loadViewport):
-  //   mapStore.loadViewport() increments viewportVersion
-  //   → MC:storeToLocal effect → local $state → library binding updates map
-  //
-  // MC:storeToLocal tracks ONLY viewportVersion (not center/zoom/bearing/pitch)
-  // so setViewport() calls from MC:localToStore never re-trigger it.
-  //
-  // IMPORTANT: Initialize from mapStore — NOT undefined. The library's internal
-  // move handler has two branches: if (center) writes only on change (safe),
-  // else writes tr.center on EVERY frame (creates undefined→value transition
-  // that cascades into effect_update_depth_exceeded). Seeding real values keeps
-  // us on the safe branch from the first frame.
   let mapCenter = $state<maplibregl.LngLatLike>({ lng: mapStore.center[0], lat: mapStore.center[1] });
   let mapZoom = $state<number>(mapStore.zoom);
   let mapBearing = $state<number>(mapStore.bearing);
   let mapPitch = $state<number>(mapStore.pitch);
 
   // Store → local (only fires when loadViewport increments viewportVersion)
-  // IMPORTANT: We track ONLY viewportVersion here, NOT center/zoom/bearing/pitch.
-  // Reading the actual values is done inside untrack() to avoid creating a
-  // reactive dependency on them. This prevents the MC:localToStore ↔ MC:storeToLocal
-  // cycle: setViewport (called by localToStore) does NOT increment viewportVersion,
-  // so this effect stays dormant during normal map pan/zoom animations.
   $effect(() => {
     const _version = mapStore.viewportVersion; // sole tracked dependency
     effectEnter('MC:storeToLocal', { version: _version });
@@ -195,8 +139,6 @@
   /**
    * Layers that should be rendered by deck.gl instead of MapLibre.
    * Currently only style.type === 'heatmap' (point-only kernel density).
-   * Non-Point features in a heatmap layer are silently filtered out —
-   * HeatmapLayer requires [lng, lat] coordinates.
    */
   const heatmapLayerDefs = $derived(
     layersStore.all
@@ -214,18 +156,13 @@
           features: pointFeatures,
           radiusPixels: (config['heatmapRadius'] as number | undefined) ?? 30,
           intensity: (config['heatmapIntensity'] as number | undefined) ?? 1,
-          // exactOptionalPropertyTypes: only include weightAttribute key when defined
           ...(weightAttr !== undefined ? { weightAttribute: weightAttr } : {}),
         };
       })
   );
 
-  /** Martin tile source layer name — Martin uses `{schema}.{table}` by default. */
-  const MARTIN_SOURCE_LAYER = 'public.features';
-
   /**
    * Whether this layer should be rendered via Martin vector tiles.
-   * True when: featureCount > threshold AND Martin URL is configured.
    */
   function usesVectorTiles(layer: Layer): boolean {
     return (
@@ -235,16 +172,7 @@
   }
 
   /**
-   * Build the Martin tile URL for a layer (browser-side URL).
-   * Pattern: {MARTIN_URL}/public.features/{z}/{x}/{y}
-   */
-  function martinTileUrl(): string {
-    return `${PUBLIC_MARTIN_URL}/public.features/{z}/{x}/{y}`;
-  }
-
-  /**
    * Combined MapLibre filter for a vector tile layer.
-   * Adds layer_id equality check on top of any user-defined filters.
    */
   function getVectorTileFilter(layer: Layer): unknown[] {
     const baseFilter = getLayerFilter(layer);
@@ -253,49 +181,10 @@
     return ['all', layerIdFilter, baseFilter];
   }
 
-  // PAINT_DEFAULTS imported from ./map-styles.ts
-
-  // Stable fallback — avoids creating a new empty FeatureCollection on every render.
-  const EMPTY_COLLECTION: { type: 'FeatureCollection'; features: GeoJSONFeature[] } = { type: 'FeatureCollection', features: [] };
-
-  // Stable canvas context attributes — new object literal on every render would
-  // cause svelte-maplibre-gl to re-create the canvas.
+  // Stable canvas context attributes
   const CANVAS_CTX_ATTRS = { preserveDrawingBuffer: true };
 
-  // Stable paint objects for non-data layers — avoids creating new references per render.
-  const ANNOTATION_PIN_PAINT = {
-    'circle-radius': 10, 'circle-color': '#f59e0b',
-    'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.92,
-  };
-  const ANNOTATION_REGION_FILL_PAINT = { 'fill-color': '#3b82f6', 'fill-opacity': 0.15 };
-  const ANNOTATION_REGION_LINE_PAINT = { 'line-color': '#3b82f6', 'line-width': 2, 'line-opacity': 0.6 };
-  const ANNOTATION_HIGHLIGHT_PAINT = { 'line-color': '#f59e0b', 'line-width': 3, 'line-opacity': 0.6 };
-  const BADGE_CIRCLE_PAINT = {
-    'circle-radius': 8, 'circle-color': '#f59e0b',
-    'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff',
-  };
-  const BADGE_LABEL_LAYOUT = {
-    'text-field': ['to-string', ['get', 'count']], 'text-size': 10, 'text-allow-overlap': true,
-  } as any;
-  const BADGE_LABEL_PAINT = { 'text-color': '#ffffff' };
-  const MEASURE_LINE_PAINT = { 'line-color': '#f59e0b', 'line-width': 2, 'line-dasharray': [4, 2], 'line-opacity': 0.8 };
-  const MEASURE_FILL_PAINT = { 'fill-color': '#f59e0b', 'fill-opacity': 0.1 };
-  const MEASURE_LABEL_LAYOUT = {
-    'text-field': ['get', 'label'], 'text-size': 12, 'text-offset': [0, -1.5], 'text-allow-overlap': false,
-  } as any;
-  const MEASURE_LABEL_PAINT = { 'text-color': '#f59e0b', 'text-halo-color': '#1e293b', 'text-halo-width': 1.5 };
-  const LINESTRING_FILTER = ['==', '$type', 'LineString'] as any;
-  const POLYGON_FILTER = ['==', '$type', 'Polygon'] as any;
-
   // ── Memoized per-layer render props ───────────────────────────────────────
-  // CRITICAL: function calls in the template (getLayerPaint, getLayerFilter, etc.)
-  // create new objects on every template re-evaluation. svelte-maplibre-gl compares
-  // by reference: new paint object → setPaintProperty → MapLibre render → tile
-  // events → template re-evaluates → new paint object → INFINITE LOOP.
-  //
-  // This $derived.by caches all per-layer props. It only recomputes when its
-  // tracked dependencies change (layersStore.all, editorState, filterStore),
-  // NOT on every template re-evaluation from unrelated state changes.
   interface LayerRenderCache {
     fillPaint: Record<string, unknown>;
     linePaint: Record<string, unknown>;
@@ -319,10 +208,12 @@
       if (!layer.visible) continue;
       const labelAttr = getLabelAttribute(layer);
       const style = layer.style as LayerStyle | null | undefined;
+      const highlightColor = (style as Record<string, unknown> | null | undefined)?.['highlightColor'] as string | undefined;
+      const selectedFeature = editorState.selectedFeature;
       result[layer.id] = {
-        fillPaint: getLayerPaint(layer, 'fill'),
-        linePaint: getLayerPaint(layer, 'line'),
-        circlePaint: getLayerPaint(layer, 'circle'),
+        fillPaint: applyHighlight(getHoverAwarePaint(layer, 'fill'), 'fill', highlightColor, selectedFeature?.id),
+        linePaint: applyHighlight(getHoverAwarePaint(layer, 'line'), 'line', highlightColor, selectedFeature?.id),
+        circlePaint: applyHighlight(getHoverAwarePaint(layer, 'circle'), 'circle', highlightColor, selectedFeature?.id),
         symbolPaint: labelAttr ? getSymbolPaint(layer) : null,
         symbolLayout: labelAttr ? getSymbolLayout(layer, labelAttr) : null,
         filter: getLayerFilter(layer),
@@ -338,24 +229,10 @@
     return result;
   });
 
-  /** Thin wrapper: pure paint computation + reactive highlight from editor state. */
-  function getLayerPaint(layer: Layer, paintType: 'circle' | 'line' | 'fill') {
-    const basePaint = getLayerPaintBase(layer, paintType);
-    const style = layer.style as Record<string, unknown> | null | undefined;
-    const highlightColor = style?.['highlightColor'] as string | undefined;
-    const selectedFeature = editorState.selectedFeature;
-    return applyHighlight(basePaint, paintType, highlightColor, selectedFeature?.id);
-  }
-
-  // getLabelAttribute, isLayerClickable, isLayerSandwiched imported from ./map-styles.ts
-
   /** Wrapper: pure FSL filter + reactive session-level UI filters from filterStore. */
   function getLayerFilter(layer: Layer): unknown[] | undefined {
     const baseFilter = getLayerFilterBase(layer, fslFiltersToMapLibre);
-
-    // Session-level UI filters (ephemeral, not persisted to style)
     const uiFilter = filterStore.toMapLibreFilter(layer.id);
-
     if (!baseFilter && !uiFilter) return undefined;
     const parts: unknown[][] = [];
     if (baseFilter) parts.push(baseFilter);
@@ -364,32 +241,25 @@
     return ['all', ...parts];
   }
 
-  // getSymbolPaint, getSymbolLayout imported from ./map-styles.ts
+  // ── Hover state for FeatureState ──────────────────────────────────────────
+  let hoveredFeature = $state<{ id: string | number; source: string; layerId: string } | null>(null);
 
-  // Guard against duplicate click events on mobile. Touch interactions can fire
-  // the same logical tap across multiple overlapping sublayers (Fill + Line +
-  // Circle) because MapLibre's touch tolerance matches the feature in more than
-  // one layer. We deduplicate by ignoring clicks within 300ms of the last
-  // processed one. See: felt-like-it-39b2.
+  // ── Feature click handling ────────────────────────────────────────────────
   let _lastClickTs = 0;
   const CLICK_DEDUP_MS = 300;
 
+  /** Style of the layer whose feature is currently selected — drives FeaturePopup formatting. */
+  let selectedLayerStyle = $state<LayerStyle | undefined>(undefined);
+
   function handleFeatureClick(feature: GeoJSONFeature, e: MapMouseEvent, layerStyle?: LayerStyle, layerId?: string) {
     mutation('MC', 'handleFeatureClick', { featureId: feature.id, layerId, tool: editorState.activeTool });
-    // Block feature clicks during active drawing operations only
     const tool = editorState.activeTool;
     if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
 
-    // Deduplicate: on mobile, overlapping sublayers can each fire onclick for
-    // the same tap gesture. Ignore rapid successive clicks (felt-like-it-39b2).
     const now = performance.now();
     if (now - _lastClickTs < CLICK_DEDUP_MS) return;
     _lastClickTs = now;
-    // Defer state writes to a fresh microtask. MapLibre click handlers can fire
-    // during Svelte's initial effect flush (e.g. if the user clicks while the page
-    // is loading). Writing state synchronously would add to the current flush
-    // iteration counter — which already consumed ~900+ iterations mounting all the
-    // map layers — and exceed Svelte 5's 1000-iteration depth limit.
+
     const coords = { lng: e.lngLat.lng, lat: e.lngLat.lat };
     queueMicrotask(() => {
       mutation('MC', 'handleFeatureClick→microtask', { featureId: feature.id });
@@ -398,43 +268,7 @@
     });
   }
 
-  // ── Annotation pin popup ──────────────────────────────────────────────────
-
-  /** Style of the layer whose feature is currently selected — drives FeaturePopup formatting. */
-  let selectedLayerStyle = $state<LayerStyle | undefined>(undefined);
-
-  /** State for the annotation popup — set when an annotation pin is clicked. */
-  interface SelectedAnnotationPopup {
-    content: AnnotationObjectContent;
-    authorName: string;
-    createdAt: string;
-    anchorType: string;
-    lngLat: { lng: number; lat: number };
-  }
-
-  let selectedAnnotation = $state<SelectedAnnotationPopup | null>(null);
-
-  /** Lightweight hover tooltip — shown on mouseenter, hidden on mouseleave. */
-  let hoveredAnnotation = $state<SelectedAnnotationPopup | null>(null);
-
-  // handleAnnotationClick is inlined in the template (see CircleLayer onclick below)
-  // because svelte-maplibre-gl layer events are MapLayerMouseEvent (has .features),
-  // while MapMouseEvent (used for onmoveend etc.) does not carry feature data.
-
-  // Always render all three sublayers (fill + line + circle) per source.
-  // MapLibre routes each sublayer to the matching geometry natively:
-  //   FillLayer   → Polygon / MultiPolygon only
-  //   LineLayer   → LineString / MultiLineString + Polygon outlines
-  //   CircleLayer → Point / MultiPoint only
-  // No explicit $type filter needed. This means drawn Points are always
-  // visible regardless of a layer's declared type (e.g. a 'polygon' layer
-  // that has had points drawn into it still shows circles).
-
   // ── Annotated feature highlight + badge computations ────────────────────
-  import { centroid } from '@turf/turf';
-  import type { Feature, Point } from 'geojson';
-
-  // Group annotated feature IDs by layerId for highlight filters
   const annotatedByLayer = $derived.by(() => {
     const map = new Map<string, string[]>();
     if (!annotatedFeatures?.size) return map;
@@ -446,7 +280,6 @@
     return map;
   });
 
-  // Build badge indicator GeoJSON from annotated features + actual geometries
   const badgeGeoJson = $derived.by(() => {
     const features: Feature<Point>[] = [];
     if (!annotatedFeatures?.size) return { type: 'FeatureCollection' as const, features };
@@ -480,143 +313,28 @@
     autoloadGlobalCss={false}
     canvasContextAttributes={CANVAS_CTX_ATTRS}
   >
-    {#each layersStore.all as layer (layer.id)}
-      {#if layer.visible}
-        {@const lrc = layerRenderCache[layer.id]}
-        {@const data = layerData[layer.id] ?? EMPTY_COLLECTION}
+    <DataLayerRenderer
+      layers={layersStore.all}
+      {layerData}
+      {layerRenderCache}
+      {firstLabelLayerId}
+      {annotatedByLayer}
+      onfeatureclick={handleFeatureClick}
+      onfeaturehover={(feature, _event, layerId) => {
+        hoveredFeature = feature.id != null
+          ? { id: feature.id, source: `source-${layerId}`, layerId: layerId ?? '' }
+          : null;
+      }}
+      onfeatureleave={() => { hoveredFeature = null; }}
+    />
 
-        <!-- TYPE_DEBT: paint/filter casts below — our dynamic builders return Record<string,unknown>
-             but svelte-maplibre-gl props expect strict MapLibre spec union types. Runtime-safe;
-             svelte-maplibre-gl validates before passing to MapLibre. Same applies to onclick
-             feature casts: svelte-maplibre-gl returns its own feature type, not maplibre-gl's
-             GeoJSONFeature — structurally compatible at runtime. -->
-        <!-- Heatmap layers are rendered by DeckGLOverlay (mounted below). Skip MapLibre. -->
-        {#if lrc && !lrc.isHeatmap && lrc.usesVT}
-          <!-- Martin vector tiles — used for layers above VECTOR_TILE_THRESHOLD features -->
-          <VectorTileSource id={`source-${layer.id}`} tiles={[martinTileUrl()]}>
-            <FillLayer
-              id={`layer-${layer.id}-fill`}
-              sourceLayer={MARTIN_SOURCE_LAYER}
-              paint={lrc.fillPaint as unknown as NonNullable<FillLayerSpecification['paint']>}
-              filter={lrc.vtFilter as unknown as NonNullable<FillLayerSpecification['filter']>}
-              {...(lrc.sandwiched && firstLabelLayerId ? { beforeId: firstLabelLayerId } : {})}
-              onclick={(e) => {
-                if (!lrc.clickable) return;
-                const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
-              }}
-            />
-            <LineLayer
-              id={`layer-${layer.id}-line`}
-              sourceLayer={MARTIN_SOURCE_LAYER}
-              paint={lrc.linePaint as unknown as NonNullable<LineLayerSpecification['paint']>}
-              filter={lrc.vtFilter as unknown as NonNullable<LineLayerSpecification['filter']>}
-              onclick={(e) => {
-                if (!lrc.clickable) return;
-                const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
-              }}
-            />
-            <CircleLayer
-              id={`layer-${layer.id}-circle`}
-              sourceLayer={MARTIN_SOURCE_LAYER}
-              paint={lrc.circlePaint as unknown as NonNullable<CircleLayerSpecification['paint']>}
-              filter={lrc.vtFilter as unknown as NonNullable<CircleLayerSpecification['filter']>}
-              onclick={(e) => {
-                if (!lrc.clickable) return;
-                const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
-              }}
-            />
-            {#if lrc.labelAttr && lrc.symbolLayout && lrc.symbolPaint}
-              <SymbolLayer
-                id={`layer-${layer.id}-label`}
-                sourceLayer={MARTIN_SOURCE_LAYER}
-                layout={lrc.symbolLayout}
-                paint={lrc.symbolPaint}
-              />
-            {/if}
-          </VectorTileSource>
-        {:else if lrc && !lrc.isHeatmap}
-          <!-- GeoJSON source — used for layers below VECTOR_TILE_THRESHOLD features -->
-          <GeoJSONSource id={`source-${layer.id}`} data={data}>
-            <FillLayer
-              id={`layer-${layer.id}-fill`}
-              paint={lrc.fillPaint as unknown as NonNullable<FillLayerSpecification['paint']>}
-              filter={lrc.filter as unknown as NonNullable<FillLayerSpecification['filter']>}
-              {...(lrc.sandwiched && firstLabelLayerId ? { beforeId: firstLabelLayerId } : {})}
-              onclick={(e) => {
-                if (!lrc.clickable) return;
-                const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
-              }}
-            />
-            <LineLayer
-              id={`layer-${layer.id}-line`}
-              paint={lrc.linePaint as unknown as NonNullable<LineLayerSpecification['paint']>}
-              filter={lrc.filter as unknown as NonNullable<LineLayerSpecification['filter']>}
-              onclick={(e) => {
-                if (!lrc.clickable) return;
-                const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
-              }}
-            />
-            <CircleLayer
-              id={`layer-${layer.id}-circle`}
-              paint={lrc.circlePaint as unknown as NonNullable<CircleLayerSpecification['paint']>}
-              filter={lrc.filter as unknown as NonNullable<CircleLayerSpecification['filter']>}
-              onclick={(e) => {
-                if (!lrc.clickable) return;
-                const f = e.features?.[0];
-                if (f) handleFeatureClick(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layer.id);
-              }}
-            />
-            {#if lrc.labelAttr && lrc.symbolLayout && lrc.symbolPaint}
-              <!-- FSL labelAttribute: render the chosen property as a text label above each feature -->
-              <SymbolLayer
-                id={`layer-${layer.id}-label`}
-                layout={lrc.symbolLayout}
-                paint={lrc.symbolPaint}
-              />
-            {/if}
-            {@const highlightIds = annotatedByLayer.get(layer.id)}
-            {#if highlightIds?.length}
-              <LineLayer
-                id={`layer-${layer.id}-annotation-highlight`}
-                paint={ANNOTATION_HIGHLIGHT_PAINT}
-                filter={['in', ['to-string', ['id']], ['literal', highlightIds]]}
-              />
-            {/if}
-          </GeoJSONSource>
-        {/if}
-      {/if}
-    {/each}
-
-    <!-- Hot overlay — renders recently drawn features for large (vector tile) layers
-         so they appear instantly before the next tile rebuild. Uses the same
-         Fill+Line+Circle sublayer pattern as the main GeoJSON sources. -->
-    {#each layersStore.all as layer (layer.id)}
-      {@const hotLrc = layerRenderCache[layer.id]}
-      {#if layer.visible && hotLrc?.usesVT}
-        {@const hotCollection = hotOverlay.getCollection(layer.id)}
-        {#if hotCollection.features.length > 0}
-          <GeoJSONSource id={`hot-overlay-${layer.id}`} data={hotCollection as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}>
-            <FillLayer
-              id={`hot-overlay-${layer.id}-fill`}
-              paint={hotLrc.fillPaint as unknown as NonNullable<FillLayerSpecification['paint']>}
-            />
-            <LineLayer
-              id={`hot-overlay-${layer.id}-line`}
-              paint={hotLrc.linePaint as unknown as NonNullable<LineLayerSpecification['paint']>}
-            />
-            <CircleLayer
-              id={`hot-overlay-${layer.id}-circle`}
-              paint={hotLrc.circlePaint as unknown as NonNullable<CircleLayerSpecification['paint']>}
-            />
-          </GeoJSONSource>
-        {/if}
-      {/if}
-    {/each}
+    {#if hoveredFeature}
+      <FeatureState
+        id={hoveredFeature.id}
+        source={hoveredFeature.source}
+        state={{ hover: true }}
+      />
+    {/if}
 
     {#if editorState.selectedFeature && editorState.popupCoords}
       <Popup
@@ -628,249 +346,13 @@
       </Popup>
     {/if}
 
-    <!-- Annotation pins — rendered above data layers, below the feature popup -->
-    {#if annotationPins && annotationPins.features.length > 0}
-      <!-- TYPE_DEBT: AnnotationPinCollection uses typed geometry but GeoJSONSource expects maplibre-gl types -->
-      <GeoJSONSource
-        id="source-annotations"
-        data={annotationPins as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}
-      >
-        <CircleLayer
-          id="layer-annotations-circle"
-          paint={ANNOTATION_PIN_PAINT}
-          onmouseenter={(e) => {
-            if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
-            const f = e.features?.[0];
-            if (!f) return;
-            const props = f.properties as AnnotationPinProperties | null;
-            if (!props?.contentJson) return;
-            try {
-              const raw: unknown = JSON.parse(props.contentJson);
-              const result = AnnotationObjectContentSchema.safeParse(raw);
-              if (!result.success) return;
-              hoveredAnnotation = {
-                content: result.data,
-                authorName: props.authorName,
-                createdAt: props.createdAt,
-                anchorType: props.anchorType ?? 'point',
-                lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
-              };
-            } catch { /* invalid JSON */ }
-          }}
-          onmouseleave={() => {
-            if (mapInstance) mapInstance.getCanvas().style.cursor = '';
-            hoveredAnnotation = null;
-          }}
-          onclick={(e) => {
-            // Don't interrupt active drawing tools
-            const tool = editorState.activeTool;
-            if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
-
-            // Deduplicate mobile taps — shared guard with handleFeatureClick (felt-like-it-39b2).
-            const now = performance.now();
-            if (now - _lastClickTs < CLICK_DEDUP_MS) return;
-            _lastClickTs = now;
-
-            const f = e.features?.[0];
-            if (!f) return;
-
-            const props = f.properties as AnnotationPinProperties | null;
-            if (!props?.contentJson) return;
-
-            let parsed: AnnotationObjectContent;
-            try {
-              const raw: unknown = JSON.parse(props.contentJson);
-              const result = AnnotationObjectContentSchema.safeParse(raw);
-              if (!result.success) return;
-              parsed = result.data;
-            } catch {
-              return;
-            }
-
-            // Defer state writes — see handleFeatureClick comment for rationale.
-            const lngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
-            queueMicrotask(() => {
-              hoveredAnnotation = null;
-              selectedAnnotation = {
-                content: parsed,
-                authorName: props.authorName,
-                createdAt: props.createdAt,
-                anchorType: props.anchorType ?? 'point',
-                lngLat,
-              };
-            });
-          }}
-        />
-      </GeoJSONSource>
-    {/if}
-
-    <!-- Annotation region polygons — rendered below pins, above data layers -->
-    {#if annotationRegions && annotationRegions.features.length > 0}
-      <GeoJSONSource
-        id="source-annotation-regions"
-        data={annotationRegions as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}
-      >
-        <FillLayer
-          id="layer-annotation-regions-fill"
-          paint={ANNOTATION_REGION_FILL_PAINT}
-          onmouseenter={(e) => {
-            if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
-            const f = e.features?.[0];
-            if (!f) return;
-            const props = f.properties as AnnotationPinProperties | null;
-            if (!props?.contentJson) return;
-            try {
-              const raw: unknown = JSON.parse(props.contentJson);
-              const result = AnnotationObjectContentSchema.safeParse(raw);
-              if (!result.success) return;
-              hoveredAnnotation = {
-                content: result.data,
-                authorName: props.authorName,
-                createdAt: props.createdAt,
-                anchorType: props.anchorType ?? 'region',
-                lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
-              };
-            } catch { /* invalid JSON */ }
-          }}
-          onmouseleave={() => {
-            if (mapInstance) mapInstance.getCanvas().style.cursor = '';
-            hoveredAnnotation = null;
-          }}
-          onclick={(e) => {
-            const tool = editorState.activeTool;
-            if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
-
-            // Deduplicate mobile taps — shared guard with handleFeatureClick (felt-like-it-39b2).
-            const now = performance.now();
-            if (now - _lastClickTs < CLICK_DEDUP_MS) return;
-            _lastClickTs = now;
-
-            const f = e.features?.[0];
-            if (!f) return;
-
-            const props = f.properties as AnnotationPinProperties | null;
-            if (!props?.contentJson) return;
-
-            let parsed: AnnotationObjectContent;
-            try {
-              const raw: unknown = JSON.parse(props.contentJson);
-              const result = AnnotationObjectContentSchema.safeParse(raw);
-              if (!result.success) return;
-              parsed = result.data;
-            } catch {
-              return;
-            }
-
-            // Defer state writes — see handleFeatureClick comment for rationale.
-            const lngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
-            queueMicrotask(() => {
-              hoveredAnnotation = null;
-              selectedAnnotation = {
-                content: parsed,
-                authorName: props.authorName,
-                createdAt: props.createdAt,
-                anchorType: props.anchorType ?? 'region',
-                lngLat,
-              };
-            });
-          }}
-        />
-        <LineLayer
-          id="layer-annotation-regions-outline"
-          paint={ANNOTATION_REGION_LINE_PAINT}
-        />
-      </GeoJSONSource>
-    {/if}
-
-    <!-- Feature annotation badge indicators -->
-    {#if badgeGeoJson.features.length > 0}
-      <GeoJSONSource id="annotation-badges" data={badgeGeoJson}>
-        <CircleLayer
-          id="layer-annotation-badges"
-          paint={BADGE_CIRCLE_PAINT}
-          onmouseenter={() => {
-            if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
-          }}
-          onmouseleave={() => {
-            if (mapInstance) mapInstance.getCanvas().style.cursor = '';
-          }}
-          onclick={(e) => {
-            const featureId = e.features?.[0]?.properties?.['featureId'];
-            if (featureId) onbadgeclick?.(String(featureId));
-          }}
-        />
-        <SymbolLayer
-          id="layer-annotation-badge-labels"
-          layout={BADGE_LABEL_LAYOUT}
-          paint={BADGE_LABEL_PAINT}
-        />
-      </GeoJSONSource>
-    {/if}
-
-    <!-- Measurement annotation geometries (dashed lines / semi-transparent fills) -->
-    {#if measurementAnnotations && measurementAnnotations.features.length > 0}
-      <GeoJSONSource id="measurement-annotations" data={measurementAnnotations as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}>
-        <LineLayer
-          id="measurement-annotations-line"
-          filter={LINESTRING_FILTER}
-          paint={MEASURE_LINE_PAINT}
-          onmouseenter={() => {
-            if (mapInstance) mapInstance.getCanvas().style.cursor = 'pointer';
-          }}
-          onmouseleave={() => {
-            if (mapInstance) mapInstance.getCanvas().style.cursor = '';
-          }}
-        />
-        <FillLayer
-          id="measurement-annotations-fill"
-          filter={POLYGON_FILTER}
-          paint={MEASURE_FILL_PAINT}
-        />
-        <LineLayer
-          id="measurement-annotations-outline"
-          filter={POLYGON_FILTER}
-          paint={MEASURE_LINE_PAINT}
-        />
-        <SymbolLayer
-          id="measurement-annotations-label"
-          layout={MEASURE_LABEL_LAYOUT}
-          paint={MEASURE_LABEL_PAINT}
-        />
-      </GeoJSONSource>
-    {/if}
-
-    <!-- Hover tooltip — compact preview on mouseenter -->
-    {#if hoveredAnnotation && !selectedAnnotation}
-      <Popup
-        lnglat={hoveredAnnotation.lngLat}
-        closeButton={false}
-        onclose={() => { hoveredAnnotation = null; }}
-      >
-        <AnnotationContent
-          content={hoveredAnnotation.content}
-          authorName={hoveredAnnotation.authorName}
-          createdAt={hoveredAnnotation.createdAt}
-          anchorType={hoveredAnnotation.anchorType}
-          compact
-        />
-      </Popup>
-    {/if}
-
-    <!-- Annotation popup — shown on pin click; independent of editorState -->
-    {#if selectedAnnotation}
-      <Popup
-        lnglat={selectedAnnotation.lngLat}
-        closeButton={true}
-        onclose={() => { selectedAnnotation = null; }}
-      >
-        <AnnotationContent
-          content={selectedAnnotation.content}
-          authorName={selectedAnnotation.authorName}
-          createdAt={selectedAnnotation.createdAt}
-          anchorType={selectedAnnotation.anchorType}
-        />
-      </Popup>
-    {/if}
+    <AnnotationRenderer
+      {annotationPins}
+      {annotationRegions}
+      {badgeGeoJson}
+      {measurementAnnotations}
+      {onbadgeclick}
+    />
   </MapLibre>
 
   <!-- deck.gl overlay — renders HeatmapLayer for layers with style.type === 'heatmap' -->

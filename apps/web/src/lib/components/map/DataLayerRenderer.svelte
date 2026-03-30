@@ -31,8 +31,8 @@
     layerRenderCache: Record<string, LayerRenderCache>;
     firstLabelLayerId?: string | undefined;
     annotatedByLayer?: Map<string, string[]> | undefined;
-    onfeatureclick?: ((feature: GeoJSONFeature, event: MapMouseEvent, layerStyle?: LayerStyle, layerId?: string) => void) | undefined;
-    onfeaturehover?: ((feature: GeoJSONFeature, event: MapMouseEvent, layerId?: string) => void) | undefined;
+    onfeatureclick?: ((_feature: GeoJSONFeature, _event: MapMouseEvent, _layerStyle?: LayerStyle, _layerId?: string) => void) | undefined;
+    onfeaturehover?: ((_feature: GeoJSONFeature, _event: MapMouseEvent, _layerId?: string) => void) | undefined;
     onfeatureleave?: (() => void) | undefined;
   }
 

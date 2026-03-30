@@ -127,18 +127,21 @@ describe('getLayerPaint', () => {
   });
 
   it('handles null style gracefully (returns defaults)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = makeLayer({ style: null as any });
     const result = getLayerPaint(layer, 'circle');
     expect(result).toEqual(PAINT_DEFAULTS.circle);
   });
 
   it('handles undefined style gracefully (returns defaults)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = makeLayer({ style: undefined as any });
     const result = getLayerPaint(layer, 'line');
     expect(result).toEqual(PAINT_DEFAULTS.line);
   });
 
   it('handles missing paint key in style (returns defaults)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = makeLayer({ style: { type: 'simple' } as any });
     const result = getLayerPaint(layer, 'fill');
     expect(result).toEqual(PAINT_DEFAULTS.fill);
@@ -209,6 +212,7 @@ describe('getLabelAttribute', () => {
   });
 
   it('returns undefined when style is null', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = makeLayer({ style: null as any });
     expect(getLabelAttribute(layer)).toBeUndefined();
   });
@@ -233,6 +237,7 @@ describe('isLayerClickable', () => {
   });
 
   it('returns true when style is null', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = makeLayer({ style: null as any });
     expect(isLayerClickable(layer)).toBe(true);
   });
@@ -252,6 +257,7 @@ describe('isLayerSandwiched', () => {
   });
 
   it('returns false when style is null', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = makeLayer({ style: null as any });
     expect(isLayerSandwiched(layer)).toBe(false);
   });
@@ -278,6 +284,7 @@ describe('getSymbolPaint', () => {
   });
 
   it('handles null style gracefully', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = makeLayer({ style: null as any });
     const result = getSymbolPaint(layer) as Record<string, unknown>;
     expect(result['text-color']).toBe('#222222');
@@ -305,6 +312,7 @@ describe('getSymbolLayout', () => {
   });
 
   it('handles null style gracefully', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = makeLayer({ style: null as any });
     const result = getSymbolLayout(layer, 'id') as Record<string, unknown>;
     expect(result['text-field']).toEqual(['get', 'id']);
@@ -396,6 +404,7 @@ describe('getLayerFilter', () => {
   });
 
   it('handles null style gracefully', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = makeLayer({ style: null as any });
     expect(getLayerFilter(layer, nullConverter)).toBeUndefined();
   });
@@ -463,6 +472,7 @@ describe('getHeatmapConfig', () => {
   });
 
   it('handles null style gracefully', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = makeLayer({ style: null as any });
     expect(getHeatmapConfig(layer)).toBeNull();
   });
@@ -475,8 +485,10 @@ describe('getHeatmapConfig', () => {
         config: { heatmapRadius: 40 },
       },
     });
-    const result = getHeatmapConfig(layer)!;
-    expect(Object.keys(result)).not.toContain('weightAttribute');
+    const result = getHeatmapConfig(layer);
+    expect(result).not.toBeNull();
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    expect(Object.keys(result!)).not.toContain('weightAttribute');
   });
 });
 
@@ -535,6 +547,7 @@ describe('getHoverAwarePaint', () => {
   });
 
   it('handles null style gracefully', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const layer = makeLayer({ style: null as any });
     const result = getHoverAwarePaint(layer, 'line');
     // Should fall back to defaults and still produce a hover expression

@@ -1,4 +1,5 @@
 <script lang="ts">
+  /* global queueMicrotask */
   import { GeoJSONSource, CircleLayer, LineLayer, FillLayer, SymbolLayer, Popup } from 'svelte-maplibre-gl';
   import { mapStore } from '$lib/stores/map.svelte.js';
   import { getMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
@@ -60,7 +61,7 @@
     annotationRegions?: AnnotationRegionCollection | undefined;
     badgeGeoJson: { type: 'FeatureCollection'; features: Feature<Point>[] };
     measurementAnnotations?: { type: 'FeatureCollection'; features: { type: 'Feature'; geometry: unknown; properties: Record<string, unknown> }[] } | undefined;
-    onbadgeclick?: ((featureId: string) => void) | undefined;
+    onbadgeclick?: ((_featureId: string) => void) | undefined;
   }
 
   let { annotationPins, annotationRegions, badgeGeoJson, measurementAnnotations, onbadgeclick }: Props = $props();
