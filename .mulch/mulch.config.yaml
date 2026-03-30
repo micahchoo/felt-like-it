@@ -17,6 +17,8 @@ domains:
   - architecture
   - api
   - frontend
+  - web
+  - rest-api
 governance:
   max_entries: 100
   warn_entries: 150
