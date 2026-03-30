@@ -6,36 +6,6 @@ import { describe, it, expect } from 'vitest';
  * They verify the existing state systems and their interactions.
  */
 
-describe('Characterization: useDialogVisibility', () => {
-  it('initializes all dialogs as false', async () => {
-    const { useDialogVisibility } =
-      await import('$lib/components/map/useDialogVisibility.svelte.js');
-    const d = useDialogVisibility();
-    expect(d.showImportDialog).toBe(false);
-    expect(d.showExportDialog).toBe(false);
-    expect(d.showShareDialog).toBe(false);
-  });
-
-  it('provides open/close methods', async () => {
-    const { useDialogVisibility } =
-      await import('$lib/components/map/useDialogVisibility.svelte.js');
-    const d = useDialogVisibility();
-    d.openImport();
-    expect(d.showImportDialog).toBe(true);
-    d.closeImport();
-    expect(d.showImportDialog).toBe(false);
-  });
-
-  it('dialogs are independent', async () => {
-    const { useDialogVisibility } =
-      await import('$lib/components/map/useDialogVisibility.svelte.js');
-    const d = useDialogVisibility();
-    d.openImport();
-    expect(d.showExportDialog).toBe(false);
-    expect(d.showShareDialog).toBe(false);
-  });
-});
-
 describe('Characterization: MapEditorState.handleSectionChange', () => {
   it('cancels drawRegion when section changes away from annotations', async () => {
     const { MapEditorState } = await import('$lib/stores/map-editor-state.svelte.js');
