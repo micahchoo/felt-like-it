@@ -8,14 +8,6 @@
   let { onannotate, onmeasure, ondismiss }: Props = $props();
 
   let visible = $state(true);
-
-  $effect(() => {
-    const timer = setTimeout(() => {
-      visible = false;
-      ondismiss();
-    }, 8000);
-    return () => clearTimeout(timer);
-  });
 </script>
 
 {#if visible}

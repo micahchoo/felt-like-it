@@ -163,14 +163,26 @@
     const geometry = f.geometry as unknown as Record<string, unknown>;
     const properties = (f.properties ?? {}) as Record<string, unknown>;
 
+    // Optimistic UI: add to hotOverlay immediately so the feature stays visible
+    // while the server round-trip completes (Terra Draw removes it from its own
+    // overlay when it fires 'finish'). We use a temp ID that gets replaced with
+    // the real server-assigned ID once the mutation succeeds.
+    const tempId = `temp-${Date.now()}`;
+    hotOverlay.addHotFeature(activeLayer.id, {
+      type: 'Feature',
+      id: tempId,
+      geometry: geometry as unknown as GeoJSON.Geometry,
+      properties: properties as GeoJSON.GeoJsonProperties,
+    });
+
     try {
       const { upsertedIds } = await (featureUpsertMutation as any).mutateAsync({
         layerId: activeLayer.id,
         features: [{ geometry, properties }],
       });
 
-      // Add to hot overlay so the feature is visible immediately for large layers
-      // (vector tile sources won't reflect the change until the next tile reload)
+      // Replace temp entry with the real server-assigned ID
+      hotOverlay.removeHotFeature(activeLayer.id, tempId);
       if (upsertedIds[0]) {
         hotOverlay.addHotFeature(activeLayer.id, {
           type: 'Feature',
@@ -208,21 +220,10 @@
       // removeFeatures() clears the Terra Draw overlay — no visual gap.
       await onfeaturedrawn?.(activeLayer.id, { geometry, properties, id: upsertedIds[0] });
     } catch (err) {
-      // Clean up the orphaned Terra Draw geometry so it doesn't persist visually
-      if (editorState.drawingInstance) {
-        try {
-          editorState.drawingInstance.removeFeatures([f.id as any]);
-        } catch (_) {
-          // Feature may already have been removed — safe to ignore
-        }
-      }
+      // Roll back the optimistic hotOverlay entry — save failed, nothing on server
+      hotOverlay.removeHotFeature(activeLayer.id, tempId);
       console.error('[DrawingToolbar] saveFeature failed:', err);
       toastStore.error('Failed to save drawn feature.');
-      try {
-        editorState.drawingInstance?.removeFeatures([f.id as any]);
-      } catch (cleanupErr) {
-        console.warn('[DrawingToolbar] cleanup after failed save:', cleanupErr);
-      }
     }
   }
 
