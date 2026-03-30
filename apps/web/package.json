@@ -43,6 +43,7 @@
   "dependencies": {
     "@deck.gl/mapbox": "^9.2.9",
     "@felt-like-it/geo-engine": "workspace:*",
+    "@felt-like-it/import-engine": "workspace:*",
     "@felt-like-it/shared-types": "workspace:*",
     "@lucia-auth/adapter-drizzle": "^1.1.0",
     "@mapbox/shp-write": "^0.4.3",

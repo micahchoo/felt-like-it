@@ -16,7 +16,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 // InteractionState is redeclared locally with a simplified pendingMeasurement shape
 // (measurement: PendingMeasurementAnnotation) so this pure-logic test suite can run
 // without the geojson/anchor/content detail that only matters at the UI boundary.
-import type { SelectedFeature, PickedFeatureRef } from '$lib/stores/interaction-modes.svelte.js';
+import type { SelectedFeature, PickedFeatureRef } from '$lib/stores/map-editor-state.svelte.js';
 
 // ── Extracted state machine ─────────────────────────────────────────────────
 // Mirrors the state variables, effects, and handlers from MapEditor.svelte,

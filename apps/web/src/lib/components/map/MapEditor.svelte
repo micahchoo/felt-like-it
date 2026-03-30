@@ -4,7 +4,7 @@
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { mapStore } from '$lib/stores/map.svelte.js';
   import { filterStore, loadFilters, saveFilters } from '$lib/stores/filters.svelte.js';
-  import { selectionStore } from '$lib/stores/selection.svelte.js';
+  import { setMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
   import { undoStore } from '$lib/stores/undo.svelte.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import MapCanvas from './MapCanvas.svelte';
@@ -35,7 +35,7 @@
   import StatusBar from './StatusBar.svelte';
   import { useDialogVisibility } from './useDialogVisibility.svelte.js';
   import { useLayerDataManager } from './useLayerDataManager.svelte.js';
-  import { useInteractionBridge } from './useInteractionBridge.svelte.js';
+  // useInteractionBridge removed — replaced by MapEditorState atomic methods
   import { useKeyboardShortcuts } from './useKeyboardShortcuts.svelte.js';
   import { useViewportSave } from './useViewportSave.svelte.js';
   import type { Geometry } from 'geojson';
@@ -44,11 +44,14 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { queryKeys } from '$lib/utils/query-keys.js';
   import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
-  import { interactionModes } from '$lib/stores/interaction-modes.svelte.js';
+  // interactionModes removed — replaced by MapEditorState
 
   function isLargeLayer(layer: Layer): boolean {
     return PUBLIC_MARTIN_URL.length > 0 && (layer.featureCount ?? 0) > VECTOR_TILE_THRESHOLD;
   }
+
+  // ── Unified editor state (replaces interactionModes + selectionStore + drawingStore) ──
+  const editorState = setMapEditorState();
 
   interface Props {
     mapId: string;
@@ -170,20 +173,15 @@
   });
 
   // ── Interaction state (discriminated union) ───────────────────────────────
-  // Types and transitionTo() live in $lib/stores/interaction-modes.svelte.ts.
-  // This component binds a local accessor for brevity; the store owns the state.
-  const { transitionTo } = interactionModes;
-  const interactionState = $derived(interactionModes.state);
+  // State lives in MapEditorState class, provided via Svelte 5 context.
+  const { transitionTo } = editorState;
+  const interactionState = $derived(editorState.interactionState);
 
   let scrollToAnnotationFeatureId = $state<string | null>(null);
 
-  // Interaction bridge: 5 effects orchestrating interaction state machine
-  useInteractionBridge({
-    interactionModes,
-    selectionStore,
-    getActiveSection: () => activeSection,
-    getDesignMode: () => designMode,
-  });
+  // Section/design-mode reactions (replaces useInteractionBridge effects)
+  $effect(() => { editorState.handleSectionChange(activeSection); });
+  $effect(() => { editorState.handleDesignModeChange(designMode); });
 
   // ── Annotation pin GeoJSON (derived from query cache) ──────────────────────
   // Annotations are stored as tRPC records but rendered via MapCanvas as a
@@ -280,7 +278,7 @@
     getInteractionState: () => interactionState,
     transitionTo,
     undoStore,
-    selectionStore,
+    selectionStore: editorState,
     toggleDesignMode: () => { designMode = !designMode; },
   });
 

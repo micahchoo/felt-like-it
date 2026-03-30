@@ -1,6 +1,6 @@
 <script lang="ts">
   import { mapStore } from '$lib/stores/map.svelte.js';
-  import { selectionStore } from '$lib/stores/selection.svelte.js';
+  import { getMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
   import type { GeoJSONFeature, LayerStyle } from '@felt-like-it/shared-types';
   import { computeBbox } from '@felt-like-it/geo-engine';
   import { formatAttributeValue } from '$lib/utils/format.js';
@@ -34,6 +34,7 @@
     onSortChange,
   }: Props = $props();
 
+  const editorState = getMapEditorState();
   let sortKey = $state<string | null>(null);
   let sortAsc = $state(true);
   let filterText = $state('');
@@ -95,7 +96,7 @@
 
   function handleRowClick(feature: GeoJSONFeature) {
     selectedFeatureId = feature.id ?? null;
-    selectionStore.selectFeature(feature);
+    editorState.selectFeature(feature);
     // Zoom to feature
     const bbox = computeBbox([feature]);
     if (bbox && mapStore.mapInstance) {

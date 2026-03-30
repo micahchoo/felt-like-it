@@ -1,9 +1,8 @@
-import { createReadStream } from 'fs';
+import { parseCSV, csvRowsToFeatures } from '@felt-like-it/import-engine';
+import type { ParsedFeature } from '@felt-like-it/import-engine';
 import {
   detectCoordinateColumns,
   detectAddressColumn,
-  isValidLatitude,
-  isValidLongitude,
   geocodeBatch,
   type GeocodingOptions,
 } from '@felt-like-it/geo-engine';
@@ -12,32 +11,6 @@ import { db, importJobs } from '../db/index.js';
 import { eq } from 'drizzle-orm';
 import { createLayerAndInsertFeatures } from './shared.js';
 import type { ImportResult } from './shared.js';
-
-/**
- * Parse a CSV file and return rows.
- * Uses streaming via papaparse for large files.
- */
-async function parseCSV(filePath: string): Promise<{ headers: string[]; rows: Record<string, string>[] }> {
-  const { default: Papa } = await import('papaparse');
-
-  return new Promise((resolve, reject) => {
-    const rows: Record<string, string>[] = [];
-    let headers: string[] = [];
-
-    Papa.parse(createReadStream(filePath), {
-      header: true,
-      skipEmptyLines: true,
-      step: (result) => {
-        if (headers.length === 0 && result.meta.fields) {
-          headers = result.meta.fields;
-        }
-        rows.push(result.data as Record<string, string>);
-      },
-      complete: () => resolve({ headers, rows }),
-      error: (err: Error) => reject(err),
-    });
-  });
-}
 
 /**
  * Import a CSV file with lat/lng columns into a new point layer.
@@ -54,34 +27,13 @@ export async function importCSV(
     throw new Error('CSV file is empty');
   }
 
-  type Feature = { geometry: Geometry; properties: Record<string, unknown> };
-  let validFeatures: Feature[];
+  let validFeatures: ParsedFeature[];
 
   // ── Path A: explicit lat/lng columns ──────────────────────────────────────
   const coordCols = detectCoordinateColumns(headers);
 
   if (coordCols) {
-    const { latCol, lngCol } = coordCols;
-    const acc: Feature[] = [];
-
-    for (const row of rows) {
-      const lat = parseFloat(row[latCol] ?? '');
-      const lng = parseFloat(row[lngCol] ?? '');
-      if (!isValidLatitude(lat) || !isValidLongitude(lng)) continue;
-
-      const properties: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(row)) {
-        if (key !== latCol && key !== lngCol) properties[key] = value;
-      }
-      acc.push({ geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties });
-    }
-
-    if (acc.length === 0) {
-      throw new Error(
-        `No valid coordinate rows found. Tried lat column: "${latCol}", lng column: "${lngCol}"`
-      );
-    }
-    validFeatures = acc;
+    validFeatures = csvRowsToFeatures(headers, rows);
 
   // ── Path B: address column -> Nominatim geocoding ──────────────────────────
   } else {
@@ -118,7 +70,7 @@ export async function importCSV(
       geocodingOptions
     );
 
-    const acc: Feature[] = [];
+    const acc: ParsedFeature[] = [];
     for (let i = 0; i < indexed.length; i++) {
       const point = geocodeResults[i];
       if (!point) continue; // Geocoding failed for this address — skip row
@@ -127,7 +79,7 @@ export async function importCSV(
       for (const [key, value] of Object.entries(row)) {
         properties[key] = value; // keep address column in properties
       }
-      acc.push({ geometry: { type: 'Point' as const, coordinates: [point.lng, point.lat] as [number, number] }, properties });
+      acc.push({ geometry: { type: 'Point' as const, coordinates: [point.lng, point.lat] as [number, number] } as Geometry, properties });
     }
 
     if (acc.length === 0) {

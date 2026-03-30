@@ -7,7 +7,7 @@
   import { PUBLIC_MARTIN_URL } from '$env/static/public';
   import { mapStore } from '$lib/stores/map.svelte.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
-  import { selectionStore } from '$lib/stores/selection.svelte.js';
+  import { getMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
   import type { Layer, GeoJSONFeature } from '@felt-like-it/shared-types';
   import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
   import { fslFiltersToMapLibre, resolvePaintInterpolators } from '@felt-like-it/geo-engine';
@@ -94,6 +94,7 @@
 
   let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions, annotatedFeatures, onbadgeclick, measurementAnnotations }: Props = $props();
 
+  const editorState = getMapEditorState();
   let mapInstance = $state<MapLibreMap | undefined>(undefined);
 
   // Sync map instance to global store
@@ -288,7 +289,7 @@
   // events → template re-evaluates → new paint object → INFINITE LOOP.
   //
   // This $derived.by caches all per-layer props. It only recomputes when its
-  // tracked dependencies change (layersStore.all, selectionStore, filterStore),
+  // tracked dependencies change (layersStore.all, editorState, filterStore),
   // NOT on every template re-evaluation from unrelated state changes.
   interface LayerRenderCache {
     fillPaint: Record<string, unknown>;
@@ -307,7 +308,7 @@
   }
 
   const layerRenderCache = $derived.by<Record<string, LayerRenderCache>>(() => {
-    mutation('MC', 'layerRenderCache→recompute', { layerCount: layersStore.all.length, selectedFeat: selectionStore.selectedFeature?.id });
+    mutation('MC', 'layerRenderCache→recompute', { layerCount: layersStore.all.length, selectedFeat: editorState.selectedFeature?.id });
     const result: Record<string, LayerRenderCache> = {};
     for (const layer of layersStore.all) {
       if (!layer.visible) continue;
@@ -361,7 +362,7 @@
     // no setFeatureState needed since features already carry their UUID at the top level.
     // Guard: JSONB can store null for highlightColor — treat null as absent.
     const highlightColor = style?.['highlightColor'] as string | undefined;
-    const selectedFeature = selectionStore.selectedFeature;
+    const selectedFeature = editorState.selectedFeature;
     if (highlightColor != null && selectedFeature !== null && selectedFeature.id !== undefined) {
       const colorKey = `${paintType}-color`;
       const baseColor = result[colorKey] ?? (PAINT_DEFAULTS[paintType] as Record<string, unknown>)[colorKey];
@@ -465,9 +466,9 @@
   }
 
   function handleFeatureClick(feature: GeoJSONFeature, e: MapMouseEvent, layerStyle?: LayerStyle, layerId?: string) {
-    mutation('MC', 'handleFeatureClick', { featureId: feature.id, layerId, tool: selectionStore.activeTool });
+    mutation('MC', 'handleFeatureClick', { featureId: feature.id, layerId, tool: editorState.activeTool });
     // Block feature clicks during active drawing operations only
-    const tool = selectionStore.activeTool;
+    const tool = editorState.activeTool;
     if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
     // Defer state writes to a fresh microtask. MapLibre click handlers can fire
     // during Svelte's initial effect flush (e.g. if the user clicks while the page
@@ -478,7 +479,7 @@
     queueMicrotask(() => {
       mutation('MC', 'handleFeatureClick→microtask', { featureId: feature.id });
       selectedLayerStyle = layerStyle;
-      selectionStore.selectFeature(feature, coords, layerId);
+      editorState.selectFeature(feature, coords, layerId);
     });
   }
 
@@ -702,13 +703,13 @@
       {/if}
     {/each}
 
-    {#if selectionStore.selectedFeature && selectionStore.popupCoords}
+    {#if editorState.selectedFeature && editorState.popupCoords}
       <Popup
-        lnglat={selectionStore.popupCoords}
+        lnglat={editorState.popupCoords}
         closeButton={true}
-        onclose={() => { selectionStore.clearSelection(); selectedLayerStyle = undefined; }}
+        onclose={() => { editorState.clearSelection(); selectedLayerStyle = undefined; }}
       >
-        <FeaturePopup feature={selectionStore.selectedFeature} {...(selectedLayerStyle !== undefined ? { style: selectedLayerStyle } : {})} />
+        <FeaturePopup feature={editorState.selectedFeature} {...(selectedLayerStyle !== undefined ? { style: selectedLayerStyle } : {})} />
       </Popup>
     {/if}
 
@@ -747,7 +748,7 @@
           }}
           onclick={(e) => {
             // Don't interrupt active drawing tools
-            const tool = selectionStore.activeTool;
+            const tool = editorState.activeTool;
             if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
 
             const f = e.features?.[0];
@@ -816,7 +817,7 @@
             hoveredAnnotation = null;
           }}
           onclick={(e) => {
-            const tool = selectionStore.activeTool;
+            const tool = editorState.activeTool;
             if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
 
             const f = e.features?.[0];
@@ -930,7 +931,7 @@
       </Popup>
     {/if}
 
-    <!-- Annotation popup — shown on pin click; independent of selectionStore -->
+    <!-- Annotation popup — shown on pin click; independent of editorState -->
     {#if selectedAnnotation}
       <Popup
         lnglat={selectedAnnotation.lngLat}

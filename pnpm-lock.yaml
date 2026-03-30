@@ -42,6 +42,9 @@ importers:
       '@felt-like-it/geo-engine':
         specifier: workspace:*
         version: link:../../packages/geo-engine
+      '@felt-like-it/import-engine':
+        specifier: workspace:*
+        version: link:../../packages/import-engine
       '@felt-like-it/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
@@ -235,6 +238,40 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.11)(jsdom@28.1.0)(lightningcss@1.31.1)
 
+  packages/import-engine:
+    dependencies:
+      '@felt-like-it/geo-engine':
+        specifier: workspace:*
+        version: link:../geo-engine
+      '@felt-like-it/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      fast-xml-parser:
+        specifier: ^4.5.0
+        version: 4.5.3
+      papaparse:
+        specifier: ^5.4.1
+        version: 5.5.3
+      shpjs:
+        specifier: ^6.1.0
+        version: 6.2.0
+      sql.js:
+        specifier: ^1.12.0
+        version: 1.14.0
+    devDependencies:
+      '@types/papaparse':
+        specifier: ^5.3.15
+        version: 5.5.2
+      '@vitest/coverage-v8':
+        specifier: ^2.1.8
+        version: 2.1.9(vitest@2.1.9(@types/node@22.19.11)(jsdom@28.1.0)(lightningcss@1.31.1))
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.11)(jsdom@28.1.0)(lightningcss@1.31.1)
+
   packages/shared-types:
     dependencies:
       zod:
@@ -256,6 +293,9 @@ importers:
       '@felt-like-it/geo-engine':
         specifier: workspace:*
         version: link:../../packages/geo-engine
+      '@felt-like-it/import-engine':
+        specifier: workspace:*
+        version: link:../../packages/import-engine
       '@felt-like-it/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types

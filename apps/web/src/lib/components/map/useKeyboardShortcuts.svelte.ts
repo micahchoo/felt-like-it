@@ -1,4 +1,4 @@
-import type { InteractionState } from '$lib/stores/interaction-modes.svelte.js';
+import type { InteractionState, DrawTool } from '$lib/stores/map-editor-state.svelte.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -12,7 +12,7 @@ export interface KeyboardShortcutsDeps {
     redo: () => void;
   };
   selectionStore: {
-    setActiveTool: (tool: string) => void;
+    setActiveTool: (tool: DrawTool) => void;
   };
   toggleDesignMode: () => void;
 }

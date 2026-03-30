@@ -2,15 +2,13 @@
   import { untrack } from 'svelte';
   import type { Map as MapLibreMap } from 'maplibre-gl';
   import { effectEnter, effectExit } from '$lib/debug/effect-tracker.js';
-  import { selectionStore } from '$lib/stores/selection.svelte.js';
+  import { getMapEditorState, type DrawTool } from '$lib/stores/map-editor-state.svelte.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { undoStore } from '$lib/stores/undo.svelte.js';
-  import { drawingStore } from '$lib/stores/drawing.svelte.js';
   import { trpc } from '$lib/utils/trpc.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { MousePointer2, Circle, Spline, Pentagon } from 'lucide-svelte';
-  import type { DrawTool } from '$lib/stores/selection.svelte.js';
   import { measureLine, measurePolygon } from '@felt-like-it/geo-engine';
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
@@ -37,6 +35,7 @@
 
   let { map, onfeaturedrawn, onmeasured, onregiondrawn }: Props = $props();
 
+  const editorState = getMapEditorState();
   const queryClient = useQueryClient();
 
   const featureUpsertMutation = createMutation(() => ({
@@ -73,18 +72,18 @@
 
     function startDraw() {
       // untrack: reset()/init() read _state internally (for guards) but this
-      // effect should only track the `map` prop — not drawingStore reactive state.
+      // effect should only track the `map` prop — not editorState reactive state.
       // Without untrack, reset()'s `if (_state.status === 'ready')` check creates
       // a tracked dependency on _state, and each new { status: 'idle' } object
       // re-triggers this effect → infinite loop with syncToolToTerraDraw.
-      untrack(() => drawingStore.reset());
-      drawingStore.init(map).then((draw) => {
+      untrack(() => editorState.reset());
+      editorState.initDrawing(map).then((draw) => {
         if (!draw) return;
 
         draw.on('finish', async (id: string | number) => {
-          if (!drawingStore.instance) return;
+          if (!editorState.drawingInstance) return;
 
-          const f = drawingStore.instance.getSnapshotFeature(id);
+          const f = editorState.drawingInstance.getSnapshotFeature(id);
 
           if (f) {
             if (onregiondrawn && f.geometry.type === 'Polygon') {
@@ -99,20 +98,20 @@
           }
 
           // Re-check: component may have unmounted during the async save
-          if (!drawingStore.instance) return;
+          if (!editorState.drawingInstance) return;
 
           // Always remove the drawn feature from Terra Draw's overlay.
           // Saved features are re-rendered via the GeoJSON source; unsaved
           // orphans must be cleared or they corrupt subsequent draw operations.
           try {
-            drawingStore.instance.removeFeatures([id]);
+            editorState.drawingInstance.removeFeatures([id]);
           } catch (e) {
             console.warn('[TerraDraw] removeFeatures failed:', e);
           }
 
           // Reset to select mode after drawing
-          drawingStore.instance.setMode('select');
-          selectionStore.setActiveTool('select');
+          editorState.drawingInstance.setMode('select');
+          editorState.setActiveTool('select');
         });
       }).catch((err) => {
         console.error('TerraDraw init failed:', err);
@@ -134,7 +133,7 @@
     effectExit('DT:initTerraDraw');
     return () => {
       map.off('style.load', onStyleLoad);
-      untrack(() => drawingStore.stop());
+      untrack(() => editorState.stopDrawing());
     };
   });
 
@@ -210,9 +209,9 @@
       await onfeaturedrawn?.(activeLayer.id, { geometry, properties, id: upsertedIds[0] });
     } catch (err) {
       // Clean up the orphaned Terra Draw geometry so it doesn't persist visually
-      if (drawingStore.instance) {
+      if (editorState.drawingInstance) {
         try {
-          drawingStore.instance.removeFeatures([f.id as any]);
+          editorState.drawingInstance.removeFeatures([f.id as any]);
         } catch (_) {
           // Feature may already have been removed — safe to ignore
         }
@@ -220,7 +219,7 @@
       console.error('[DrawingToolbar] saveFeature failed:', err);
       toastStore.error('Failed to save drawn feature.');
       try {
-        drawingStore.instance?.removeFeatures([f.id as any]);
+        editorState.drawingInstance?.removeFeatures([f.id as any]);
       } catch (cleanupErr) {
         console.warn('[DrawingToolbar] cleanup after failed save:', cleanupErr);
       }
@@ -229,19 +228,19 @@
 
   // Sync external activeTool changes (e.g. annotation region request) to Terra Draw
   $effect(() => {
-    const tool = selectionStore.activeTool;
-    effectEnter('DT:syncToolToTerraDraw', { tool, isReady: drawingStore.isReady });
-    if (!drawingStore.instance || !drawingStore.isReady) { effectExit('DT:syncToolToTerraDraw'); return; }
+    const tool = editorState.activeTool;
+    effectEnter('DT:syncToolToTerraDraw', { tool, isReady: editorState.isDrawingReady });
+    if (!editorState.drawingInstance || !editorState.isDrawingReady) { effectExit('DT:syncToolToTerraDraw'); return; }
     const modeMap: Record<string, string> = { point: 'point', line: 'linestring', polygon: 'polygon', select: 'select' };
     const mode = tool ? modeMap[tool] ?? 'select' : 'select';
-    if (drawingStore.instance.getMode() !== mode) {
+    if (editorState.drawingInstance.getMode() !== mode) {
       // Before switching modes, check for in-progress (unsaved) geometry
-      const snapshot = drawingStore.instance.getSnapshot() ?? [];
+      const snapshot = editorState.drawingInstance.getSnapshot() ?? [];
       // TYPE_DEBT: terra-draw GeoJSONStoreFeatures properties are typed as Record<string,unknown>
       const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
       if (inProgress.length > 0) {
         // Schedule confirm outside reactive cycle to avoid blocking $effect
-        const instance = drawingStore.instance;
+        const instance = editorState.drawingInstance;
         setTimeout(() => {
           const confirmed = window.confirm('You have an unfinished drawing. Discard it?');
           if (!confirmed) return;
@@ -260,7 +259,7 @@
         return;
       }
       try {
-        drawingStore.instance.setMode(mode);
+        editorState.drawingInstance.setMode(mode);
       } catch (e) {
         console.warn('[DrawingToolbar] setMode failed:', e);
       }
@@ -270,22 +269,22 @@
 
   // Cancel in-progress drawing on Escape key
   $effect(() => {
-    if (!drawingStore.isReady) return;
+    if (!editorState.isDrawingReady) return;
     function handleKeydown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        const snapshot = drawingStore.instance?.getSnapshot();
+        const snapshot = editorState.drawingInstance?.getSnapshot();
         if (snapshot) {
           // TYPE_DEBT: terra-draw GeoJSONStoreFeatures properties are typed as Record<string,unknown>
           const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
           if (inProgress.length > 0) {
             try {
-              drawingStore.instance?.removeFeatures(inProgress.map((f: any) => f.id!));
+              editorState.drawingInstance?.removeFeatures(inProgress.map((f: any) => f.id!));
             } catch (e) {
               console.warn('[DrawingToolbar] removeFeatures on Escape failed:', e);
             }
           }
         }
-        selectionStore.setActiveTool('select');
+        editorState.setActiveTool('select');
       }
     }
     document.addEventListener('keydown', handleKeydown);
@@ -294,15 +293,15 @@
 
   /** Check whether Terra Draw is mid-draw (incomplete geometry in progress). */
   function isDrawing(): boolean {
-    return drawingStore.instance?.getModeState() === 'drawing';
+    return editorState.drawingInstance?.getModeState() === 'drawing';
   }
 
   /** Cancel the current in-progress drawing and return to select mode. */
   function cancelDrawing() {
-    if (!drawingStore.instance) return;
+    if (!editorState.drawingInstance) return;
     // Switching to select mode discards any incomplete geometry
-    drawingStore.instance.setMode('select');
-    selectionStore.setActiveTool('select');
+    editorState.drawingInstance.setMode('select');
+    editorState.setActiveTool('select');
   }
 
   // Task 2.3: Escape key cancels in-progress drawing
@@ -318,12 +317,12 @@
       const discard = window.confirm('You have an unfinished drawing. Discard it?');
       if (!discard) return;
       // Clean up in-progress features now so the $effect sync won't prompt again
-      if (drawingStore.instance) {
-        const snapshot = drawingStore.instance.getSnapshot() ?? [];
+      if (editorState.drawingInstance) {
+        const snapshot = editorState.drawingInstance.getSnapshot() ?? [];
         const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
         if (inProgress.length > 0) {
           try {
-            drawingStore.instance.removeFeatures(inProgress.map((f: any) => f.id!));
+            editorState.drawingInstance.removeFeatures(inProgress.map((f: any) => f.id!));
           } catch (e) {
             console.warn('[DrawingToolbar] removeFeatures during tool switch failed:', e);
           }
@@ -334,7 +333,7 @@
     // The $effect (DT:syncToolToTerraDraw) handles the actual Terra Draw mode switch.
     // Calling setMode() here too creates a dual-write race where both paths fire
     // and Terra Draw's select mode exit throws on stale internal state.
-    selectionStore.setActiveTool(tool);
+    editorState.setActiveTool(tool);
   }
 
   const tools: Array<{ id: DrawTool; label: string; helpText: string; icon: typeof MousePointer2; group: 'select' | 'draw' }> = [
@@ -361,19 +360,19 @@
     <Tooltip content={irrelevant ? 'Points cannot be measured' : noLayer ? 'Select a layer first to start drawing' : tool.helpText} position="bottom">
       <button
         onclick={() => setTool(tool.id)}
-        disabled={!drawingStore.isReady || noLayer || irrelevant}
+        disabled={!editorState.isDrawingReady || noLayer || irrelevant}
         class="p-2.5 rounded-lg flex items-center justify-center transition-colors
                {irrelevant
                  ? 'opacity-30 cursor-not-allowed text-on-surface-variant/50'
-                 : !drawingStore.isReady || noLayer
+                 : !editorState.isDrawingReady || noLayer
                    ? 'opacity-50 cursor-not-allowed text-on-surface-variant/50'
-                   : selectionStore.activeTool === tool.id
+                   : editorState.activeTool === tool.id
                      ? 'bg-primary-container text-on-primary-container shadow-lg shadow-primary/20'
                      : 'text-on-surface-variant hover:bg-surface-high hover:text-on-surface'}"
         aria-label="{tool.label}: {tool.helpText}"
-        aria-pressed={selectionStore.activeTool === tool.id}
+        aria-pressed={editorState.activeTool === tool.id}
       >
-        <tool.icon size={18} strokeWidth={selectionStore.activeTool === tool.id ? 2.5 : 2} />
+        <tool.icon size={18} strokeWidth={editorState.activeTool === tool.id ? 2.5 : 2} />
       </button>
     </Tooltip>
   {/each}
