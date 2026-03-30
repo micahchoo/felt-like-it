@@ -48,6 +48,36 @@ export function getLayerPaint(layer: Layer, paintType: PaintType): Record<string
     : { ...(PAINT_DEFAULTS[paintType] as Record<string, unknown>) };
 }
 
+/** Opacity keys per paint type — used by hover-aware paint to add feature-state expressions.
+ * Symbol layers are excluded: they render labels, not interactive data features.
+ */
+const OPACITY_KEYS: Record<PaintType, string> = {
+  circle: 'circle-opacity',
+  line: 'line-opacity',
+  fill: 'fill-opacity',
+};
+
+const HOVER_OPACITY_BOOST = 0.15;
+
+export function getHoverAwarePaint(layer: Layer, paintType: PaintType): Record<string, unknown> {
+  const basePaint = getLayerPaint(layer, paintType);
+  const opacityKey = OPACITY_KEYS[paintType];
+  const baseOpacity = (basePaint[opacityKey] as number) ??
+    (PAINT_DEFAULTS[paintType] as Record<string, unknown>)[opacityKey] as number ??
+    0.85;
+  const hoverOpacity = Math.min(1, baseOpacity + HOVER_OPACITY_BOOST);
+
+  return {
+    ...basePaint,
+    [opacityKey]: [
+      'case',
+      ['boolean', ['feature-state', 'hover'], false],
+      hoverOpacity,
+      baseOpacity,
+    ],
+  };
+}
+
 /**
  * Apply highlight color for a selected feature.
  *

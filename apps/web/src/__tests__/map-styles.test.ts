@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   PAINT_DEFAULTS,
   getLayerPaint,
+  getHoverAwarePaint,
   applyHighlight,
   getLabelAttribute,
   isLayerClickable,
@@ -476,5 +477,69 @@ describe('getHeatmapConfig', () => {
     });
     const result = getHeatmapConfig(layer)!;
     expect(Object.keys(result)).not.toContain('weightAttribute');
+  });
+});
+
+// ── getHoverAwarePaint ──────────────────────────────────────────────────
+
+describe('getHoverAwarePaint', () => {
+  it('fills, circles, and lines all get feature-state hover opacity boost', () => {
+    const types = ['fill', 'circle', 'line'] as const;
+    for (const paintType of types) {
+      const layer = makeLayer({ style: { paint: {} } });
+      const result = getHoverAwarePaint(layer, paintType);
+      const opacityKey = `${paintType}-opacity`;
+      expect(Array.isArray(result[opacityKey])).toBe(true);
+      const expr = result[opacityKey] as unknown[];
+      expect(expr[0]).toBe('case');
+      expect(expr[1]).toEqual(['boolean', ['feature-state', 'hover'], false]);
+    }
+  });
+
+  it('hover opacity is higher than base opacity', () => {
+    const layer = makeLayer({ style: { paint: { 'circle-opacity': 0.7 } } });
+    const result = getHoverAwarePaint(layer, 'circle');
+    const expr = result['circle-opacity'] as unknown[];
+    const hoverOpacity = expr[2] as number;
+    const baseOpacity = expr[3] as number;
+    expect(hoverOpacity).toBeGreaterThan(baseOpacity);
+    expect(baseOpacity).toBe(0.7);
+    expect(hoverOpacity).toBeCloseTo(0.85);
+  });
+
+  it('clamps hover opacity at 1.0 when base is already high', () => {
+    const layer = makeLayer({ style: { paint: { 'fill-opacity': 0.95 } } });
+    const result = getHoverAwarePaint(layer, 'fill');
+    const expr = result['fill-opacity'] as unknown[];
+    const hoverOpacity = expr[2] as number;
+    expect(hoverOpacity).toBe(1);
+  });
+
+  it('preserves all other paint properties', () => {
+    const layer = makeLayer({
+      style: {
+        paint: {
+          'circle-radius': 10,
+          'circle-color': '#ff0000',
+          'circle-opacity': 0.8,
+          'circle-stroke-width': 2,
+        },
+      },
+    });
+    const result = getHoverAwarePaint(layer, 'circle');
+    expect(result['circle-radius']).toBe(10);
+    expect(result['circle-color']).toBe('#ff0000');
+    expect(result['circle-stroke-width']).toBe(2);
+    // opacity is an expression, not a plain number
+    expect(Array.isArray(result['circle-opacity'])).toBe(true);
+  });
+
+  it('handles null style gracefully', () => {
+    const layer = makeLayer({ style: null as any });
+    const result = getHoverAwarePaint(layer, 'line');
+    // Should fall back to defaults and still produce a hover expression
+    const expr = result['line-opacity'] as unknown[];
+    expect(expr[0]).toBe('case');
+    expect(expr[3]).toBe(PAINT_DEFAULTS.line['line-opacity']);
   });
 });
