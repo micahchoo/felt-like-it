@@ -125,11 +125,14 @@ describe('Characterization: SidePanel props', () => {
     expect(content).not.toContain('rightSection');
   });
 
-  it('does NOT have collapsed prop yet', async () => {
+  it('has collapsed and oncollapse props for SidePanel collapse support', async () => {
     const fs = await import('fs');
     const content = fs.readFileSync('src/lib/components/map/SidePanel.svelte', 'utf-8');
-    expect(content).not.toContain('collapsed');
-    expect(content).not.toContain('oncollapse');
+    expect(content).toContain('collapsed');
+    expect(content).toContain('oncollapse');
+    // activeSection prop name preserved for API stability
+    expect(content).toContain('activeSection');
+    expect(content).not.toContain('rightSection');
   });
 });
 
@@ -188,10 +191,12 @@ describe('Characterization: MapEditor panel state variables', () => {
     expect(content).not.toContain('editorState.handleSectionChange');
   });
 
-  it('SidePanel is fixed width w-80 (320px)', async () => {
+  it('SidePanel supports collapse with w-12 collapsed and w-80 expanded', async () => {
     const fs = await import('fs');
     const content = fs.readFileSync('src/lib/components/map/SidePanel.svelte', 'utf-8');
     expect(content).toContain('w-80');
-    expect(content).not.toContain('collapsed');
+    expect(content).toContain('w-12');
+    expect(content).toContain('collapsed');
+    expect(content).toContain('oncollapse');
   });
 });
