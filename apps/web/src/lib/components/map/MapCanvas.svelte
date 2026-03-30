@@ -13,7 +13,6 @@
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
   import {
     getHoverAwarePaint,
-    applyHighlight,
     getLabelAttribute,
     isLayerClickable,
     isLayerSandwiched,
@@ -202,18 +201,17 @@
   }
 
   const layerRenderCache = $derived.by<Record<string, LayerRenderCache>>(() => {
-    mutation('MC', 'layerRenderCache→recompute', { layerCount: layersStore.all.length, selectedFeat: editorState.selectedFeature?.id });
+    mutation('MC', 'layerRenderCache→recompute', { layerCount: layersStore.all.length });
     const result: Record<string, LayerRenderCache> = {};
     for (const layer of layersStore.all) {
       if (!layer.visible) continue;
       const labelAttr = getLabelAttribute(layer);
       const style = layer.style as LayerStyle | null | undefined;
       const highlightColor = (style as Record<string, unknown> | null | undefined)?.['highlightColor'] as string | undefined;
-      const selectedFeature = editorState.selectedFeature;
       result[layer.id] = {
-        fillPaint: applyHighlight(getHoverAwarePaint(layer, 'fill'), 'fill', highlightColor, selectedFeature?.id),
-        linePaint: applyHighlight(getHoverAwarePaint(layer, 'line'), 'line', highlightColor, selectedFeature?.id),
-        circlePaint: applyHighlight(getHoverAwarePaint(layer, 'circle'), 'circle', highlightColor, selectedFeature?.id),
+        fillPaint: getHoverAwarePaint(layer, 'fill', highlightColor),
+        linePaint: getHoverAwarePaint(layer, 'line', highlightColor),
+        circlePaint: getHoverAwarePaint(layer, 'circle', highlightColor),
         symbolPaint: labelAttr ? getSymbolPaint(layer) : null,
         symbolLayout: labelAttr ? getSymbolLayout(layer, labelAttr) : null,
         filter: getLayerFilter(layer),
@@ -245,8 +243,9 @@
   let hoveredFeature = $state<{ id: string | number; source: string; layerId: string } | null>(null);
 
   // ── Feature click handling ────────────────────────────────────────────────
-  let _lastClickTs = 0;
-  const CLICK_DEDUP_MS = 300;
+  // Deduplicate by DOM event identity: overlapping layers fire separate MapLibre
+  // events but share the same originalEvent object. Only the first handler wins.
+  let _lastClickEvent: MouseEvent | null = null;
 
   /** Style of the layer whose feature is currently selected — drives FeaturePopup formatting. */
   let selectedLayerStyle = $state<LayerStyle | undefined>(undefined);
@@ -256,9 +255,8 @@
     const tool = editorState.activeTool;
     if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
 
-    const now = performance.now();
-    if (now - _lastClickTs < CLICK_DEDUP_MS) return;
-    _lastClickTs = now;
+    if (e.originalEvent === _lastClickEvent) return;
+    _lastClickEvent = e.originalEvent;
 
     const coords = { lng: e.lngLat.lng, lat: e.lngLat.lat };
     queueMicrotask(() => {
@@ -333,6 +331,14 @@
         id={hoveredFeature.id}
         source={hoveredFeature.source}
         state={{ hover: true }}
+      />
+    {/if}
+
+    {#if editorState.selectedFeature?.id != null && editorState.selectedLayerId}
+      <FeatureState
+        id={editorState.selectedFeature.id}
+        source={`source-${editorState.selectedLayerId}`}
+        state={{ selected: true }}
       />
     {/if}
 

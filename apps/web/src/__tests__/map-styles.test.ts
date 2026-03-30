@@ -555,4 +555,28 @@ describe('getHoverAwarePaint', () => {
     expect(expr[0]).toBe('case');
     expect(expr[3]).toBe(PAINT_DEFAULTS.line['line-opacity']);
   });
+
+  it('adds feature-state selected color expression when highlightColor is provided', () => {
+    const layer = makeLayer({ style: { paint: { 'circle-color': '#3b82f6' } } });
+    const result = getHoverAwarePaint(layer, 'circle', '#f59e0b');
+    const colorExpr = result['circle-color'] as unknown[];
+    expect(colorExpr[0]).toBe('case');
+    expect(colorExpr[1]).toEqual(['boolean', ['feature-state', 'selected'], false]);
+    expect(colorExpr[2]).toBe('#f59e0b'); // highlight when selected
+    expect(colorExpr[3]).toBe('#3b82f6'); // base color otherwise
+  });
+
+  it('omits selected color expression when highlightColor is omitted', () => {
+    const layer = makeLayer({ style: { paint: { 'circle-color': '#3b82f6' } } });
+    const result = getHoverAwarePaint(layer, 'circle');
+    // color key should be the raw string, not a case expression
+    expect(result['circle-color']).toBe('#3b82f6');
+  });
+
+  it('uses PAINT_DEFAULTS color fallback when base paint has no color', () => {
+    const layer = makeLayer({ style: { paint: {} } });
+    const result = getHoverAwarePaint(layer, 'fill', '#ff0000');
+    const colorExpr = result['fill-color'] as unknown[];
+    expect(colorExpr[3]).toBe(PAINT_DEFAULTS.fill['fill-color']);
+  });
 });

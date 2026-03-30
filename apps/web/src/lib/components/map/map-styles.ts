@@ -59,15 +59,17 @@ const OPACITY_KEYS: Record<PaintType, string> = {
 
 const HOVER_OPACITY_BOOST = 0.15;
 
-export function getHoverAwarePaint(layer: Layer, paintType: PaintType): Record<string, unknown> {
+export function getHoverAwarePaint(layer: Layer, paintType: PaintType, highlightColor?: string): Record<string, unknown> {
   const basePaint = getLayerPaint(layer, paintType);
   const opacityKey = OPACITY_KEYS[paintType];
+  const colorKey = `${paintType}-color`;
+
   const baseOpacity = (basePaint[opacityKey] as number) ??
     (PAINT_DEFAULTS[paintType] as Record<string, unknown>)[opacityKey] as number ??
     0.85;
   const hoverOpacity = Math.min(1, baseOpacity + HOVER_OPACITY_BOOST);
 
-  return {
+  const result: Record<string, unknown> = {
     ...basePaint,
     [opacityKey]: [
       'case',
@@ -76,6 +78,18 @@ export function getHoverAwarePaint(layer: Layer, paintType: PaintType): Record<s
       baseOpacity,
     ],
   };
+
+  if (highlightColor != null) {
+    const baseColor = basePaint[colorKey] ?? (PAINT_DEFAULTS[paintType] as Record<string, unknown>)[colorKey];
+    result[colorKey] = [
+      'case',
+      ['boolean', ['feature-state', 'selected'], false],
+      highlightColor,
+      baseColor,
+    ];
+  }
+
+  return result;
 }
 
 /**
