@@ -10,11 +10,12 @@ vi.mock('$lib/server/db/index.js', () => ({
 
 import { resolveAuth, envelope, requireScope, assertMapAccess } from '../routes/api/v1/middleware.js';
 
-function mockEvent(headers: Record<string, string> = {}, params: Record<string, string> = {}): any {
+function mockEvent(headers: Record<string, string> = {}, params: Record<string, string> = {}, locals: Record<string, unknown> = {}): any {
   return {
     request: { headers: new Headers(headers) },
     url: new URL('http://localhost/api/v1/maps'),
     params,
+    locals,
   };
 }
 

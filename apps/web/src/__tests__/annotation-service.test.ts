@@ -1,4 +1,3 @@
-// @ts-nocheck — test file; strict null checks on array access are noise
 // @vitest-environment node
 /**
  * Characterization tests for annotations/service.ts

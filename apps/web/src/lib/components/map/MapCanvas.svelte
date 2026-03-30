@@ -10,8 +10,18 @@
   import { getMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
   import type { Layer, GeoJSONFeature } from '@felt-like-it/shared-types';
   import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
-  import { fslFiltersToMapLibre, resolvePaintInterpolators } from '@felt-like-it/geo-engine';
+  import { fslFiltersToMapLibre } from '@felt-like-it/geo-engine';
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
+  import {
+    getLayerPaint as getLayerPaintBase,
+    applyHighlight,
+    getLabelAttribute,
+    isLayerClickable,
+    isLayerSandwiched,
+    getSymbolPaint,
+    getSymbolLayout,
+    getLayerFilter as getLayerFilterBase,
+  } from './map-styles.js';
   import { filterStore } from '$lib/stores/filters.svelte.js';
   import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
   import DrawingToolbar from './DrawingToolbar.svelte';
@@ -243,12 +253,7 @@
     return ['all', layerIdFilter, baseFilter];
   }
 
-  // MapLibre 5 crashes if paint: {} is passed — must always supply at least one explicit property.
-  const PAINT_DEFAULTS: Record<'circle' | 'line' | 'fill', Record<string, unknown>> = {
-    circle: { 'circle-radius': 6, 'circle-color': '#3b82f6', 'circle-opacity': 0.85, 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffffff' },
-    line:   { 'line-color': '#6366f1', 'line-width': 2, 'line-opacity': 0.9 },
-    fill:   { 'fill-color': '#22c55e', 'fill-opacity': 0.45, 'fill-outline-color': '#15803d' },
-  };
+  // PAINT_DEFAULTS imported from ./map-styles.ts
 
   // Stable fallback — avoids creating a new empty FeatureCollection on every render.
   const EMPTY_COLLECTION: { type: 'FeatureCollection'; features: GeoJSONFeature[] } = { type: 'FeatureCollection', features: [] };
@@ -333,143 +338,53 @@
     return result;
   });
 
+  /** Thin wrapper: pure paint computation + reactive highlight from editor state. */
   function getLayerPaint(layer: Layer, paintType: 'circle' | 'line' | 'fill') {
+    const basePaint = getLayerPaintBase(layer, paintType);
     const style = layer.style as Record<string, unknown> | null | undefined;
-    const rawPaint = (style?.['paint'] as Record<string, unknown>) ?? {};
-
-    // Resolve FSL zoom interpolators (e.g. { linear: [[10,2],[16,8]] }) → MapLibre expressions
-    const paint = resolvePaintInterpolators(rawPaint);
-
-    // Only return paint properties relevant to this layer type — skip null/undefined
-    // values that can leak from JSONB storage and crash MapLibre ("Expected number, found null").
-    // Also sanitize MapLibre expressions: replace null fallback values with the property's
-    // default so MapLibre doesn't warn (e.g. ["case", pred, val, null] → ["case", pred, val, default]).
-    const filtered: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(paint)) {
-      if (key.startsWith(paintType + '-') && value != null) {
-        filtered[key] = value;
-      }
-    }
-    // Build a fresh result — never mutate PAINT_DEFAULTS (shared constant)
-    const result: Record<string, unknown> =
-      Object.keys(filtered).length > 0
-        ? filtered
-        : { ...(PAINT_DEFAULTS[paintType] as Record<string, unknown>) };
-
-    // FSL highlightColor: when a feature is selected, wrap the primary color paint property
-    // in a MapLibre 'case' expression so the selected feature renders in highlightColor.
-    // Uses ['id'] (top-level GeoJSON feature id — UUID string) for the equality check;
-    // no setFeatureState needed since features already carry their UUID at the top level.
-    // Guard: JSONB can store null for highlightColor — treat null as absent.
     const highlightColor = style?.['highlightColor'] as string | undefined;
     const selectedFeature = editorState.selectedFeature;
-    if (highlightColor != null && selectedFeature !== null && selectedFeature.id !== undefined) {
-      const colorKey = `${paintType}-color`;
-      const baseColor = result[colorKey] ?? (PAINT_DEFAULTS[paintType] as Record<string, unknown>)[colorKey];
-      result[colorKey] = ['case', ['==', ['id'], selectedFeature.id], highlightColor, baseColor];
-    }
-
-    return result;
+    return applyHighlight(basePaint, paintType, highlightColor, selectedFeature?.id);
   }
 
-  /** Extract FSL-compatible label config from a layer's style jsonb. */
-  function getLabelAttribute(layer: Layer): string | undefined {
-    const style = layer.style as Record<string, unknown> | null | undefined;
-    const config = style?.['config'] as Record<string, unknown> | undefined;
-    return config?.['labelAttribute'] as string | undefined;
-  }
+  // getLabelAttribute, isLayerClickable, isLayerSandwiched imported from ./map-styles.ts
 
-  /**
-   * FSL isClickable: when false, suppress all click interactions for this layer.
-   * Defaults to true (undefined → clickable).
-   */
-  function isLayerClickable(layer: Layer): boolean {
-    const style = layer.style as Record<string, unknown> | null | undefined;
-    return style?.['isClickable'] !== false;
-  }
-
-  /**
-   * FSL isSandwiched: when true, FillLayer is inserted before the first basemap symbol
-   * layer so polygon fills render beneath basemap labels (road names, city labels, etc.).
-   * Defaults to false (undefined → not sandwiched).
-   */
-  function isLayerSandwiched(layer: Layer): boolean {
-    const style = layer.style as Record<string, unknown> | null | undefined;
-    return style?.['isSandwiched'] === true;
-  }
-
-  /**
-   * Convert FSL filters + showOther=false to a MapLibre filter expression.
-   * Combines:
-   *   1. FSL style.filters (user-defined attribute filters)
-   *   2. showOther:false guard (only show features in config.categories list)
-   * Returns undefined when no filtering is needed.
-   */
+  /** Wrapper: pure FSL filter + reactive session-level UI filters from filterStore. */
   function getLayerFilter(layer: Layer): unknown[] | undefined {
-    const style = layer.style as Record<string, unknown> | null | undefined;
-    const filters = style?.['filters'];
-    const config = style?.['config'] as Record<string, unknown> | undefined;
-
-    const parts: unknown[][] = [];
-
-    // FSL style.filters → MapLibre filter
-    if (Array.isArray(filters) && filters.length > 0) {
-      const fslResult = fslFiltersToMapLibre(filters);
-      if (fslResult) parts.push(fslResult);
-    }
-
-    // showOther: false — only render features whose categorical field is in the categories list
-    if (
-      config?.['showOther'] === false &&
-      typeof config['categoricalAttribute'] === 'string' &&
-      Array.isArray(config['categories']) &&
-      (config['categories'] as unknown[]).length > 0
-    ) {
-      const field = config['categoricalAttribute'] as string;
-      const cats = config['categories'] as string[];
-      // MapLibre filter: ["in", ["get", field], ...cats]
-      parts.push(['in', ['get', field], ...cats]);
-    }
+    const baseFilter = getLayerFilterBase(layer, fslFiltersToMapLibre);
 
     // Session-level UI filters (ephemeral, not persisted to style)
     const uiFilter = filterStore.toMapLibreFilter(layer.id);
-    if (uiFilter) parts.push(uiFilter);
 
-    if (parts.length === 0) return undefined;
+    if (!baseFilter && !uiFilter) return undefined;
+    const parts: unknown[][] = [];
+    if (baseFilter) parts.push(baseFilter);
+    if (uiFilter) parts.push(uiFilter);
     if (parts.length === 1) return parts[0];
     return ['all', ...parts];
   }
 
-  // TYPE_DEBT: getSymbolPaint/getSymbolLayout return object literals cast to MapLibre spec unions.
-  // The spec types are strict discriminated unions; our dynamic builders produce compatible shapes
-  // but TypeScript can't verify the union narrowing. Runtime-safe — MapLibre validates on use.
-  function getSymbolPaint(layer: Layer): NonNullable<SymbolLayerSpecification['paint']> {
-    const style = layer.style as Record<string, unknown> | null | undefined;
-    const label = style?.['label'] as Record<string, unknown> | undefined;
-    return {
-      'text-color': (label?.['color'] as string | undefined) ?? '#222222',
-      'text-halo-color': (label?.['haloColor'] as string | undefined) ?? '#ffffff',
-      'text-halo-width': 1,
-    } as unknown as NonNullable<SymbolLayerSpecification['paint']>;
-  }
+  // getSymbolPaint, getSymbolLayout imported from ./map-styles.ts
 
-  function getSymbolLayout(layer: Layer, labelAttr: string): NonNullable<SymbolLayerSpecification['layout']> {
-    const style = layer.style as Record<string, unknown> | null | undefined;
-    const label = style?.['label'] as Record<string, unknown> | undefined;
-    return {
-      'text-field': ['get', labelAttr],
-      'text-size': (label?.['fontSize'] as number | undefined) ?? 12,
-      'text-anchor': 'top',
-      'text-offset': [0, 0.5],
-      'text-max-width': 8,
-    } as unknown as NonNullable<SymbolLayerSpecification['layout']>;
-  }
+  // Guard against duplicate click events on mobile. Touch interactions can fire
+  // the same logical tap across multiple overlapping sublayers (Fill + Line +
+  // Circle) because MapLibre's touch tolerance matches the feature in more than
+  // one layer. We deduplicate by ignoring clicks within 300ms of the last
+  // processed one. See: felt-like-it-39b2.
+  let _lastClickTs = 0;
+  const CLICK_DEDUP_MS = 300;
 
   function handleFeatureClick(feature: GeoJSONFeature, e: MapMouseEvent, layerStyle?: LayerStyle, layerId?: string) {
     mutation('MC', 'handleFeatureClick', { featureId: feature.id, layerId, tool: editorState.activeTool });
     // Block feature clicks during active drawing operations only
     const tool = editorState.activeTool;
     if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
+
+    // Deduplicate: on mobile, overlapping sublayers can each fire onclick for
+    // the same tap gesture. Ignore rapid successive clicks (felt-like-it-39b2).
+    const now = performance.now();
+    if (now - _lastClickTs < CLICK_DEDUP_MS) return;
+    _lastClickTs = now;
     // Defer state writes to a fresh microtask. MapLibre click handlers can fire
     // during Svelte's initial effect flush (e.g. if the user clicks while the page
     // is loading). Writing state synchronously would add to the current flush
@@ -751,6 +666,11 @@
             const tool = editorState.activeTool;
             if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
 
+            // Deduplicate mobile taps — shared guard with handleFeatureClick (felt-like-it-39b2).
+            const now = performance.now();
+            if (now - _lastClickTs < CLICK_DEDUP_MS) return;
+            _lastClickTs = now;
+
             const f = e.features?.[0];
             if (!f) return;
 
@@ -819,6 +739,11 @@
           onclick={(e) => {
             const tool = editorState.activeTool;
             if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
+
+            // Deduplicate mobile taps — shared guard with handleFeatureClick (felt-like-it-39b2).
+            const now = performance.now();
+            if (now - _lastClickTs < CLICK_DEDUP_MS) return;
+            _lastClickTs = now;
 
             const f = e.features?.[0];
             if (!f) return;

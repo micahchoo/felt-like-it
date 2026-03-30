@@ -1,4 +1,3 @@
-// @ts-nocheck — test file; strict array-index null checks are noise here
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import {
@@ -67,8 +66,9 @@ function makeMeasurement(id: string, overrides: Partial<AnnotationRow> = {}): An
       geometry: { type: 'LineString', coordinates: [[0, 0], [1, 1]] },
     },
     content: {
+      // @ts-expect-error — measurement body not in AnnotationContent union; test-only shape
       kind: 'single',
-      body: { type: 'measurement', displayValue: '1.41 km' } as AnnotationRow['content']['body'],
+      body: { type: 'measurement', displayValue: '1.41 km' },
     },
     ...overrides,
   });
@@ -87,7 +87,7 @@ describe('deriveAnnotationPins', () => {
     const rows = [makePoint('id-1', [15, 25, 0])];
     const result = deriveAnnotationPins(rows);
     expect(result.features).toHaveLength(1);
-    const f = result.features[0];
+    const f = result.features[0]!;
     expect(f.id).toBe('id-1');
     expect(f.geometry.type).toBe('Point');
     expect(f.geometry.coordinates).toEqual([15, 25]);
@@ -96,14 +96,14 @@ describe('deriveAnnotationPins', () => {
   it('strips the Z coordinate from 3D geometries', () => {
     const rows = [makePoint('id-1', [10, 20, 999])];
     const result = deriveAnnotationPins(rows);
-    expect(result.features[0].geometry.coordinates).toHaveLength(2);
+    expect(result.features[0]!.geometry.coordinates).toHaveLength(2);
   });
 
   it('embeds authorName, createdAt, contentJson, anchorType in properties', () => {
     const createdAt = new Date('2024-06-01T12:00:00Z');
     const rows = [makePoint('id-1', [0, 0, 0], { authorName: 'Bob', createdAt })];
     const result = deriveAnnotationPins(rows);
-    const props = result.features[0].properties;
+    const props = result.features[0]!.properties;
     expect(props.authorName).toBe('Bob');
     expect(props.createdAt).toBe(createdAt.toISOString());
     expect(props.anchorType).toBe('point');
@@ -117,14 +117,14 @@ describe('deriveAnnotationPins', () => {
     ];
     const result = deriveAnnotationPins(rows);
     expect(result.features).toHaveLength(1);
-    expect(result.features[0].id).toBe('root-id');
+    expect(result.features[0]!.id).toBe('root-id');
   });
 
   it('excludes region-anchored annotations', () => {
     const rows = [makePoint('pt-1'), makeRegion('reg-1')];
     const result = deriveAnnotationPins(rows);
     expect(result.features).toHaveLength(1);
-    expect(result.features[0].id).toBe('pt-1');
+    expect(result.features[0]!.id).toBe('pt-1');
   });
 
   it('handles multiple point annotations', () => {
@@ -147,7 +147,7 @@ describe('deriveAnnotationRegions', () => {
     const rows = [makeRegion('reg-1')];
     const result = deriveAnnotationRegions(rows);
     expect(result.features).toHaveLength(1);
-    const f = result.features[0];
+    const f = result.features[0]!;
     expect(f.id).toBe('reg-1');
     expect(f.geometry.type).toBe('Polygon');
   });
@@ -159,21 +159,21 @@ describe('deriveAnnotationRegions', () => {
     ];
     const result = deriveAnnotationRegions(rows);
     expect(result.features).toHaveLength(1);
-    expect(result.features[0].id).toBe('root');
+    expect(result.features[0]!.id).toBe('root');
   });
 
   it('excludes point-anchored annotations', () => {
     const rows = [makeRegion('reg-1'), makePoint('pt-1')];
     const result = deriveAnnotationRegions(rows);
     expect(result.features).toHaveLength(1);
-    expect(result.features[0].id).toBe('reg-1');
+    expect(result.features[0]!.id).toBe('reg-1');
   });
 
   it('embeds metadata in properties', () => {
     const rows = [makeRegion('reg-1', { authorName: 'Carol' })];
     const result = deriveAnnotationRegions(rows);
-    expect(result.features[0].properties.authorName).toBe('Carol');
-    expect(result.features[0].properties.anchorType).toBe('region');
+    expect(result.features[0]!.properties.authorName).toBe('Carol');
+    expect(result.features[0]!.properties.anchorType).toBe('region');
   });
 });
 
@@ -232,7 +232,7 @@ describe('deriveMeasurementData', () => {
     const rows = [makeMeasurement('m-1')];
     const result = deriveMeasurementData(rows);
     expect(result.features).toHaveLength(1);
-    const f = result.features[0];
+    const f = result.features[0]!;
     expect(f.type).toBe('Feature');
     expect(f.properties['annotationId']).toBe('m-1');
     expect(f.properties['id']).toBe('m-1');
@@ -241,7 +241,7 @@ describe('deriveMeasurementData', () => {
   it('extracts displayValue as label from measurement body', () => {
     const rows = [makeMeasurement('m-1')];
     const result = deriveMeasurementData(rows);
-    expect(result.features[0].properties['label']).toBe('1.41 km');
+    expect(result.features[0]!.properties['label']).toBe('1.41 km');
   });
 
   it('sets empty label when content is not a measurement body', () => {
@@ -249,20 +249,20 @@ describe('deriveMeasurementData', () => {
       content: { kind: 'single', body: { type: 'text', text: 'note' } },
     })];
     const result = deriveMeasurementData(rows);
-    expect(result.features[0].properties['label']).toBe('');
+    expect(result.features[0]!.properties['label']).toBe('');
   });
 
   it('excludes point/region/feature annotations', () => {
     const rows = [makePoint('pt'), makeRegion('reg'), makeMeasurement('m-1')];
     const result = deriveMeasurementData(rows);
     expect(result.features).toHaveLength(1);
-    expect(result.features[0].properties['annotationId']).toBe('m-1');
+    expect(result.features[0]!.properties['annotationId']).toBe('m-1');
   });
 
   it('preserves geometry from anchor', () => {
     const rows = [makeMeasurement('m-1')];
     const result = deriveMeasurementData(rows);
-    const geom = result.features[0].geometry as { type: string; coordinates: unknown };
+    const geom = result.features[0]!.geometry as { type: string; coordinates: unknown };
     expect(geom.type).toBe('LineString');
   });
 });
@@ -296,6 +296,6 @@ describe('mixed input separation', () => {
 
     // Measurements: only measurement-anchored
     expect(measurements.features).toHaveLength(1);
-    expect(measurements.features[0].properties['annotationId']).toBe('meas-1');
+    expect(measurements.features[0]!.properties['annotationId']).toBe('meas-1');
   });
 });

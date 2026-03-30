@@ -1,8 +1,7 @@
-// @ts-nocheck — test file; Mock type mismatches and strict null checks are noise
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createViewportStore } from '../lib/stores/viewport.svelte.js';
-import type { ViewportDeps, ViewportFetchParams, ViewportFetchResult } from '../lib/stores/viewport.svelte.js';
+import type { ViewportDeps, ViewportFetchResult } from '../lib/stores/viewport.svelte.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,16 +32,20 @@ function makeMap() {
 }
 
 function makeDeps(overrides: Partial<ViewportDeps> = {}): ViewportDeps & { fetchFn: ReturnType<typeof vi.fn> } {
-  const fetchFn = vi.fn<[ViewportFetchParams], Promise<ViewportFetchResult>>().mockResolvedValue({ rows: [], total: 0 });
-  return {
+  const fetchFn = vi.fn().mockResolvedValue({ rows: [], total: 0 }) as ReturnType<typeof vi.fn>;
+  const base: ViewportDeps & { fetchFn: ReturnType<typeof vi.fn> } = {
     fetchFn,
     getActiveLayer: () => ({ id: 'layer-1' }),
     isLargeLayer: () => true,
     getMap: () => makeMap(),
     onError: vi.fn(),
-    ...overrides,
-    fetchFn: overrides.fetchFn as typeof fetchFn ?? fetchFn,
   };
+  if (overrides.fetchFn) base.fetchFn = overrides.fetchFn as ReturnType<typeof vi.fn>;
+  if (overrides.getActiveLayer) base.getActiveLayer = overrides.getActiveLayer;
+  if (overrides.isLargeLayer) base.isLargeLayer = overrides.isLargeLayer;
+  if (overrides.getMap) base.getMap = overrides.getMap;
+  if (overrides.onError) base.onError = overrides.onError;
+  return base;
 }
 
 // ─── Default state ────────────────────────────────────────────────────────────
@@ -103,7 +106,7 @@ describe('changePage', () => {
     const store = createViewportStore(deps);
     store.changePage(3); // page 3 of 50 → offset = 100
     await Promise.resolve();
-    const call = deps.fetchFn.mock.calls[0][0];
+    const call = deps.fetchFn.mock.calls[0]![0];
     expect(call.offset).toBe((3 - 1) * 50);
   });
 });

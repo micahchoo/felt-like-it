@@ -20,7 +20,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     const hash = createHash('sha256').update(rawKey).digest('hex');
 
     const [keyRow] = await db
-      .select({ id: apiKeys.id, userId: apiKeys.userId })
+      .select({ id: apiKeys.id, userId: apiKeys.userId, scope: apiKeys.scope })
       .from(apiKeys)
       .where(eq(apiKeys.keyHash, hash));
 
@@ -33,6 +33,12 @@ export const handle: Handle = async ({ event, resolve }) => {
       if (userRow && !userRow.disabledAt) {
         event.locals.user = userRow;
         event.locals.session = null;
+        // Pre-resolve API auth so v1 middleware can skip the duplicate DB lookup
+        event.locals.apiAuth = {
+          userId: keyRow.userId,
+          scope: keyRow.scope as 'read' | 'read-write',
+          mapScope: null,
+        };
         // Fire-and-forget: update last_used_at without blocking the request
         void db
           .update(apiKeys)

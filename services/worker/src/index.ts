@@ -11,6 +11,7 @@ import { Redis } from 'ioredis';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { sql } from 'drizzle-orm';
+import { unlink } from 'fs/promises';
 import { extname, resolve } from 'path';
 import {
   parseGeoJSON,
@@ -115,6 +116,17 @@ async function processImportJob(job: Job<ImportJobPayload>): Promise<void> {
       WHERE id = ${jobId}
     `);
     throw err;
+  } finally {
+    // Clean up the uploaded file — it has been ingested into PostGIS (or the job failed)
+    try {
+      await unlink(resolvedPath);
+      logger.info({ jobId, filePath: resolvedPath }, 'cleaned up uploaded file');
+    } catch (unlinkErr) {
+      // File may already be gone (previous attempt, external cleanup) — not fatal
+      if ((unlinkErr as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logger.warn({ jobId, filePath: resolvedPath, error: (unlinkErr as Error).message }, 'failed to clean up uploaded file');
+      }
+    }
   }
 }
 
@@ -413,6 +425,8 @@ async function updateJobStatus(
 const worker = new Worker<ImportJobPayload>('file-import', processImportJob, {
   connection,
   concurrency: 3,
+  removeOnComplete: { count: 100 },
+  removeOnFail: { count: 500 },
 });
 
 worker.on('completed', (job) => {
@@ -429,9 +443,35 @@ worker.on('error', (err) => {
 
 logger.info('import worker started, waiting for jobs');
 
+// ─── Stale job reaper ────────────────────────────────────────────────────────
+// Jobs stuck in 'processing' for >1 hour were likely owned by a killed worker.
+// Mark them failed so the UI doesn't show a perpetual spinner.
+
+const STALE_JOB_INTERVAL_MS = 60 * 60 * 1_000; // 1 hour
+
+async function reapStaleJobs(): Promise<void> {
+  try {
+    const result = await pool.query(
+      `UPDATE import_jobs
+       SET status = 'failed', error_message = 'Timed out: worker did not complete within 1 hour', updated_at = NOW()
+       WHERE status = 'processing' AND updated_at < NOW() - INTERVAL '1 hour'`
+    );
+    if ((result.rowCount ?? 0) > 0) {
+      logger.info({ count: result.rowCount }, 'reaped stale import jobs');
+    }
+  } catch (err) {
+    logger.error({ error: (err as Error).message }, 'stale job reaper failed');
+  }
+}
+
+// Run once at startup (catches leftovers from previous crash), then hourly
+void reapStaleJobs();
+const staleJobTimer = setInterval(reapStaleJobs, STALE_JOB_INTERVAL_MS);
+
 // Graceful shutdown
 async function shutdown(): Promise<void> {
   logger.info('shutting down');
+  clearInterval(staleJobTimer);
   await worker.close();
   await connection.quit();
   await pool.end();

@@ -7,8 +7,8 @@ import { mapLinks } from '$lib/server/api/links.js';
 import { typedExecute } from '$lib/server/geo/queries.js';
 import type { RequestHandler } from './$types.js';
 
-export const GET: RequestHandler = async ({ request, url, params }) => {
-  const auth = await resolveAuth({ request, url });
+export const GET: RequestHandler = async ({ request, url, params, locals }) => {
+  const auth = await resolveAuth({ request, url, locals });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);

@@ -30,10 +30,16 @@ export interface ApiAuth {
 /**
  * Resolve auth from Bearer header or ?token query param.
  * Returns null if no credentials provided (caller should return 401).
+ *
+ * When hooks.server.ts has already resolved an API key, the result is
+ * available in event.locals.apiAuth — this avoids a duplicate DB lookup.
  */
-export async function resolveAuth(event: Pick<RequestEvent, 'request' | 'url'>): Promise<ApiAuth | null> {
+export async function resolveAuth(event: Pick<RequestEvent, 'request' | 'url' | 'locals'>): Promise<ApiAuth | null> {
   try {
-    // 1. Check Bearer API key
+    // 0. Return pre-resolved API key auth from hooks.server.ts if available
+    if (event.locals.apiAuth) return event.locals.apiAuth;
+
+    // 1. Check Bearer API key (fallback — should only hit for non-hook paths or tests)
     const authHeader = event.request.headers.get('authorization');
     if (authHeader?.startsWith('Bearer flk_')) {
       const rawKey = authHeader.slice(7);

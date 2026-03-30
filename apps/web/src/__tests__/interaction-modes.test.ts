@@ -1,4 +1,3 @@
-// @ts-nocheck — test file; Geometry type mismatches are noise
 // @vitest-environment node
 /**
  * Stress tests for the three drawing/annotation linkage flows in MapEditor.
@@ -302,6 +301,7 @@ const SAMPLE_FEATURE: ActiveFeature = {
 const SAMPLE_LINE_FEATURE: ActiveFeature = {
 	featureId: 'feat-002',
 	layerId: 'layer-001',
+	// @ts-expect-error — test-local Geometry is wider than GeoJSON.Geometry union
 	geometry: SAMPLE_LINE_GEOMETRY,
 };
 

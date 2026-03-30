@@ -9,8 +9,8 @@ import type { RequestHandler } from './$types.js';
 const DEFAULT_LIMIT = 5_000;
 const MAX_LIMIT = 50_000;
 
-export const GET: RequestHandler = async ({ request, url, params }) => {
-  const auth = await resolveAuth({ request, url });
+export const GET: RequestHandler = async ({ request, url, params, locals }) => {
+  const auth = await resolveAuth({ request, url, locals });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);
