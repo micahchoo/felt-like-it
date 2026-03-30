@@ -1,6 +1,5 @@
 <script lang="ts">
   import { mapStore } from '$lib/stores/map.svelte.js';
-  import { getMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
   import type { GeoJSONFeature, LayerStyle } from '@felt-like-it/shared-types';
   import { computeBbox } from '@felt-like-it/geo-engine';
   import { formatAttributeValue } from '$lib/utils/format.js';
@@ -19,6 +18,8 @@
     onPageChange?: (_page: number) => void;
     onPageSizeChange?: (_size: number) => void;
     onSortChange?: (_sortBy: string, _sortDir: 'asc' | 'desc') => void;
+    /** Called when a row is clicked — narrows the MapEditorState dependency to a single callback. */
+    onSelectFeature?: (_feature: GeoJSONFeature) => void;
   }
 
   let {
@@ -32,9 +33,8 @@
     onPageChange,
     onPageSizeChange,
     onSortChange,
+    onSelectFeature,
   }: Props = $props();
-
-  const editorState = getMapEditorState();
   let sortKey = $state<string | null>(null);
   let sortAsc = $state(true);
   let filterText = $state('');
@@ -96,7 +96,7 @@
 
   function handleRowClick(feature: GeoJSONFeature) {
     selectedFeatureId = feature.id ?? null;
-    editorState.selectFeature(feature);
+    onSelectFeature?.(feature);
     // Zoom to feature
     const bbox = computeBbox([feature]);
     if (bbox && mapStore.mapInstance) {

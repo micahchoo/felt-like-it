@@ -1,63 +1,116 @@
 /**
- * In-memory sliding-window rate limiter.
+ * Redis-backed sliding-window rate limiter.
  *
- * Suitable for single-process deployments (adapter-node).
- * For multi-replica (Phase 7 Helm), replace with Redis INCR.
+ * Uses INCR + EXPIRE on Redis keys so limits are shared across
+ * multiple SvelteKit instances behind a load balancer.
+ *
+ * Key format: ratelimit:<scope>:<identifier>
  */
 
+import { Redis } from 'ioredis';
+import { env } from '$env/dynamic/private';
+
 export interface RateLimiterOptions {
+  /** Window duration in milliseconds. */
   windowMs: number;
+  /** Maximum requests allowed within the window. */
   maxRequests: number;
+  /** Optional scope prefix for Redis keys (defaults to "default"). */
+  scope?: string;
 }
 
-/** Creates an independent rate-limiter instance with its own window map. */
-export function createRateLimiter(opts: RateLimiterOptions) {
-  const windows = new Map<string, number[]>();
+/** Lazy-initialized shared Redis connection for rate limiting. */
+let redis: Redis | null = null;
 
-  // Prune stale entries every 5 minutes to prevent unbounded memory growth
-  const pruneTimer = setInterval(() => {
-    const now = Date.now();
-    for (const [key, timestamps] of windows) {
-      if (timestamps.length === 0 || now - timestamps[timestamps.length - 1]! > opts.windowMs) {
-        windows.delete(key);
-      }
-    }
-  }, 5 * 60_000);
-  pruneTimer.unref(); // so it doesn't keep the process alive
+function getRedis(): Redis {
+  if (!redis) {
+    redis = new Redis(env.REDIS_URL ?? 'redis://localhost:6379', {
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: false,
+      lazyConnect: true,
+    });
+    redis.connect().catch(() => {
+      // Connection errors are handled per-command; swallow initial connect error
+    });
+  }
+  return redis;
+}
+
+/** Creates an independent rate-limiter instance backed by Redis. */
+export function createRateLimiter(opts: RateLimiterOptions) {
+  const scope = opts.scope ?? 'default';
+  const windowSec = Math.ceil(opts.windowMs / 1000);
 
   return {
-    /** Returns true if the request is allowed, false if rate-limited. */
-    check(key: string): boolean {
-      const now = Date.now();
-      const timestamps = windows.get(key) ?? [];
-      const recent = timestamps.filter((t) => now - t < opts.windowMs);
-
-      if (recent.length >= opts.maxRequests) {
-        windows.set(key, recent);
-        return false;
+    /**
+     * Returns true if the request is allowed, false if rate-limited.
+     *
+     * Uses Redis INCR + EXPIRE:
+     * - INCR the key (atomic counter)
+     * - If count is 1 (first request in window), set EXPIRE
+     * - If count > max, reject
+     *
+     * On Redis failure, the request is allowed (fail-open).
+     */
+    async check(key: string): Promise<boolean> {
+      try {
+        const redisKey = `ratelimit:${scope}:${key}`;
+        const r = getRedis();
+        const count = await r.incr(redisKey);
+        if (count === 1) {
+          // First request in this window — set expiry
+          await r.expire(redisKey, windowSec);
+        }
+        return count <= opts.maxRequests;
+      } catch {
+        // Fail open — if Redis is down, allow the request
+        return true;
       }
-
-      recent.push(now);
-      windows.set(key, recent);
-      return true;
     },
 
-    /** Clear all tracked windows. Exported for tests. */
-    reset(): void {
-      windows.clear();
+    /**
+     * Clear all tracked windows matching this scope.
+     * Exported for tests — uses SCAN to avoid blocking Redis.
+     */
+    async reset(): Promise<void> {
+      try {
+        const r = getRedis();
+        const pattern = `ratelimit:${scope}:*`;
+        let cursor = '0';
+        do {
+          const [nextCursor, keys] = await r.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+          cursor = nextCursor;
+          if (keys.length > 0) {
+            await r.del(...keys);
+          }
+        } while (cursor !== '0');
+      } catch {
+        // Ignore cleanup failures
+      }
     },
   };
 }
 
 // ── Default auth limiter (backward-compatible) ──────────────────────
-const authLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 10 });
+const authLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 10, scope: 'auth' });
 
 /** Returns true if the request is allowed, false if rate-limited. */
-export function checkRateLimit(ip: string): boolean {
+export async function checkRateLimit(ip: string): Promise<boolean> {
   return authLimiter.check(ip);
 }
 
 /** Clear all tracked windows. Exported for tests. */
-export function resetRateLimits(): void {
-  authLimiter.reset();
+export async function resetRateLimits(): Promise<void> {
+  await authLimiter.reset();
+}
+
+/**
+ * Disconnect the shared Redis client.
+ * Call during graceful shutdown or test teardown.
+ */
+export async function disconnectRateLimitRedis(): Promise<void> {
+  if (redis) {
+    await redis.quit();
+    redis = null;
+  }
 }

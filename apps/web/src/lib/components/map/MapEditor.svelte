@@ -593,11 +593,13 @@
               onPageChange={(p) => viewportStore.changePage(p)}
               onPageSizeChange={(s) => viewportStore.changePageSize(s)}
               onSortChange={(by, dir) => viewportStore.changeSortBy(by, dir)}
+              onSelectFeature={(f) => editorState.selectFeature(f)}
             />
           {:else}
             <DataTable
               features={filteredFeatures}
               style={activeLayer.style as LayerStyle}
+              onSelectFeature={(f) => editorState.selectFeature(f)}
             />
           {/if}
         </div>
@@ -722,6 +724,7 @@
 {#if dialogs.showExportDialog}
   <ExportDialog
     layers={layersStore.all}
+    {mapId}
     bind:open={dialogs.showExportDialog}
   />
 {/if}

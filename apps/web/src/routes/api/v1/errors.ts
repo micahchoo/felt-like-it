@@ -9,6 +9,7 @@ export const ErrorCodes = {
   VALIDATION_ERROR: { status: 422, code: 'VALIDATION_ERROR' },
   LIMIT_EXCEEDED: { status: 422, code: 'LIMIT_EXCEEDED' },
   VERSION_CONFLICT: { status: 409, code: 'VERSION_CONFLICT' },
+  QUOTA_EXCEEDED: { status: 413, code: 'QUOTA_EXCEEDED' },
   RATE_LIMITED: { status: 429, code: 'RATE_LIMITED' },
   INTERNAL_ERROR: { status: 500, code: 'INTERNAL_ERROR' },
 } as const;

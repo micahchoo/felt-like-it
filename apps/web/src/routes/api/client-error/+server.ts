@@ -7,7 +7,7 @@ import { checkRateLimit } from '$lib/server/rate-limit.js';
  */
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
   // Rate-limit to prevent log flooding
-  if (!checkRateLimit('client-error:' + getClientAddress())) {
+  if (!(await checkRateLimit('client-error:' + getClientAddress()))) {
     return new Response(null, { status: 429 });
   }
   try {

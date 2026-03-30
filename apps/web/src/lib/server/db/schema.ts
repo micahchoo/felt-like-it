@@ -299,6 +299,28 @@ export const auditLog = pgTable(
   ]
 );
 
+// ─── User Uploads (quota tracking + cleanup) ────────────────────────────────
+export const userUploads = pgTable(
+  'user_uploads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** UUID used as the public file identifier in /api/v1/files/:id */
+    fileId: text('file_id').notNull(),
+    fileName: text('file_name').notNull(),
+    fileSize: integer('file_size').notNull(),
+    /** Absolute (or app-relative) path to the stored file on disk. */
+    storedPath: text('stored_path').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('user_uploads_user_id_idx').on(t.userId),
+    index('user_uploads_created_at_idx').on(t.createdAt),
+  ]
+);
+
 // ─── API Keys ─────────────────────────────────────────────────────────────────
 export const apiKeys = pgTable(
   'api_keys',
@@ -375,3 +397,5 @@ export type AuditLogRow = typeof auditLog.$inferSelect;
 export type AnnotationObjectRow = typeof annotationObjects.$inferSelect;
 export type NewAnnotationObject = typeof annotationObjects.$inferInsert;
 export type AnnotationChangelogRow = typeof annotationChangelog.$inferSelect;
+export type UserUploadRow = typeof userUploads.$inferSelect;
+export type NewUserUpload = typeof userUploads.$inferInsert;

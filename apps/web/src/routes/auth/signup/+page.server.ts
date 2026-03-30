@@ -13,7 +13,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
   default: async ({ request, cookies, getClientAddress }) => {
-    if (!checkRateLimit(getClientAddress())) {
+    if (!(await checkRateLimit(getClientAddress()))) {
       return fail(429, { field: '', message: 'Too many attempts. Please wait a minute.' });
     }
 

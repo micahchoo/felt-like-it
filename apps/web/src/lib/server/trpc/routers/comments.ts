@@ -211,7 +211,7 @@ export const commentsRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      if (!guestCommentLimiter.check(input.shareToken)) {
+      if (!(await guestCommentLimiter.check(input.shareToken))) {
         throw new TRPCError({
           code: 'TOO_MANY_REQUESTS',
           message: 'Too many comments. Please wait a moment before posting again.',

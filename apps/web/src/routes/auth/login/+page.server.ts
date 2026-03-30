@@ -22,7 +22,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 export const actions: Actions = {
   default: async ({ request, cookies, url, getClientAddress }) => {
-    if (!checkRateLimit(getClientAddress())) {
+    if (!(await checkRateLimit(getClientAddress()))) {
       return fail(429, { field: '', message: 'Too many login attempts. Please wait a few minutes before trying again.' });
     }
 

@@ -8,10 +8,11 @@
 
   interface Props {
     layers: Layer[];
+    mapId: string;
     open: boolean;
   }
 
-  let { layers, open = $bindable() }: Props = $props();
+  let { layers, mapId, open = $bindable() }: Props = $props();
 
   let selectedLayerId = $state('');
   $effect(() => {
@@ -23,6 +24,7 @@
   let exportingShp = $state(false);
   let exportingPdf = $state(false);
   let exportingPNG = $state(false);
+  let exportingAnnotations = $state(false);
 
   /** Wait for map tiles to finish loading before capture (max 10s). */
   function waitForTiles(): Promise<void> {
@@ -169,6 +171,29 @@
       exportingPNG = false;
     }
   }
+
+  async function exportAnnotations(): Promise<void> {
+    if (!mapId) return;
+    exportingAnnotations = true;
+    try {
+      const res = await fetch(`/api/export/annotations/${mapId}`);
+      if (!res.ok) throw new Error('Export failed');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'annotations.geojson';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+
+      toastStore.success('Annotations exported as GeoJSON.');
+    } catch {
+      toastStore.error('Failed to export annotations.');
+    } finally {
+      exportingAnnotations = false;
+    }
+  }
 </script>
 
 <Modal bind:open title="Export & Output Controls">
@@ -266,11 +291,30 @@
             <span class="text-[9px] font-bold uppercase tracking-wider text-primary">Exporting…</span>
           {/if}
         </button>
+
+        <!-- Annotations GeoJSON -->
+        <button
+          type="button"
+          onclick={exportAnnotations}
+          disabled={!mapId || exportingAnnotations}
+          class="flex items-start gap-3 rounded-lg border border-white/5 bg-surface-container-low px-3 py-2.5 text-left transition-colors hover:bg-white/5
+            {exportingAnnotations ? 'cursor-wait opacity-75' : ''}"
+        >
+          <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-white/20">
+          </span>
+          <div class="flex-1 min-w-0">
+            <span class="text-xs font-semibold text-on-surface">GeoJSON (annotations)</span>
+            <p class="text-xs text-on-surface-variant">Map annotations as .geojson</p>
+          </div>
+          {#if exportingAnnotations}
+            <span class="text-[9px] font-bold uppercase tracking-wider text-primary">Exporting…</span>
+          {/if}
+        </button>
       </div>
     </div>
 
     <!-- Progress bar (visible when any export is running) -->
-    {#if exportingGeoJSON || exportingGpkg || exportingShp || exportingPdf || exportingPNG}
+    {#if exportingGeoJSON || exportingGpkg || exportingShp || exportingPdf || exportingPNG || exportingAnnotations}
       <div class="space-y-1.5">
         <div class="flex items-center justify-between">
           <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Exporting</span>
