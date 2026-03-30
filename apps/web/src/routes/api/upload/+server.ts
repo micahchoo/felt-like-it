@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { mkdir, writeFile } from 'fs/promises';
+import { createWriteStream, WriteStream } from 'fs';
 import { join } from 'path';
 import { sanitizeFilename } from '$lib/server/import/sanitize.js';
 import { env } from '$env/dynamic/private';
@@ -27,10 +28,6 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     error(400, 'Missing file or mapId');
   }
 
-  if (file.size > MAX_FILE_SIZE) {
-    error(413, `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024} MB`);
-  }
-
   // Verify map access — reuse the canonical access helper
   try {
     await requireMapAccess(locals.user.id, mapId, 'editor');
@@ -54,8 +51,37 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   if (!filePath.startsWith(jobDir)) {
     error(400, 'Invalid filename');
   }
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(filePath, buffer);
+
+  // Stream file to disk with size enforcement
+  const stream = file.stream();
+  const reader = stream.getReader();
+  const writeStream = createWriteStream(filePath);
+
+  try {
+    let bytesWritten = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      bytesWritten += value.length;
+      if (bytesWritten > MAX_FILE_SIZE) {
+        // Clean up partial file
+        writeStream.close();
+        error(413, `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024} MB`);
+      }
+      writeStream.write(value);
+    }
+  } catch (err) {
+    writeStream.close();
+    throw err;
+  } finally {
+    // Ensure stream is closed even on error
+    writeStream.end();
+    await new Promise<void>((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+  }
 
   // Create import job record
   await db.insert(importJobs).values({
