@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
-
+import { typedExecute } from '../geo/queries.js';
 import type { AnnotationObject } from '@felt-like-it/shared-types';
 
 // ─── Patch types ─────────────────────────────────────────────────────────────

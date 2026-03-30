@@ -68,7 +68,7 @@ function createSaveFlow(deps: {
   onfeaturedrawn?: (layerId: string, feature: Record<string, unknown> & { id?: string }) => void;
 }) {
   // Mirrors featureUpsertMutation.onSuccess
-  function onUpsertSuccess(data: { upsertedIds: string[] }, variables: { layerId: string }) {
+  function onUpsertSuccess(_data: { upsertedIds: string[] }, variables: { layerId: string }) {
     deps.invalidateQueries({ queryKey: ['features', 'list', { layerId: variables.layerId }] as const });
   }
 
@@ -186,7 +186,8 @@ const SAMPLE_POLYGON: GeoJSONStoreFeature = {
   properties: null,
 };
 
-function makeDeps(overrides: Partial<Parameters<typeof createSaveFlow>[0]> = {}) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeDeps(overrides: Record<string, any> = {}) {
   return {
     upsertMutate: vi.fn().mockResolvedValue({ upsertedIds: [UPSERTED_ID] }),
     deleteMutate: vi.fn().mockResolvedValue({}),
