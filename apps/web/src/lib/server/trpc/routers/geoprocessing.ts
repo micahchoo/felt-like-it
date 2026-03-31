@@ -111,4 +111,16 @@ export const geoprocessingRouter = router({
 
       return { jobId, layerId: newLayer.id, layerName: newLayer.name };
     }),
+
+  /** Cancel a running geoprocessing job. */
+  cancel: protectedProcedure
+    .input(z.object({ jobId: z.string().uuid() }))
+    .mutation(async ({ input }) => {
+      await db.execute(sql`
+        UPDATE import_jobs
+        SET status = 'failed', error_message = 'Cancelled by user', updated_at = NOW()
+        WHERE id = ${input.jobId} AND status = 'processing'
+      `);
+      return { cancelled: true };
+    }),
 });

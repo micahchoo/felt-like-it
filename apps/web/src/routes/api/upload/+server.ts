@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { mkdir, writeFile } from 'fs/promises';
-import { createWriteStream, WriteStream } from 'fs';
+import { mkdir } from 'fs/promises';
+import { createWriteStream } from 'fs';
 import { join } from 'path';
 import { sanitizeFilename } from '$lib/server/import/sanitize.js';
 import { env } from '$env/dynamic/private';
@@ -60,6 +60,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   try {
     let bytesWritten = 0;
     while (true) {
+      // eslint-disable-next-line no-await-in-loop
       const { done, value } = await reader.read();
       if (done) break;
 

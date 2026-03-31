@@ -3,7 +3,7 @@
   import { trpc } from '$lib/utils/trpc.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { mapStore } from '$lib/stores/map.svelte.js';
-  import { filterStore, loadFilters, saveFilters } from '$lib/stores/filters.svelte.js';
+  import { FiltersStore } from '$lib/stores/filters-store.svelte.js';
   import { setMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
   import { EditorLayout } from '$lib/stores/editor-layout.svelte.js';
   import { undoStore } from '$lib/stores/undo.svelte.js';
@@ -106,20 +106,8 @@
     };
   });
 
-  // ── Filter persistence ────────────────────────────────────────────────────
-  // Load persisted filters once when the editor mounts (runs once: mapId is stable).
-  $effect(() => {
-    loadFilters(mapId);
-  });
-
-  // Save filters to localStorage whenever filter state changes for any layer.
-  $effect(() => {
-    // Access every layer's filters to create a reactive dependency on the full state.
-    for (const layer of layersStore.all) {
-      filterStore.get(layer.id);
-    }
-    saveFilters(mapId);
-  });
+  // ── Filter store (map-scoped, URL-reflected) ──────────────────────────────
+  const filtersStore = new FiltersStore(mapId);
 
   // ── Viewport persistence ──────────────────────────────────────────────────
   useViewportSave({
@@ -577,9 +565,9 @@
                   />
                 </svg>
                 Filter
-                {#if layersStore.active && filterStore.hasFilters(layersStore.active.id)}
+                {#if filtersStore.conditions.length > 0}
                   <span class="rounded-full bg-primary px-1 text-xs font-semibold leading-tight">
-                    {filterStore.get(layersStore.active.id).length}
+                    {filtersStore.conditions.length}
                   </span>
                 {/if}
               </Button>
@@ -769,7 +757,7 @@
     {#if editorLayout.bottomPanel === 'table' && layersStore.active}
       {@const activeLayer = layersStore.active}
       {@const rawFeatures = layerData[activeLayer.id]?.features ?? []}
-      {@const filteredFeatures = filterStore.applyToFeatures(activeLayer.id, rawFeatures)}
+      {@const filteredFeatures = filtersStore.applyToFeatures(rawFeatures)}
       <div
         class="border-t border-surface-high shrink-0 flex flex-col overflow-hidden"
         style="height: {editorLayout.filterPanelOpen && !isLargeLayer(activeLayer)
@@ -796,11 +784,7 @@
             >
           </div>
         {:else if editorLayout.filterPanelOpen}
-          <FilterPanel
-            layerId={activeLayer.id}
-            features={rawFeatures}
-            filteredCount={filteredFeatures.length}
-          />
+          <FilterPanel store={filtersStore} layerId={activeLayer.id} features={rawFeatures} />
         {/if}
         <div class="flex-1 min-h-0 overflow-hidden">
           {#if isLargeLayer(activeLayer)}
@@ -974,8 +958,12 @@
         },
       ]}
       activeSection={editorLayout.rightSection}
+      collapsed={editorLayout.sidePanelCollapsed}
       onchange={(s) => {
         editorLayout.rightSection = s;
+      }}
+      oncollapse={() => {
+        editorLayout.toggleSidePanelCollapse();
       }}
     />
   {/if}

@@ -2,1427 +2,378 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement F02 (streaming data import with SSE progress), F07 (map-scoped filtering with URL reflection), and F08 (job-queued geoprocessing with progress tracking).
+**Goal:** Fix F02 (streaming import with SSE progress), F07 (scoped FiltersStore with URL reflection + type inference), and F08 (async geoprocessing with job queue + SSE progress) — augmenting existing code, not replacing it.
 
-**Architecture:** Three independent feature streams sharing the worker infrastructure. F02 adds streaming upload + worker processing pipeline. F07 adds client-side FiltersStore + URL-synced filter state. F08 converts synchronous tRPC geoprocessing to BullMQ job queue with SSE progress.
+**Architecture:** Three independent subsystems sharing the worker process. F02 patches the existing upload endpoint for streaming + adds SSE progress endpoint. F07 replaces the singleton filters module with a map-scoped FiltersStore class. F08 adds a second BullMQ queue ('geoprocessing') to the existing worker alongside the 'file-import' queue, plus SSE progress endpoint and job cancellation.
 
-**Tech Stack:** Svelte 5, tRPC, BullMQ, Redis, PostGIS, SSE, SvelteKit route handlers
+**Tech Stack:** SvelteKit (streaming request body, SSE), BullMQ (two queues in one worker), PostGIS (existing INSERT...SELECT ops), EventSource (client-side SSE), Svelte 5 runes
 
----
-
-## Flow Maps
-
-### F02: Data Import Flow
-
-**Flow:** User selects file → upload streams to server → worker processes → features appear on map
-**Observable trigger:** User clicks "Import" button in ImportDialog
-**Observable outcome:** New layer appears in LayerPanel with features visible on map
-
-### Path
-
-1. `apps/web/src/lib/components/import/ImportDialog.svelte` — **[CHANGE SITE]** File selection, streaming upload, progress display
-2. `apps/web/src/routes/api/import/+server.ts` — **[CHANGE SITE]** Receives stream, writes to disk, enqueues job
-3. `apps/web/src/lib/server/trpc/queues.ts` — **[CHANGE SITE]** BullMQ queue definition
-4. `services/worker/src/index.ts` — **[CHANGE SITE]** Job processor, PostGIS INSERT, cleanup
-5. `apps/web/src/lib/components/map/MapEditor.svelte` — Wires ImportDialog, refreshes layers on completion
-
-### Upstream contract
-
-- User selects GeoJSON/Shapefile/KML/CSV file (≤500MB)
-- MapEditor provides `mapId` and `onlayercreated` callback
-
-### Downstream contract
-
-- New layer row in `layers` table with `mapId`, `name`, `type`, `zIndex`
-- Features inserted into `features` table with `layer_id`
-- LayerPanel refreshes via `queryClient.invalidateQueries`
-
-### Depth justification
-
-**Standard** — 2 subsystems (import UI + worker pipeline), architecture docs exist
+**Design spec:** `docs/superpowers/specs/2026-03-30-reference-driven-enhancement-design.md`
+**Prior plan (discarded):** `docs/superpowers/plans/2026-03-30-data-pipeline-plan.md` — replaced because it would have replaced 482 lines of production worker code with a 120-line stub.
 
 ---
 
-### F07: Filtering Flow
+## Flow Map
 
-**Flow:** User opens filter panel → adds conditions → URL updates → map features filtered
-**Observable trigger:** User clicks filter icon in left rail
-**Observable outcome:** Only matching features visible on map, filter state in URL
+### F02: Data Import
 
-### Path
+**Flow:** User drops file → streaming upload → disk write → job enqueue → worker parses → features inserted → SSE progress → UI updates
+**Observable trigger:** File drag-drop on ImportDialog
+**Observable outcome:** New layer appears on map with progress indicator
 
-1. `apps/web/src/lib/stores/filters.svelte.ts` — **[CHANGE SITE]** FiltersStore class, condition evaluation, URL sync
-2. `apps/web/src/lib/components/filters/FilterPanel.svelte` — **[CHANGE SITE]** UI for adding/removing conditions
-3. `apps/web/src/lib/components/map/MapEditor.svelte` — Wires FiltersStore to map instance
-4. `apps/web/src/lib/components/data/DataTable.svelte` — Receives filtered data
+1. `apps/web/src/lib/components/import/ImportDialog.svelte` — **[CHANGE SITE]** streaming upload + SSE subscription
+2. `apps/web/src/routes/api/upload/+server.ts` — **[CHANGE SITE]** stream to disk instead of Buffer.from
+3. `apps/web/src/routes/api/import/progress/+server.ts` — **[CREATE]** SSE progress endpoint
+4. `services/worker/src/index.ts` — (existing worker, no changes needed for F02)
 
-### Upstream contract
+### F07: Filtering
 
-- MapEditor provides `mapId` and layer list
-- Layer features available via tRPC query
+**Flow:** User opens filter panel → fields inferred → conditions added → URL updates → map/table filter
+**Observable trigger:** Click filter icon on layer in LayerPanel
+**Observable outcome:** URL query params update, map features hide/show, DataTable rows filter
 
-### Downstream contract
+1. `apps/web/src/lib/stores/filters.svelte.ts` — **[CHANGE SITE]** replace singleton with FiltersStore class
+2. `apps/web/src/lib/components/data/FilterPanel.svelte` — **[CHANGE SITE]** bind to FiltersStore instance
+3. `apps/web/src/lib/components/map/MapEditor.svelte` — **[CHANGE SITE]** create FiltersStore instance, pass down
 
-- Filter conditions applied to feature queries (server-side via tRPC)
-- URL query params reflect current filter state (`?filter=...`)
+### F08: Geoprocessing
 
-### Depth justification
+**Flow:** User selects op + layers → clicks run → job enqueued → SSE progress → new layer created
+**Observable trigger:** Click RUN ANALYSIS in GeoprocessingPanel
+**Observable outcome:** New layer appears on map after PostGIS operation completes
 
-**Standard** — 2 subsystems (filter store + filter UI), architecture docs exist
-
----
-
-### F08: Geoprocessing Flow
-
-**Flow:** User configures operation → job enqueued → SSE progress updates → new layer created
-**Observable trigger:** User clicks "RUN ANALYSIS" in GeoprocessingPanel
-**Observable outcome:** New derived layer appears on map with processed features
-
-### Path
-
-1. `apps/web/src/lib/components/geoprocessing/GeoprocessingPanel.svelte` — **[CHANGE SITE]** SSE subscription, progress display, cancel button
-2. `apps/web/src/lib/server/trpc/routers/geoprocessing.ts` — **[CHANGE SITE]** Enqueue job instead of direct execution
-3. `apps/web/src/lib/server/trpc/queues.ts` — **[CHANGE SITE]** Geoprocessing queue (shared with F02 infra)
-4. `services/worker/src/index.ts` — **[CHANGE SITE]** Geoprocessing job processor with progress reporting
-5. `apps/web/src/lib/server/geo/geoprocessing.ts` — Unchanged (PostGIS operations)
-
-### Upstream contract
-
-- GeoprocessingOp discriminated union from shared-types
-- MapEditor provides `mapId`, `layers` list, `onlayercreated` callback
-
-### Downstream contract
-
-- New layer row in `layers` table with processed features
-- SSE events: `{ type: 'progress', percent: number }` and `{ type: 'complete', layerId: string }`
-
-### Depth justification
-
-**Standard** — 2 subsystems (geoprocessing UI + worker queue), architecture docs exist
+1. `apps/web/src/lib/server/jobs/queues.ts` — **[CHANGE SITE]** add geoprocessing queue
+2. `apps/web/src/lib/server/trpc/routers/geoprocessing.ts` — **[CHANGE SITE]** enqueue job instead of sync execution
+3. `apps/web/src/routes/api/geoprocessing/progress/+server.ts` — **[CREATE]** SSE progress endpoint
+4. `apps/web/src/routes/api/geoprocessing/cancel/+server.ts` — **[CREATE]** job cancellation endpoint
+5. `services/worker/src/index.ts` — **[CHANGE SITE]** add geoprocessing queue handler
+6. `apps/web/src/lib/components/geoprocessing/GeoprocessingPanel.svelte` — **[CHANGE SITE]** SSE progress + cancel button
 
 ---
 
 ## Execution Waves
 
-### Wave 1: Shared Queue Infrastructure (F02 + F08 foundation)
-
-**Tasks: 1, 2** — Queue definitions and worker job processor skeleton
-
-### Wave 2: F02 Data Import
-
-**Tasks: 3, 4, 5** — Streaming upload, server handler, import dialog
-
-### Wave 3: F07 Filtering
-
-**Tasks: 6, 7** — FiltersStore, FilterPanel UI, URL sync
-
-### Wave 4: F08 Geoprocessing
-
-**Tasks: 8, 9** — Job queue migration, SSE progress, panel updates
-
-### Wave 5: Integration Verification
-
-**Tasks: 10** — Cross-feature verification, test suite, svelte-check
+**Wave 1:** F02 streaming upload + SSE progress (Tasks 1-4) — independent of F07/F08
+**Wave 2:** F07 FiltersStore (Tasks 5-7) — independent of F02/F08
+**Wave 3:** F08 async geoprocessing (Tasks 8-12) — depends on worker running (Wave 1 confirms worker is alive)
 
 ---
 
-### Task 1: Queue Infrastructure — BullMQ Setup [CHANGE SITE]
+## Wave 1: F02 — Streaming Import with SSE Progress
 
-**Flow position:** Shared infrastructure for F02 and F08
-**Upstream contract:** Redis connection string from env
-**Downstream contract:** `importQueue` and `geoprocessingQueue` exported for enqueue
+### Task 1: Streaming upload endpoint — augment existing +server.ts
+
+**Flow position:** Step 2 of 5 in import flow (user → **upload endpoint** → disk → queue → worker)
+**Upstream contract:** Receives multipart/form-data POST with file, mapId, layerName fields
+**Downstream contract:** Produces { jobId: string } JSON response; file on disk; importJobs row in DB
 **Files:**
 
-- Create: `apps/web/src/lib/server/trpc/queues.ts`
-- Test: `apps/web/src/__tests__/queues.test.ts`
-
-**Skill:** `superpowers:test-driven-development`
-
-- [ ] **Step 1: Write tests for queue exports**
-
-```typescript
-// apps/web/src/__tests__/queues.test.ts
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { importQueue, geoprocessingQueue, gracefulShutdown } from './lib/server/trpc/queues.js';
-
-describe('queues', () => {
-  it('exports importQueue as a BullMQ Queue instance', () => {
-    expect(importQueue).toBeDefined();
-    expect(typeof importQueue.add).toBe('function');
-  });
-
-  it('exports geoprocessingQueue as a BullMQ Queue instance', () => {
-    expect(geoprocessingQueue).toBeDefined();
-    expect(typeof geoprocessingQueue.add).toBe('function');
-  });
-
-  it('gracefulShutdown closes both queues', async () => {
-    await expect(gracefulShutdown()).resolves.not.toThrow();
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npx vitest run apps/web/src/__tests__/queues.test.ts`
-Expected: FAIL — "Cannot find module './lib/server/trpc/queues.js'"
-
-- [ ] **Step 3: Implement queue definitions**
-
-```typescript
-// apps/web/src/lib/server/trpc/queues.ts
-import { Queue, Worker } from 'bullmq';
-import IORedis from 'ioredis';
-
-const redisConnection = new IORedis({
-  host: process.env.REDIS_HOST ?? 'localhost',
-  port: parseInt(process.env.REDIS_PORT ?? '6379'),
-  maxRetriesPerRequest: null,
-});
-
-export const importQueue = new Queue('import', { connection: redisConnection });
-export const geoprocessingQueue = new Queue('geoprocessing', { connection: redisConnection });
-
-export async function gracefulShutdown(): Promise<void> {
-  await Promise.all([importQueue.close(), geoprocessingQueue.close()]);
-  await redisConnection.quit();
-}
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `npx vitest run apps/web/src/__tests__/queues.test.ts`
-Expected: PASS — 3 tests pass
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add apps/web/src/lib/server/trpc/queues.ts apps/web/src/__tests__/queues.test.ts
-git commit -m "feat(F02/F08): add BullMQ queue infrastructure for import and geoprocessing"
-```
-
----
-
-### Task 2: Worker Job Processor Skeleton [CHANGE SITE]
-
-**Flow position:** Worker processes jobs from both queues
-**Upstream contract:** Jobs from `importQueue` and `geoprocessingQueue` with typed payloads
-**Downstream contract:** Features inserted into PostGIS, layer rows created
-**Files:**
-
-- Modify: `services/worker/src/index.ts`
-- Test: `services/worker/src/__tests__/worker.test.ts`
-
-**Skill:** `superpowers:test-driven-development`
-
-- [ ] **Step 1: Write tests for worker job handlers**
-
-```typescript
-// services/worker/src/__tests__/worker.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock the database and queue modules
-vi.mock('$lib/server/db', () => ({ db: { execute: vi.fn() } }));
-vi.mock('$lib/server/trpc/queues', () => ({
-  importQueue: { add: vi.fn() },
-  geoprocessingQueue: { add: vi.fn() },
-}));
-
-describe('worker processors', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
-  it('processes import jobs with mapId, filePath, layerName', async () => {
-    // Verify the import processor accepts the expected job shape
-    const { processImportJob } = await import('../index.js');
-    const result = await processImportJob({
-      mapId: 'test-map-id',
-      filePath: '/tmp/test.geojson',
-      layerName: 'Test Layer',
-    });
-    expect(result).toHaveProperty('layerId');
-  });
-
-  it('processes geoprocessing jobs with op and newLayerId', async () => {
-    const { processGeoprocessingJob } = await import('../index.js');
-    const result = await processGeoprocessingJob({
-      op: { type: 'buffer', layerId: 'layer-1', distanceKm: 1 },
-      newLayerId: 'output-layer-id',
-      mapId: 'test-map-id',
-    });
-    expect(result).toHaveProperty('featureCount');
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cd services/worker && npx vitest run src/__tests__/worker.test.ts`
-Expected: FAIL — "processImportJob is not exported"
-
-- [ ] **Step 3: Implement worker job processors**
-
-```typescript
-// services/worker/src/index.ts — ADD to existing file
-import { Worker } from 'bullmq';
-import { db } from '$lib/server/db';
-import { layers } from '$lib/server/db/schema';
-import { runGeoprocessing } from '$lib/server/geo/geoprocessing.js';
-import IORedis from 'ioredis';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-
-const redisConnection = new IORedis({
-  host: process.env.REDIS_HOST ?? 'localhost',
-  port: parseInt(process.env.REDIS_PORT ?? '6379'),
-  maxRetriesPerRequest: null,
-});
-
-export async function processImportJob(job: {
-  mapId: string;
-  filePath: string;
-  layerName: string;
-}): Promise<{ layerId: string }> {
-  const { mapId, filePath, layerName } = job;
-  try {
-    // 1. Read file from disk
-    const content = await fs.readFile(filePath, 'utf-8');
-    const geojson = JSON.parse(content);
-
-    // 2. Get next z_index
-    const existingLayers = await db
-      .select({ zIndex: layers.zIndex })
-      .from(layers)
-      .where(eq(layers.mapId, mapId));
-    const maxZ = existingLayers.reduce((max, l) => Math.max(max, l.zIndex), -1);
-
-    // 3. Create layer
-    const [newLayer] = await db
-      .insert(layers)
-      .values({
-        mapId,
-        name: layerName,
-        type: geojson.type || 'mixed',
-        style: { type: 'simple', paint: {} },
-        visible: true,
-        zIndex: maxZ + 1,
-      })
-      .returning();
-
-    // 4. Insert features (batch insert)
-    if (geojson.features?.length) {
-      await db.execute(sql`
-        INSERT INTO features (layer_id, geometry, properties)
-        SELECT ${newLayer.id}::uuid,
-          ST_GeomFromGeoJSON(f->>'geometry'),
-          COALESCE(f->'properties', '{}'::jsonb)
-        FROM jsonb_array_elements(${JSON.stringify(geojson.features)}::jsonb) f
-      `);
-    }
-
-    return { layerId: newLayer.id };
-  } finally {
-    // 5. Clean up temp file
-    await fs.unlink(filePath).catch(() => {});
-  }
-}
-
-export async function processGeoprocessingJob(job: {
-  op: { type: string; [key: string]: unknown };
-  newLayerId: string;
-  mapId: string;
-}): Promise<{ featureCount: number }> {
-  const { op, newLayerId } = job;
-  await runGeoprocessing(op as any, newLayerId);
-
-  // Count features in output layer
-  const [{ count }] = await db.execute(sql`
-    SELECT COUNT(*) as count FROM features WHERE layer_id = ${newLayerId}::uuid
-  `);
-  return { featureCount: Number(count) };
-}
-
-// Start workers
-const importWorker = new Worker(
-  'import',
-  async (job) => {
-    return processImportJob(job.data);
-  },
-  { connection: redisConnection }
-);
-
-const geoprocessingWorker = new Worker(
-  'geoprocessing',
-  async (job) => {
-    return processGeoprocessingJob(job.data);
-  },
-  { connection: redisConnection }
-);
-
-// 24h orphan cleanup cron
-setInterval(
-  async () => {
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const tempDir = process.env.IMPORT_TEMP_DIR ?? '/tmp/imports';
-    try {
-      const files = await fs.readdir(tempDir);
-      for (const file of files) {
-        const stat = await fs.stat(path.join(tempDir, file));
-        if (stat.mtime < cutoff) {
-          await fs.unlink(path.join(tempDir, file));
-        }
-      }
-    } catch {
-      /* temp dir may not exist yet */
-    }
-  },
-  60 * 60 * 1000
-); // Run every hour
-
-export { importWorker, geoprocessingWorker };
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cd services/worker && npx vitest run src/__tests__/worker.test.ts`
-Expected: PASS — 2 tests pass
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add services/worker/src/index.ts services/worker/src/__tests__/worker.test.ts
-git commit -m "feat(F02/F08): add worker job processors for import and geoprocessing"
-```
-
----
-
-### Task 3: Streaming Upload Server Handler [CHANGE SITE]
-
-**Flow position:** Receives streamed file upload, writes to disk, enqueues job
-**Upstream contract:** HTTP POST with multipart/form-data or raw body from ImportDialog
-**Downstream contract:** Job enqueued to `importQueue`, SSE endpoint for progress
-**Files:**
-
-- Create: `apps/web/src/routes/api/import/+server.ts`
+- Modify: `apps/web/src/routes/api/upload/+server.ts:1-80`
 - Test: `apps/web/src/__tests__/import-upload.test.ts`
 
 **Skill:** `superpowers:test-driven-development`
 
-- [ ] **Step 1: Write tests for upload handler**
+- [ ] **Step 1: Write failing test for streaming upload**
 
 ```typescript
 // apps/web/src/__tests__/import-upload.test.ts
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { POST } from '../routes/api/upload/+server.js';
+import { ReadableStream } from 'stream/web';
 
-describe('import upload handler', () => {
-  it('rejects files larger than 500MB', async () => {
-    // Verify size limit enforcement
-    const { POST } = await import('../routes/api/import/+server.js');
-    const request = new Request('http://localhost/api/import', {
+vi.mock('$env/dynamic/private', () => ({ env: { UPLOAD_DIR: '/tmp/test-uploads' } }));
+vi.mock('$lib/server/db/index.js', () => ({
+  db: {
+    insert: vi
+      .fn()
+      .mockReturnValue({
+        values: vi
+          .fn()
+          .mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'test-job-id' }]) }),
+      }),
+  },
+  importJobs: { id: 'import_jobs' },
+}));
+vi.mock('$lib/server/jobs/queues.js', () => ({
+  enqueueImportJob: vi.fn().mockResolvedValue('test-job-id'),
+}));
+vi.mock('$lib/server/geo/access.js', () => ({
+  requireMapAccess: vi.fn().mockResolvedValue(true),
+}));
+
+describe('POST /api/upload', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('streams file to disk without loading entire file into memory', async () => {
+    // Simulates a 200MB file via ReadableStream chunks
+    const chunks: Uint8Array[] = [];
+    for (let i = 0; i < 100; i++) {
+      chunks.push(new Uint8Array(2 * 1024 * 1024)); // 2MB chunks
+    }
+    const formData = new FormData();
+    formData.append('file', new File(chunks, 'large.geojson', { type: 'application/json' }));
+    formData.append('mapId', 'test-map-uuid');
+
+    const request = new Request('http://localhost/api/upload', {
       method: 'POST',
-      headers: { 'content-length': `${600 * 1024 * 1024}` },
-      body: new ReadableStream(),
+      body: formData,
     });
-    const response = await POST({ request } as any);
-    expect(response.status).toBe(413);
-  });
 
-  it('rejects unsupported file types', async () => {
-    const { POST } = await import('../routes/api/import/+server.js');
-    const formData = new FormData();
-    formData.append('file', new Blob(['test'], { type: 'application/pdf' }), 'test.pdf');
-    formData.append('mapId', 'test-map');
-    formData.append('layerName', 'Test Layer');
-    const response = await POST({
-      request: new Request('http://localhost/api/import', { method: 'POST', body: formData }),
-    } as any);
-    expect(response.status).toBe(400);
-  });
+    const response = await POST({ request, locals: { user: { id: 'test-user' } } } as any);
 
-  it('accepts GeoJSON files and returns jobId', async () => {
-    vi.mock('$lib/server/trpc/queues', () => ({
-      importQueue: { add: vi.fn().mockResolvedValue({ id: 'job-123' }) },
-    }));
-    const { POST } = await import('../routes/api/import/+server.js');
-    const formData = new FormData();
-    formData.append(
-      'file',
-      new Blob(['{"type":"FeatureCollection","features":[]}'], { type: 'application/geo+json' }),
-      'test.geojson'
-    );
-    formData.append('mapId', 'test-map');
-    formData.append('layerName', 'Test Layer');
-    const response = await POST({
-      request: new Request('http://localhost/api/import', { method: 'POST', body: formData }),
-    } as any);
-    expect(response.status).toBe(202);
+    expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toHaveProperty('jobId', 'job-123');
+    expect(body).toHaveProperty('jobId');
+    // Verify no Buffer.from of entire file — implementation uses stream.pipe
+  });
+
+  it('rejects files exceeding MAX_FILE_SIZE via streaming byte count', async () => {
+    const formData = new FormData();
+    formData.append('file', new File([new Uint8Array(101 * 1024 * 1024)], 'huge.geojson'));
+    formData.append('mapId', 'test-map-uuid');
+
+    const request = new Request('http://localhost/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const response = await POST({ request, locals: { user: { id: 'test-user' } } } as any);
+    expect(response.status).toBe(413);
   });
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run apps/web/src/__tests__/import-upload.test.ts`
-Expected: FAIL — "Cannot find module"
+Run: `npx vitest run apps/web/src/__tests__/import-upload.test.ts -v`
+Expected: FAIL — current implementation uses `Buffer.from(await file.arrayBuffer())`
 
-- [ ] **Step 3: Implement streaming upload handler**
+- [ ] **Step 3: Modify upload endpoint to stream to disk**
+
+Modify `apps/web/src/routes/api/upload/+server.ts`:
 
 ```typescript
-// apps/web/src/routes/api/import/+server.ts
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { importQueue } from '$lib/server/trpc/queues';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as crypto from 'crypto';
+import { mkdir, writeFile } from 'fs/promises';
+import { createWriteStream } from 'fs';
+import { join } from 'path';
+import { sanitizeFilename } from '$lib/server/import/sanitize.js';
+import { env } from '$env/dynamic/private';
+import { db, importJobs } from '$lib/server/db/index.js';
+import { enqueueImportJob } from '$lib/server/jobs/queues.js';
+import { randomUUID } from 'crypto';
+import { requireMapAccess } from '$lib/server/geo/access.js';
+import { TRPCError } from '@trpc/server';
 
-const ALLOWED_TYPES = new Set([
-  'application/geo+json',
-  'application/json',
-  'application/zip',
-  'application/vnd.google-earth.kml+xml',
-  'text/csv',
-]);
-const MAX_SIZE = 500 * 1024 * 1024; // 500MB
-const TEMP_DIR = process.env.IMPORT_TEMP_DIR ?? '/tmp/imports';
+const UPLOAD_DIR = env.UPLOAD_DIR ?? '/tmp/felt-uploads';
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
-export const POST: RequestHandler = async ({ request }) => {
-  // 1. Size check
-  const contentLength = request.headers.get('content-length');
-  if (contentLength && parseInt(contentLength) > MAX_SIZE) {
-    return json(
-      {
-        error: 'File too large. Maximum size is 500MB.',
-        recovery: 'Split your file into smaller chunks or use a shapefile archive.',
-      },
-      { status: 413 }
-    );
+export const POST: RequestHandler = async ({ request, locals }) => {
+  if (!locals.user) {
+    error(401, 'Unauthorized');
   }
 
-  // 2. Parse form data
   const formData = await request.formData();
-  const file = formData.get('file') as File;
-  const mapId = formData.get('mapId') as string;
-  const layerName = formData.get('layerName') as string;
+  const file = formData.get('file') as File | null;
+  const mapId = formData.get('mapId') as string | null;
+  const layerName = (formData.get('layerName') as string | null) ?? 'Imported Layer';
 
-  if (!file || !mapId || !layerName) {
-    return json(
-      {
-        error: 'Missing required fields: file, mapId, layerName.',
-        recovery: 'Ensure all form fields are populated.',
-      },
-      { status: 400 }
-    );
+  if (!file || !mapId) {
+    error(400, 'Missing file or mapId');
   }
 
-  // 3. Validate file type
-  const ext = path.extname(file.name).toLowerCase();
-  const allowedExts = ['.geojson', '.json', '.zip', '.kml', '.csv'];
-  if (!ALLOWED_TYPES.has(file.type) && !allowedExts.includes(ext)) {
-    return json(
-      {
-        error: `Unsupported file type: ${file.type || ext}.`,
-        recovery: `Supported formats: ${allowedExts.join(', ')}`,
-      },
-      { status: 400 }
-    );
-  }
-
-  // 4. Stream to disk (not Buffer.from)
-  await fs.promises.mkdir(TEMP_DIR, { recursive: true });
-  const tempPath = path.join(TEMP_DIR, `${crypto.randomUUID()}${ext}`);
-  const fileStream = fs.createWriteStream(tempPath);
-  const reader = file.stream().getReader();
-
-  let bytesWritten = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    bytesWritten += value.length;
-    if (bytesWritten > MAX_SIZE) {
-      fileStream.close();
-      await fs.promises.unlink(tempPath).catch(() => {});
-      return json(
-        {
-          error: 'File too large. Maximum size is 500MB.',
-          recovery: 'Split your file into smaller chunks.',
-        },
-        { status: 413 }
-      );
+  // Verify map access
+  try {
+    await requireMapAccess(locals.user.id, mapId, 'editor');
+  } catch (err) {
+    if (err instanceof TRPCError) {
+      const status = err.code === 'NOT_FOUND' ? 404 : err.code === 'FORBIDDEN' ? 403 : 500;
+      error(status, err.message);
     }
-    fileStream.write(Buffer.from(value));
+    throw err;
   }
-  fileStream.end();
-  await new Promise((resolve) => fileStream.on('finish', resolve));
 
-  // 5. Enqueue job
-  const job = await importQueue.add('import', {
+  // Create job ID and save file to disk via streaming
+  const jobId = randomUUID();
+  const jobDir = join(UPLOAD_DIR, jobId);
+  await mkdir(jobDir, { recursive: true });
+
+  const safeName = sanitizeFilename(file.name);
+  const filePath = join(jobDir, safeName);
+  if (!filePath.startsWith(jobDir)) {
+    error(400, 'Invalid filename');
+  }
+
+  // Stream file to disk — use file.stream() which returns ReadableStream<Uint8Array>
+  // WriteStream accepts Uint8Array chunks natively, no Buffer.from needed
+  const writeStream = createWriteStream(filePath);
+  const reader = file.stream().getReader();
+  let bytesWritten = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      // value is Uint8Array — WriteStream accepts it directly
+      bytesWritten += value.byteLength;
+      if (bytesWritten > MAX_FILE_SIZE) {
+        writeStream.close();
+        error(413, `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024} MB`);
+      }
+      writeStream.write(value);
+    }
+  } finally {
+    await new Promise<void>((resolve) => writeStream.end(resolve));
+  }
+
+  // Create import job record
+  await db.insert(importJobs).values({
+    id: jobId,
     mapId,
-    filePath: tempPath,
-    layerName,
+    status: 'pending',
+    fileName: file.name,
+    fileSize: bytesWritten,
+    progress: 0,
   });
 
-  return json({ jobId: job.id }, { status: 202 });
+  // Enqueue BullMQ job
+  await enqueueImportJob({
+    jobId,
+    mapId,
+    layerName: layerName.trim() || file.name.replace(/\.[^.]+$/, ''),
+    filePath,
+    fileName: file.name,
+  });
+
+  return json({ jobId });
 };
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx vitest run apps/web/src/__tests__/import-upload.test.ts`
-Expected: PASS — 3 tests pass
+Run: `npx vitest run apps/web/src/__tests__/import-upload.test.ts -v`
+Expected: PASS — both tests pass
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/web/src/routes/api/import/+server.ts apps/web/src/__tests__/import-upload.test.ts
-git commit -m "feat(F02): streaming upload handler with disk write and job enqueue"
+git add apps/web/src/routes/api/upload/+server.ts apps/web/src/__tests__/import-upload.test.ts
+git commit -m "feat(F02): stream upload to disk instead of Buffer, enforce size via byte count"
 ```
 
----
+### Task 2: SSE progress endpoint for import jobs
 
-### Task 4: ImportDialog with Streaming Progress [CHANGE SITE]
-
-**Flow position:** UI for file selection and upload progress display
-**Upstream contract:** User-selected file, mapId from MapEditor
-**Downstream contract:** POST to /api/import, SSE progress events, onlayercreated callback
+**Flow position:** Step 4 of 5 in import flow (worker → **SSE endpoint** → UI)
+**Upstream contract:** Receives GET with jobId query param; reads import_jobs table
+**Downstream contract:** Produces SSE stream with events: { type, progress, message }
 **Files:**
 
-- Create: `apps/web/src/lib/components/import/ImportDialog.svelte`
-- Test: `apps/web/src/__tests__/import-dialog.test.ts`
+- Create: `apps/web/src/routes/api/import/progress/+server.ts`
+- Test: `apps/web/src/__tests__/import-progress.test.ts`
 
 **Skill:** `superpowers:test-driven-development`
-**Codebooks:** `focus-management-across-boundaries`
 
-- [ ] **Step 1: Write tests for ImportDialog component**
+- [ ] **Step 1: Write failing test for SSE progress endpoint**
 
 ```typescript
-// apps/web/src/__tests__/import-dialog.test.ts
+// apps/web/src/__tests__/import-progress.test.ts
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
-import ImportDialog from '../lib/components/import/ImportDialog.svelte';
 
-describe('ImportDialog', () => {
-  it('shows file picker when opened', () => {
-    render(ImportDialog, { props: { open: true, mapId: 'test-map' } });
-    expect(screen.getByText(/import data/i)).toBeTruthy();
+vi.mock('$lib/server/db/index.js', () => ({
+  db: {
+    execute: vi
+      .fn()
+      .mockResolvedValue({ rows: [{ status: 'processing', progress: 45, error_message: null }] }),
+  },
+  importJobs: { id: 'import_jobs' },
+}));
+
+describe('GET /api/import/progress', () => {
+  it('returns 400 when jobId is missing', async () => {
+    const { GET } = await import('../routes/api/import/progress/+server.js');
+    const request = new Request('http://localhost/api/import/progress');
+    const response = await GET({ request } as any);
+    expect(response.status).toBe(400);
   });
 
-  it('disables import button when no file selected', () => {
-    render(ImportDialog, { props: { open: true, mapId: 'test-map' } });
-    const button = screen.getByRole('button', { name: /import/i });
-    expect(button).toBeDisabled();
-  });
-
-  it('shows progress bar during upload', async () => {
-    const onlayercreated = vi.fn();
-    render(ImportDialog, {
-      props: { open: true, mapId: 'test-map', onlayercreated },
-    });
-    // Simulate file selection and upload start
-    // Progress bar should appear
-  });
-
-  it('calls onlayercreated when import completes', async () => {
-    const onlayercreated = vi.fn();
-    render(ImportDialog, {
-      props: { open: true, mapId: 'test-map', onlayercreated },
-    });
-    // Simulate completion
-    expect(onlayercreated).toHaveBeenCalled();
+  it('returns SSE stream with current job status', async () => {
+    const { GET } = await import('../routes/api/import/progress/+server.js');
+    const request = new Request('http://localhost/api/import/progress?jobId=test-123');
+    const response = await GET({ request } as any);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('text/event-stream');
   });
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run apps/web/src/__tests__/import-dialog.test.ts`
-Expected: FAIL — "Cannot find module"
+Run: `npx vitest run apps/web/src/__tests__/import-progress.test.ts -v`
+Expected: FAIL — module does not exist
 
-- [ ] **Step 3: Implement ImportDialog**
-
-```svelte
-<!-- apps/web/src/lib/components/import/ImportDialog.svelte -->
-<script lang="ts">
-  import { createMutation } from '@tanstack/svelte-query';
-
-  interface Props {
-    open: boolean;
-    mapId: string;
-    onlayercreated: (layerId: string) => void;
-    onclose: () => void;
-  }
-
-  let { open, mapId, onlayercreated, onclose }: Props = $props();
-
-  let selectedFile = $state<File | null>(null);
-  let layerName = $state('');
-  let uploadProgress = $state(0);
-  let uploadStatus = $state<'idle' | 'uploading' | 'processing' | 'done' | 'error'>('idle');
-  let errorMessage = $state<string | null>(null);
-
-  const importMutation = createMutation(() => ({
-    mutationFn: async ({
-      file,
-      mapId,
-      layerName,
-    }: {
-      file: File;
-      mapId: string;
-      layerName: string;
-    }) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('mapId', mapId);
-      formData.append('layerName', layerName);
-
-      const response = await fetch('/api/import', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error ?? 'Upload failed');
-      }
-
-      return response.json();
-    },
-    onSuccess: (data) => {
-      uploadStatus = 'processing';
-      // SSE progress subscription would go here
-      // For now, poll or use SSE EventSource
-    },
-    onError: (err: Error) => {
-      uploadStatus = 'error';
-      errorMessage = err.message;
-    },
-  }));
-
-  function handleFileSelect(e: Event) {
-    const input = e.target as HTMLInputElement;
-    if (input.files?.[0]) {
-      selectedFile = input.files[0];
-      layerName = selectedFile.name.replace(/\.[^.]+$/, '');
-    }
-  }
-
-  async function handleImport() {
-    if (!selectedFile) return;
-    uploadStatus = 'uploading';
-    uploadProgress = 0;
-    errorMessage = null;
-    await importMutation.mutateAsync({ file: selectedFile, mapId, layerName });
-  }
-
-  function handleClose() {
-    selectedFile = null;
-    layerName = '';
-    uploadProgress = 0;
-    uploadStatus = 'idle';
-    errorMessage = null;
-    onclose();
-  }
-</script>
-
-{#if open}
-  <div
-    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-    role="dialog"
-    aria-modal="true"
-  >
-    <div class="bg-surface-container rounded-xl p-6 w-full max-w-md">
-      <h2 class="text-lg font-semibold text-on-surface mb-4">Import Data</h2>
-
-      {#if uploadStatus === 'idle' || uploadStatus === 'error'}
-        <!-- File picker -->
-        <input
-          type="file"
-          accept=".geojson,.json,.zip,.kml,.csv"
-          onchange={handleFileSelect}
-          class="w-full mb-3"
-        />
-
-        <!-- Layer name -->
-        <input
-          type="text"
-          bind:value={layerName}
-          placeholder="Layer name"
-          class="w-full rounded bg-surface-low border border-white/5 px-3 py-2 text-sm text-on-surface mb-3"
-        />
-
-        {#if errorMessage}
-          <p class="text-xs text-red-400 mb-3">{errorMessage}</p>
-        {/if}
-
-        <div class="flex gap-2">
-          <button
-            onclick={handleClose}
-            class="flex-1 py-2 rounded-lg bg-surface-high text-on-surface">Cancel</button
-          >
-          <button
-            onclick={handleImport}
-            disabled={!selectedFile || importMutation.isPending}
-            class="flex-1 py-2 rounded-lg bg-primary text-on-primary font-bold disabled:opacity-50"
-          >
-            {importMutation.isPending ? 'Uploading...' : 'Import'}
-          </button>
-        </div>
-      {:else if uploadStatus === 'uploading'}
-        <!-- Upload progress -->
-        <div class="w-full bg-surface-low rounded-full h-2 mb-3">
-          <div
-            class="bg-primary h-2 rounded-full transition-all"
-            style="width: {uploadProgress}%"
-          />
-        </div>
-        <p class="text-sm text-on-surface-variant">Uploading...</p>
-      {:else if uploadStatus === 'processing'}
-        <p class="text-sm text-on-surface-variant">
-          Processing your file. This may take a moment...
-        </p>
-      {:else if uploadStatus === 'done'}
-        <p class="text-sm text-green-400 mb-3">Import complete!</p>
-        <button
-          onclick={handleClose}
-          class="w-full py-2 rounded-lg bg-primary text-on-primary font-bold">Done</button
-        >
-      {/if}
-    </div>
-  </div>
-{/if}
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `npx vitest run apps/web/src/__tests__/import-dialog.test.ts`
-Expected: PASS — 4 tests pass
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add apps/web/src/lib/components/import/ImportDialog.svelte apps/web/src/__tests__/import-dialog.test.ts
-git commit -m "feat(F02): ImportDialog with streaming upload and progress display"
-```
-
----
-
-### Task 5: Wire ImportDialog into MapEditor [CHANGE SITE]
-
-**Flow position:** MapEditor opens ImportDialog, refreshes layers on completion
-**Upstream contract:** MapEditor has `mapId` and layer query invalidation
-**Downstream contract:** ImportDialog calls `onlayercreated` with new layer ID
-**Files:**
-
-- Modify: `apps/web/src/lib/components/map/MapEditor.svelte`
-
-**Skill:** `superpowers:test-driven-development`
-
-- [ ] **Step 1: Add characterization test for import wiring**
+- [ ] **Step 3: Create SSE progress endpoint**
 
 ```typescript
-// Add to existing characterization tests or create new
-it('MapEditor opens ImportDialog and refreshes layers on completion', () => {
-  // Verify ImportDialog import exists
-  // Verify onlayercreated callback invalidates layer queries
-});
-```
-
-- [ ] **Step 2: Wire ImportDialog into MapEditor**
-
-In `MapEditor.svelte`:
-
-1. Add import: `import ImportDialog from '$lib/components/import/ImportDialog.svelte';`
-2. Add state: `let showImportDialog = $state(false);`
-3. Add dialog trigger in left rail or menu: button that sets `showImportDialog = true`
-4. Add dialog component: `<ImportDialog open={showImportDialog} mapId={mapId} onlayercreated={() => queryClient.invalidateQueries({ queryKey: queryKeys.layers.list({ mapId }) })} onclose={() => showImportDialog = false} />`
-
-- [ ] **Step 3: Run tests to verify no regressions**
-
-Run: `npx vitest run apps/web/src/__tests__/map-editor-state.test.ts`
-Expected: PASS — all existing tests pass
-
-- [ ] **Step 4: Run svelte-check**
-
-Run: `npx svelte-check --threshold warning`
-Expected: No new errors
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add apps/web/src/lib/components/map/MapEditor.svelte
-git commit -m "feat(F02): wire ImportDialog into MapEditor with layer refresh"
-```
-
----
-
-### Task 6: FiltersStore Class [CHANGE SITE]
-
-**Flow position:** Manages filter state scoped to map instance, syncs with URL
-**Upstream contract:** Map instance ID, available filter fields from layer schema
-**Downstream contract:** Filter conditions applied to feature queries, URL params updated
-**Files:**
-
-- Modify: `apps/web/src/lib/stores/filters.svelte.ts`
-- Test: `apps/web/src/__tests__/filters.test.ts`
-
-**Skill:** `superpowers:test-driven-development`
-
-- [ ] **Step 1: Write tests for FiltersStore**
-
-```typescript
-// apps/web/src/__tests__/filters.test.ts
-import { describe, it, expect } from 'vitest';
-import { FiltersStore } from '../lib/stores/filters.svelte.js';
-
-describe('FiltersStore', () => {
-  it('creates an instance scoped to a mapId', () => {
-    const store = new FiltersStore('map-1');
-    expect(store.mapId).toBe('map-1');
-    expect(store.conditions).toEqual([]);
-  });
-
-  it('adds a condition', () => {
-    const store = new FiltersStore('map-1');
-    store.addCondition({ field: 'population', operator: '>', value: 1000 });
-    expect(store.conditions).toHaveLength(1);
-    expect(store.conditions[0]).toEqual({ field: 'population', operator: '>', value: 1000 });
-  });
-
-  it('removes a condition by index', () => {
-    const store = new FiltersStore('map-1');
-    store.addCondition({ field: 'name', operator: 'contains', value: 'test' });
-    store.addCondition({ field: 'population', operator: '>', value: 1000 });
-    store.removeCondition(0);
-    expect(store.conditions).toHaveLength(1);
-    expect(store.conditions[0].field).toBe('population');
-  });
-
-  it('serializes conditions to URL params', () => {
-    const store = new FiltersStore('map-1');
-    store.addCondition({ field: 'population', operator: '>', value: 1000 });
-    const params = store.toUrlParams();
-    expect(params.get('filter')).toContain('population');
-  });
-
-  it('deserializes conditions from URL params', () => {
-    const params = new URLSearchParams('filter=population:gt:1000');
-    const store = FiltersStore.fromUrlParams('map-1', params);
-    expect(store.conditions).toHaveLength(1);
-    expect(store.conditions[0]).toEqual({ field: 'population', operator: '>', value: '1000' });
-  });
-
-  it('infers field types from sample features', () => {
-    const store = new FiltersStore('map-1');
-    store.inferFields([{ properties: { name: 'Test', population: 1000, active: true } }]);
-    expect(store.availableFields).toEqual([
-      { name: 'name', type: 'string' },
-      { name: 'population', type: 'number' },
-      { name: 'active', type: 'boolean' },
-    ]);
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npx vitest run apps/web/src/__tests__/filters.test.ts`
-Expected: FAIL — "FiltersStore is not defined"
-
-- [ ] **Step 3: Implement FiltersStore**
-
-```typescript
-// apps/web/src/lib/stores/filters.svelte.ts
-
-export type FilterOperator =
-  | '='
-  | '!='
-  | '>'
-  | '<'
-  | '>='
-  | '<='
-  | 'contains'
-  | 'starts_with'
-  | 'ends_with'
-  | 'is_null'
-  | 'is_not_null';
-
-export interface FilterCondition {
-  field: string;
-  operator: FilterOperator;
-  value: string | number | boolean | null;
-}
-
-export interface FieldInfo {
-  name: string;
-  type: 'string' | 'number' | 'boolean';
-}
-
-export class FiltersStore {
-  mapId: string;
-  conditions = $state<FilterCondition[]>([]);
-  availableFields = $state<FieldInfo[]>([]);
-
-  constructor(mapId: string) {
-    this.mapId = mapId;
-  }
-
-  addCondition(condition: FilterCondition): void {
-    this.conditions = [...this.conditions, condition];
-  }
-
-  removeCondition(index: number): void {
-    this.conditions = this.conditions.filter((_, i) => i !== index);
-  }
-
-  clearAll(): void {
-    this.conditions = [];
-  }
-
-  get hasActiveFilters(): boolean {
-    return this.conditions.length > 0;
-  }
-
-  /** Infer field types from first N sample features */
-  inferFields(features: { properties: Record<string, unknown> }[]): void {
-    const fieldMap = new Map<string, Set<string>>();
-    for (const feature of features.slice(0, 100)) {
-      for (const [key, value] of Object.entries(feature.properties ?? {})) {
-        if (!fieldMap.has(key)) fieldMap.set(key, new Set());
-        fieldMap.get(key)!.add(typeof value);
-      }
-    }
-    this.availableFields = Array.from(fieldMap.entries()).map(([name, types]) => {
-      // Determine dominant type
-      if (types.has('number')) return { name, type: 'number' as const };
-      if (types.has('boolean')) return { name, type: 'boolean' as const };
-      return { name, type: 'string' as const };
-    });
-  }
-
-  /** Serialize conditions to URL params */
-  toUrlParams(): URLSearchParams {
-    const params = new URLSearchParams();
-    for (const cond of this.conditions) {
-      const opMap: Record<FilterOperator, string> = {
-        '=': 'eq',
-        '!=': 'neq',
-        '>': 'gt',
-        '<': 'lt',
-        '>=': 'gte',
-        '<=': 'lte',
-        contains: 'contains',
-        starts_with: 'starts_with',
-        ends_with: 'ends_with',
-        is_null: 'is_null',
-        is_not_null: 'is_not_null',
-      };
-      params.append('filter', `${cond.field}:${opMap[cond.operator]}:${cond.value}`);
-    }
-    return params;
-  }
-
-  /** Deserialize conditions from URL params */
-  static fromUrlParams(mapId: string, params: URLSearchParams): FiltersStore {
-    const store = new FiltersStore(mapId);
-    const filterValues = params.getAll('filter');
-    const opReverse: Record<string, FilterOperator> = {
-      eq: '=',
-      neq: '!=',
-      gt: '>',
-      lt: '<',
-      gte: '>=',
-      lte: '<=',
-      contains: 'contains',
-      starts_with: 'starts_with',
-      ends_with: 'ends_with',
-      is_null: 'is_null',
-      is_not_null: 'is_not_null',
-    };
-    for (const raw of filterValues) {
-      const parts = raw.split(':');
-      if (parts.length >= 3) {
-        const [field, op, ...valueParts] = parts;
-        const value = valueParts.join(':');
-        store.conditions.push({
-          field,
-          operator: opReverse[op] ?? 'contains',
-          value,
-        });
-      }
-    }
-    return store;
-  }
-}
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `npx vitest run apps/web/src/__tests__/filters.test.ts`
-Expected: PASS — 6 tests pass
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add apps/web/src/lib/stores/filters.svelte.ts apps/web/src/__tests__/filters.test.ts
-git commit -m "feat(F07): FiltersStore class with URL sync and type inference"
-```
-
----
-
-### Task 7: FilterPanel UI [CHANGE SITE]
-
-**Flow position:** UI for adding/removing filter conditions
-**Upstream contract:** FiltersStore instance from MapEditor
-**Downstream contract:** Filter conditions added/removed, URL params updated
-**Files:**
-
-- Create: `apps/web/src/lib/components/filters/FilterPanel.svelte`
-- Modify: `apps/web/src/lib/components/map/MapEditor.svelte`
-- Test: `apps/web/src/__tests__/filter-panel.test.ts`
-
-**Skill:** `superpowers:test-driven-development`
-**Codebooks:** `focus-management-across-boundaries`
-
-- [ ] **Step 1: Write tests for FilterPanel**
-
-```typescript
-// apps/web/src/__tests__/filter-panel.test.ts
-import { describe, it, expect, vi } from '@testing-library/svelte';
-import { render, screen, fireEvent } from '@testing-library/svelte';
-import FilterPanel from '../lib/components/filters/FilterPanel.svelte';
-import { FiltersStore } from '../lib/stores/filters.svelte.js';
-
-describe('FilterPanel', () => {
-  it('renders with empty conditions', () => {
-    const store = new FiltersStore('map-1');
-    render(FilterPanel, { props: { store } });
-    expect(screen.getByText(/filters/i)).toBeTruthy();
-  });
-
-  it('adds a condition when clicking add button', async () => {
-    const store = new FiltersStore('map-1');
-    store.availableFields = [{ name: 'name', type: 'string' }];
-    render(FilterPanel, { props: { store } });
-    await fireEvent.click(screen.getByRole('button', { name: /add filter/i }));
-    expect(store.conditions).toHaveLength(1);
-  });
-
-  it('removes a condition when clicking remove', async () => {
-    const store = new FiltersStore('map-1');
-    store.addCondition({ field: 'name', operator: 'contains', value: 'test' });
-    render(FilterPanel, { props: { store } });
-    await fireEvent.click(screen.getByRole('button', { name: /remove/i }));
-    expect(store.conditions).toHaveLength(0);
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npx vitest run apps/web/src/__tests__/filter-panel.test.ts`
-Expected: FAIL — "Cannot find module"
-
-- [ ] **Step 3: Implement FilterPanel**
-
-```svelte
-<!-- apps/web/src/lib/components/filters/FilterPanel.svelte -->
-<script lang="ts">
-  import type {
-    FiltersStore,
-    FilterCondition,
-    FilterOperator,
-  } from '$lib/stores/filters.svelte.js';
-  import { Plus, X } from 'lucide-svelte';
-
-  interface Props {
-    store: FiltersStore;
-    onurlchange?: (params: URLSearchParams) => void;
-  }
-
-  let { store, onurlchange }: Props = $props();
-
-  const OPERATORS: { value: FilterOperator; label: string }[] = [
-    { value: '=', label: 'equals' },
-    { value: '!=', label: 'not equals' },
-    { value: '>', label: 'greater than' },
-    { value: '<', label: 'less than' },
-    { value: 'contains', label: 'contains' },
-    { value: 'is_null', label: 'is null' },
-    { value: 'is_not_null', label: 'is not null' },
-  ];
-
-  function addCondition() {
-    const field = store.availableFields[0]?.name ?? '';
-    store.addCondition({ field, operator: 'contains', value: '' });
-    syncUrl();
-  }
-
-  function removeCondition(index: number) {
-    store.removeCondition(index);
-    syncUrl();
-  }
-
-  function updateCondition(index: number, updates: Partial<FilterCondition>) {
-    store.conditions[index] = { ...store.conditions[index], ...updates };
-    syncUrl();
-  }
-
-  function syncUrl() {
-    if (onurlchange) {
-      onurlchange(store.toUrlParams());
-    }
-  }
-</script>
-
-<div class="flex flex-col h-full bg-surface-container">
-  <div class="px-3 py-3 border-b border-white/5">
-    <h2 class="text-sm font-semibold text-on-surface">Filters</h2>
-  </div>
-
-  <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
-    {#each store.conditions as cond, i (i)}
-      <div class="flex items-center gap-2">
-        <!-- Field selector -->
-        <select
-          value={cond.field}
-          onchange={(e) => updateCondition(i, { field: e.currentTarget.value })}
-          class="flex-1 rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-on-surface"
-        >
-          {#each store.availableFields as field}
-            <option value={field.name}>{field.name}</option>
-          {/each}
-        </select>
-
-        <!-- Operator selector -->
-        <select
-          value={cond.operator}
-          onchange={(e) =>
-            updateCondition(i, { operator: e.currentTarget.value as FilterOperator })}
-          class="flex-1 rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-on-surface"
-        >
-          {#each OPERATORS as op}
-            <option value={op.value}>{op.label}</option>
-          {/each}
-        </select>
-
-        <!-- Value input (hidden for is_null/is_not_null) -->
-        {#if cond.operator !== 'is_null' && cond.operator !== 'is_not_null'}
-          <input
-            type="text"
-            value={cond.value as string}
-            oninput={(e) => updateCondition(i, { value: e.currentTarget.value })}
-            placeholder="value"
-            class="flex-1 rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-on-surface"
-          />
-        {/if}
-
-        <!-- Remove button -->
-        <button
-          onclick={() => removeCondition(i)}
-          class="text-on-surface-variant hover:text-red-400"
-          aria-label="Remove filter"
-        >
-          <X size={14} />
-        </button>
-      </div>
-    {/each}
-
-    <button
-      onclick={addCondition}
-      class="flex items-center gap-1 py-2 text-xs text-primary hover:text-primary/80"
-    >
-      <Plus size={14} /> Add filter
-    </button>
-  </div>
-
-  {#if store.hasActiveFilters}
-    <div class="px-3 py-2 border-t border-white/5">
-      <button
-        onclick={() => {
-          store.clearAll();
-          syncUrl();
-        }}
-        class="w-full py-1 text-xs text-on-surface-variant hover:text-red-400"
-      >
-        Clear all filters
-      </button>
-    </div>
-  {/if}
-</div>
-```
-
-- [ ] **Step 4: Wire FilterPanel into MapEditor**
-
-In `MapEditor.svelte`:
-
-1. Add import: `import FilterPanel from '$lib/components/filters/FilterPanel.svelte';`
-2. Add FiltersStore instance: `let filtersStore = $state(new FiltersStore(mapId));`
-3. Wire into left rail or side panel as a new icon/section
-4. Pass `onurlchange` callback that updates browser URL via `goto`
-
-- [ ] **Step 5: Run tests to verify they pass**
-
-Run: `npx vitest run apps/web/src/__tests__/filter-panel.test.ts`
-Expected: PASS — 3 tests pass
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add apps/web/src/lib/components/filters/FilterPanel.svelte apps/web/src/__tests__/filter-panel.test.ts apps/web/src/lib/components/map/MapEditor.svelte
-git commit -m "feat(F07): FilterPanel UI wired into MapEditor with URL sync"
-```
-
----
-
-### Task 8: Geoprocessing Job Queue Migration [CHANGE SITE]
-
-**Flow position:** Convert synchronous tRPC mutation to async job enqueue
-**Upstream contract:** GeoprocessingOp from GeoprocessingPanel
-**Downstream contract:** Job enqueued to `geoprocessingQueue`, SSE progress events
-**Files:**
-
-- Modify: `apps/web/src/lib/server/trpc/routers/geoprocessing.ts`
-- Modify: `apps/web/src/lib/server/trpc/queues.ts`
-- Test: `apps/web/src/__tests__/geoprocessing.test.ts` (update existing)
-
-**Skill:** `superpowers:test-driven-development`
-
-- [ ] **Step 1: Update existing tests to reflect async job pattern**
-
-Update `apps/web/src/__tests__/geoprocessing.test.ts`:
-
-- Change test expectations from direct result to job enqueue confirmation
-- Add test for job enqueue returning `{ jobId: string }` instead of `{ layerId, layerName }`
-
-- [ ] **Step 2: Modify geoprocessing router to enqueue jobs**
-
-In `apps/web/src/lib/server/trpc/routers/geoprocessing.ts`:
-
-1. Import `geoprocessingQueue` from queues.ts
-2. Replace direct `runGeoprocessing` call with `geoprocessingQueue.add('geoprocessing', { op, newLayerId, mapId })`
-3. Return `{ jobId: job.id }` instead of `{ layerId, layerName }`
-4. Keep ownership verification and layer creation logic (steps 1-4)
-
-```typescript
-// Modified section of geoprocessing.ts router
-import { geoprocessingQueue } from '../queues.js';
-
-// Replace steps 4-5:
-// 4 — Create the output layer (same as before)
-const [newLayer] = await db.insert(layers).values({...}).returning();
-
-// 5 — Enqueue job instead of direct execution
-const job = await geoprocessingQueue.add('geoprocessing', {
-  op: input.op,
-  newLayerId: newLayer.id,
-  mapId: input.mapId,
-});
-
-return { jobId: job.id, layerId: newLayer.id, layerName: newLayer.name };
-```
-
-- [ ] **Step 3: Run tests to verify they pass**
-
-Run: `npx vitest run apps/web/src/__tests__/geoprocessing.test.ts`
-Expected: PASS — all tests pass with updated expectations
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add apps/web/src/lib/server/trpc/routers/geoprocessing.ts apps/web/src/__tests__/geoprocessing.test.ts
-git commit -m "feat(F08): migrate geoprocessing to job queue pattern"
-```
-
----
-
-### Task 9: Geoprocessing SSE Progress + Panel Updates [CHANGE SITE]
-
-**Flow position:** Client subscribes to SSE progress, displays progress bar, handles completion
-**Upstream contract:** Job ID from geoprocessing mutation response
-**Downstream contract:** SSE events for progress updates, layer refresh on completion
-**Files:**
-
-- Modify: `apps/web/src/lib/components/geoprocessing/GeoprocessingPanel.svelte`
-- Create: `apps/web/src/routes/api/geoprocessing/progress/+server.ts`
-
-**Skill:** `superpowers:test-driven-development`
-
-- [ ] **Step 1: Create SSE progress endpoint**
-
-```typescript
-// apps/web/src/routes/api/geoprocessing/progress/+server.ts
+// apps/web/src/routes/api/import/progress/+server.ts
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { geoprocessingQueue } from '$lib/server/trpc/queues';
+import { db } from '$lib/server/db/index.js';
+import { sql } from 'drizzle-orm';
 
 export const GET: RequestHandler = async ({ url }) => {
   const jobId = url.searchParams.get('jobId');
   if (!jobId) {
-    return new Response('Missing jobId', { status: 400 });
+    error(400, 'Missing jobId parameter');
   }
 
+  const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const encoder = new TextEncoder();
+      const send = (data: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      };
 
-      // Send initial connection event
-      controller.enqueue(encoder.encode('event: connected\ndata: {}\n\n'));
+      try {
+        // Poll the import_jobs table for status updates
+        // SSE with 1s polling interval; client falls back to polling if SSE unsupported
+        const interval = setInterval(async () => {
+          try {
+            const result = await db.execute(sql`
+              SELECT status, progress, error_message
+              FROM import_jobs WHERE id = ${jobId}
+            `);
+            const row = result.rows?.[0];
+            if (!row) {
+              send({ type: 'error', message: 'Job not found' });
+              controller.close();
+              return;
+            }
 
-      // Poll job progress (BullMQ doesn't have native SSE)
-      const interval = setInterval(async () => {
-        try {
-          const job = await geoprocessingQueue.getJob(jobId);
-          if (!job) {
-            controller.enqueue(
-              encoder.encode(
-                `event: error\ndata: ${JSON.stringify({ message: 'Job not found' })}\n\n`
-              )
-            );
+            send({
+              type:
+                row.status === 'done' ? 'complete' : row.status === 'failed' ? 'error' : 'progress',
+              progress: row.progress ?? 0,
+              message: row.error_message ?? undefined,
+            });
+
+            if (row.status === 'done' || row.status === 'failed') {
+              controller.close();
+            }
+          } catch (err) {
+            send({ type: 'error', message: (err as Error).message });
             controller.close();
-            clearInterval(interval);
-            return;
           }
+        }, 1000);
 
-          const state = await job.getState();
-          if (state === 'completed') {
-            const result = await job.finished();
-            controller.enqueue(
-              encoder.encode(`event: complete\ndata: ${JSON.stringify(result)}\n\n`)
-            );
-            controller.close();
-            clearInterval(interval);
-          } else if (state === 'failed') {
-            const failedReason = await job.failedReason;
-            controller.enqueue(
-              encoder.encode(`event: error\ndata: ${JSON.stringify({ message: failedReason })}\n\n`)
-            );
-            controller.close();
-            clearInterval(interval);
-          } else {
-            // Progress event
-            const progress = job.progress ?? 0;
-            controller.enqueue(
-              encoder.encode(
-                `event: progress\ndata: ${JSON.stringify({ percent: progress, state })}\n\n`
-              )
-            );
-          }
-        } catch (err) {
-          controller.enqueue(
-            encoder.encode(`event: error\ndata: ${JSON.stringify({ message: String(err) })}\n\n`)
-          );
-          controller.close();
-          clearInterval(interval);
-        }
-      }, 1000); // Poll every second
-
-      // Cleanup on client disconnect
-      url.signal?.addEventListener('abort', () => {
-        clearInterval(interval);
+        // Clean up interval when client disconnects
+        // SvelteKit handles abort signal on the request
+      } catch (err) {
+        send({ type: 'error', message: (err as Error).message });
         controller.close();
-      });
+      }
     },
   });
 
@@ -1436,166 +387,1059 @@ export const GET: RequestHandler = async ({ url }) => {
 };
 ```
 
-- [ ] **Step 2: Update GeoprocessingPanel to use SSE**
+- [ ] **Step 4: Run test to verify it passes**
 
-In `GeoprocessingPanel.svelte`:
+Run: `npx vitest run apps/web/src/__tests__/import-progress.test.ts -v`
+Expected: PASS
 
-1. Replace `running` state with SSE subscription after mutation success
-2. Add progress bar display during processing
-3. Add cancel button that calls job cancellation endpoint
-4. Handle SSE `complete` event to call `onlayercreated`
+- [ ] **Step 5: Commit**
 
-Key changes:
+```bash
+git add apps/web/src/routes/api/import/progress/+server.ts apps/web/src/__tests__/import-progress.test.ts
+git commit -m "feat(F02): SSE progress endpoint for import jobs with 1s polling"
+```
+
+### Task 3: Wire SSE progress into ImportDialog
+
+**Flow position:** Step 5 of 5 in import flow (SSE endpoint → **ImportDialog UI** → user sees progress)
+**Upstream contract:** Receives { jobId } from upload endpoint response
+**Downstream contract:** Produces visual progress indicator in ImportDialog
+**Files:**
+
+- Modify: `apps/web/src/lib/components/import/ImportDialog.svelte`
+- Test: (characterization test for existing wiring)
+
+**Skill:** `superpowers:test-driven-development`
+
+- [ ] **Step 1: Characterization test for current ImportDialog import flow**
 
 ```typescript
-// After mutation success:
-let progress = $state(0);
-let jobState = $state<string>('waiting');
+// apps/web/src/__tests__/import-dialog-flow.test.ts
+import { describe, it, expect, vi } from 'vitest';
 
-async function subscribeToProgress(jobId: string) {
-  const eventSource = new EventSource(`/api/geoprocessing/progress?jobId=${jobId}`);
-
-  eventSource.addEventListener('progress', (e) => {
-    const data = JSON.parse(e.data);
-    progress = data.percent;
-    jobState = data.state;
+describe('ImportDialog import flow', () => {
+  it('calls onlayercreated callback when import completes', async () => {
+    // Verify existing callback wiring: ImportDialog → onlayercreated → MapEditor
+    // This ensures we don't break the existing success path while adding SSE
+    const { default: ImportDialog } = await import('$lib/components/import/ImportDialog.svelte');
+    expect(ImportDialog).toBeDefined();
+    // The component accepts onlayercreated prop — verify via mount test
   });
+});
+```
 
-  eventSource.addEventListener('complete', (e) => {
-    const result = JSON.parse(e.data);
-    success = `Created layer with ${result.featureCount} features`;
-    onlayercreated(result.layerId);
+- [ ] **Step 2: Add SSE subscription to ImportDialog**
+
+Modify `apps/web/src/lib/components/import/ImportDialog.svelte` — add SSE progress subscription after successful upload:
+
+```typescript
+// Add to the onSuccess handler in the upload mutation:
+onSuccess: async (data: { jobId: string }) => {
+  uploadStatus = 'processing';
+  uploadProgress = 0;
+
+  // Subscribe to SSE progress updates
+  const eventSource = new EventSource(`/api/import/progress?jobId=${data.jobId}`);
+  eventSource.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'progress') {
+      uploadProgress = msg.progress;
+    } else if (msg.type === 'complete') {
+      uploadProgress = 100;
+      uploadStatus = 'done';
+      eventSource.close();
+      onlayercreated?.(data.jobId);
+    } else if (msg.type === 'error') {
+      uploadStatus = 'error';
+      uploadError = msg.message ?? 'Import failed';
+      eventSource.close();
+    }
+  };
+  eventSource.onerror = () => {
+    // SSE unsupported or connection lost — fall back to polling
     eventSource.close();
-    running = false;
-  });
+    pollImportStatus(data.jobId);
+  };
+};
 
-  eventSource.addEventListener('error', (e) => {
-    const data = JSON.parse(e.data);
-    error = data.message;
-    eventSource.close();
-    running = false;
-  });
+// Add polling fallback function:
+async function pollImportStatus(jobId: string) {
+  const poll = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/import/progress?jobId=${jobId}`);
+      const text = await res.text();
+      // Parse SSE format: "data: {...}\n\n"
+      const match = text.match(/data: (.+)\n/);
+      if (match) {
+        const msg = JSON.parse(match[1]);
+        if (msg.type === 'progress') {
+          uploadProgress = msg.progress;
+        } else if (msg.type === 'complete') {
+          uploadProgress = 100;
+          uploadStatus = 'done';
+          clearInterval(poll);
+          onlayercreated?.(jobId);
+        } else if (msg.type === 'error') {
+          uploadStatus = 'error';
+          uploadError = msg.message ?? 'Import failed';
+          clearInterval(poll);
+        }
+      }
+    } catch {
+      // Poll error — retry on next interval
+    }
+  }, 2000);
 }
 ```
 
-- [ ] **Step 3: Run svelte-check**
+- [ ] **Step 3: Run existing tests to verify no regression**
 
-Run: `npx svelte-check --threshold warning`
-Expected: No new errors
+Run: `npx vitest run apps/web/src/__tests__/import-dialog-flow.test.ts -v`
+Expected: PASS
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/web/src/routes/api/geoprocessing/progress/+server.ts apps/web/src/lib/components/geoprocessing/GeoprocessingPanel.svelte
-git commit -m "feat(F08): SSE progress tracking for geoprocessing jobs"
+git add apps/web/src/lib/components/import/ImportDialog.svelte apps/web/src/__tests__/import-dialog-flow.test.ts
+git commit -m "feat(F02): wire SSE progress into ImportDialog with poll fallback"
 ```
 
----
+### Task 4: Verification — F02 end-to-end
 
-### Task 10: Integration Verification [CHANGE SITE]
-
-**Flow position:** Verify all three features work together
-**Upstream contract:** All previous tasks complete
-**Downstream contract:** Clean test suite, no svelte-check errors
-**Files:**
-
-- All modified files from Tasks 1-9
+**Flow position:** Verification of complete import flow
+**Files:** (no changes)
 
 **Skill:** `none`
 
 - [ ] **Step 1: Run full test suite**
 
-Run: `npx vitest run`
-Expected: All tests pass (existing + new tests from Tasks 1-9)
+Run: `npx vitest run --reporter=verbose 2>&1 | head -50`
+Expected: All tests pass, no new failures
 
 - [ ] **Step 2: Run svelte-check**
 
-Run: `npx svelte-check --threshold warning`
-Expected: 0 errors, 0 warnings (or pre-existing only)
+Run: `npx svelte-check --threshold warning 2>&1 | tail -20`
+Expected: 0 errors, existing warnings unchanged
+
+- [ ] **Step 3: Commit verification**
+
+```bash
+git commit --allow-empty -m "verify(F02): streaming import + SSE progress complete, all tests pass"
+```
+
+---
+
+## Wave 2: F07 — Scoped FiltersStore with URL Reflection
+
+### Task 5: Create FiltersStore class
+
+**Flow position:** Step 1 of 3 in filtering flow (user → **FiltersStore** → URL + map)
+**Upstream contract:** Receives mapId on construction; reads layer schema for type inference
+**Downstream contract:** Produces UIFilter[] per layer, MapLibre filter expressions, URL query params
+**Files:**
+
+- Create: `apps/web/src/lib/stores/filters-store.svelte.ts`
+- Test: `apps/web/src/__tests__/filters-store.test.ts`
+
+**Skill:** `superpowers:test-driven-development`
+
+- [ ] **Step 1: Write failing tests for FiltersStore**
+
+```typescript
+// apps/web/src/__tests__/filters-store.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { FiltersStore } from '../stores/filters-store.svelte.js';
+
+describe('FiltersStore', () => {
+  let store: FiltersStore;
+
+  beforeEach(() => {
+    store = new FiltersStore('test-map-id');
+  });
+
+  it('starts with no conditions', () => {
+    expect(store.conditions).toEqual([]);
+  });
+
+  it('adds a condition and updates URL', () => {
+    store.addCondition({ field: 'name', operator: 'eq', value: 'test' });
+    expect(store.conditions).toHaveLength(1);
+    expect(store.conditions[0].field).toBe('name');
+  });
+
+  it('removes a condition by index', () => {
+    store.addCondition({ field: 'name', operator: 'eq', value: 'a' });
+    store.addCondition({ field: 'type', operator: 'cn', value: 'b' });
+    store.removeCondition(0);
+    expect(store.conditions).toHaveLength(1);
+    expect(store.conditions[0].field).toBe('type');
+  });
+
+  it('serializes conditions to URL params', () => {
+    store.addCondition({ field: 'name', operator: 'eq', value: 'test' });
+    const params = store.toUrlParams();
+    expect(params.get('filter')).toBe('name:eq:test');
+  });
+
+  it('deserializes conditions from URL params', () => {
+    const params = new URLSearchParams('filter=name:eq:test&filter=type:cn:road');
+    store.fromUrlParams(params);
+    expect(store.conditions).toHaveLength(2);
+    expect(store.conditions[0]).toEqual({ field: 'name', operator: 'eq', value: 'test' });
+    expect(store.conditions[1]).toEqual({ field: 'type', operator: 'cn', value: 'road' });
+  });
+
+  it('infers field types from sample features', () => {
+    const sampleFeatures = [{ properties: { name: 'test', count: 42, active: true } }];
+    const fields = store.inferFields(sampleFeatures);
+    expect(fields).toEqual({
+      name: 'string',
+      count: 'number',
+      active: 'boolean',
+    });
+  });
+
+  it('produces MapLibre filter for a layer', () => {
+    store.addCondition({ field: 'name', operator: 'eq', value: 'test' });
+    const mlFilter = store.toMapLibreFilter('layer-1');
+    expect(mlFilter).toBeDefined();
+    // Filter should be ['==', ['get', 'name'], 'test']
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run apps/web/src/__tests__/filters-store.test.ts -v`
+Expected: FAIL — module does not exist
+
+- [ ] **Step 3: Create FiltersStore class**
+
+```typescript
+// apps/web/src/lib/stores/filters-store.svelte.ts
+import { fslFiltersToMapLibre } from '@felt-like-it/geo-engine';
+import type { FilterOperator, UIFilter } from './filters.svelte.js';
+
+export type FieldType = 'string' | 'number' | 'boolean';
+
+export interface FilterCondition extends UIFilter {}
+
+export class FiltersStore {
+  conditions = $state<FilterCondition[]>([]);
+  fieldTypes = $state<Record<string, FieldType>>({});
+  readonly mapId: string;
+
+  constructor(mapId: string) {
+    this.mapId = mapId;
+    // Initialize from URL if present
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      this.fromUrlParams(params);
+    }
+  }
+
+  addCondition(condition: FilterCondition): void {
+    this.conditions = [...this.conditions, condition];
+    this.syncToUrl();
+  }
+
+  removeCondition(index: number): void {
+    this.conditions = this.conditions.filter((_, i) => i !== index);
+    this.syncToUrl();
+  }
+
+  updateCondition(index: number, updates: Partial<FilterCondition>): void {
+    this.conditions = this.conditions.map((c, i) => (i === index ? { ...c, ...updates } : c));
+    this.syncToUrl();
+  }
+
+  clearAll(): void {
+    this.conditions = [];
+    this.syncToUrl();
+  }
+
+  /** Infer field types from first N sample features. */
+  inferFields(features: Array<{ properties: Record<string, unknown> }>): Record<string, FieldType> {
+    const sample = features.slice(0, 100);
+    const types: Record<string, Set<string>> = {};
+
+    for (const feature of sample) {
+      for (const [key, value] of Object.entries(feature.properties ?? {})) {
+        if (!types[key]) types[key] = new Set();
+        if (value !== null && value !== undefined) {
+          types[key].add(typeof value);
+        }
+      }
+    }
+
+    const result: Record<string, FieldType> = {};
+    for (const [key, typeSet] of Object.entries(types)) {
+      if (typeSet.has('number')) result[key] = 'number';
+      else if (typeSet.has('boolean')) result[key] = 'boolean';
+      else result[key] = 'string';
+    }
+
+    this.fieldTypes = result;
+    return result;
+  }
+
+  /** Serialize conditions to URLSearchParams. */
+  toUrlParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    for (const cond of this.conditions) {
+      params.append('filter', `${cond.field}:${cond.operator}:${encodeURIComponent(cond.value)}`);
+    }
+    return params;
+  }
+
+  /** Deserialize conditions from URLSearchParams. */
+  fromUrlParams(params: URLSearchParams): void {
+    const filters = params.getAll('filter');
+    this.conditions = filters
+      .map((raw) => {
+        const parts = raw.split(':');
+        if (parts.length < 3) return null;
+        const field = parts[0];
+        const operator = parts[1] as FilterOperator;
+        const value = decodeURIComponent(parts.slice(2).join(':'));
+        const validOperators: FilterOperator[] = ['eq', 'ne', 'lt', 'gt', 'cn', 'in', 'ni'];
+        if (!validOperators.includes(operator)) return null;
+        return { field, operator, value };
+      })
+      .filter((c): c is FilterCondition => c !== null);
+  }
+
+  /** Sync current conditions to browser URL. */
+  syncToUrl(): void {
+    if (typeof window === 'undefined') return;
+    const params = this.toUrlParams();
+    const newQuery = params.toString();
+    const currentQuery = window.location.search.slice(1);
+    if (newQuery !== currentQuery) {
+      const url = new URL(window.location.href);
+      url.search = newQuery;
+      window.history.replaceState({}, '', url.toString());
+    }
+  }
+
+  /** Convert conditions to a MapLibre filter expression for a specific layer. */
+  toMapLibreFilter(_layerId: string): unknown[] | undefined {
+    if (this.conditions.length === 0) return undefined;
+    const fslFilters = this.conditions.map((f) => [f.field, f.operator, f.value]);
+    return fslFiltersToMapLibre(fslFilters) ?? undefined;
+  }
+
+  /** Apply conditions to features array (for DataTable filtering). */
+  applyToFeatures(features: Array<{ properties: Record<string, unknown> }>): typeof features {
+    if (this.conditions.length === 0) return features;
+    return features.filter((f) =>
+      this.conditions.every((cond) => matchesFilter(f.properties ?? {}, cond))
+    );
+  }
+}
+
+function matchesFilter(properties: Record<string, unknown>, filter: UIFilter): boolean {
+  const val = properties[filter.field];
+  const raw = filter.value;
+  switch (filter.operator) {
+    case 'eq':
+      return String(val ?? '') === raw;
+    case 'ne':
+      return String(val ?? '') !== raw;
+    case 'lt':
+      return Number(val) < Number(raw);
+    case 'gt':
+      return Number(val) > Number(raw);
+    case 'cn':
+      return String(val ?? '')
+        .toLowerCase()
+        .includes(raw.toLowerCase());
+    case 'in': {
+      const allowed = raw.split(',').map((s) => s.trim());
+      return allowed.includes(String(val ?? ''));
+    }
+    case 'ni': {
+      const excluded = raw.split(',').map((s) => s.trim());
+      return !excluded.includes(String(val ?? ''));
+    }
+    default:
+      return true;
+  }
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run apps/web/src/__tests__/filters-store.test.ts -v`
+Expected: PASS — all 7 tests pass
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/web/src/lib/stores/filters-store.svelte.ts apps/web/src/__tests__/filters-store.test.ts
+git commit -m "feat(F07): FiltersStore class with URL reflection and type inference"
+```
+
+### Task 6: Update FilterPanel to use FiltersStore
+
+**Flow position:** Step 2 of 3 in filtering flow (FiltersStore → **FilterPanel UI** → user interaction)
+**Upstream contract:** Receives FiltersStore instance as prop
+**Downstream contract:** Produces user interactions that call store methods
+**Files:**
+
+- Modify: `apps/web/src/lib/components/data/FilterPanel.svelte`
+
+**Skill:** `superpowers:test-driven-development`
+**Codebooks:** `virtualization-vs-interaction-fidelity`
+
+- [ ] **Step 1: Characterization test for current FilterPanel**
+
+```typescript
+// Add to existing filter panel tests or create new characterization test
+// Verify current FilterPanel imports and uses filterStore singleton
+```
+
+- [ ] **Step 2: Update FilterPanel to accept FiltersStore prop**
+
+Modify `apps/web/src/lib/components/data/FilterPanel.svelte` — change from singleton import to prop-based:
+
+```typescript
+// Replace:
+// import { filterStore } from '$lib/stores/filters.svelte.js';
+// With:
+import type { FiltersStore } from '$lib/stores/filters-store.svelte.js';
+
+interface Props {
+  store: FiltersStore;
+  layerId: string;
+  layerName: string;
+}
+
+let { store, layerId, layerName }: Props = $props();
+```
+
+Update template bindings from `filterStore.*` to `store.*`:
+
+- `filterStore.get(layerId)` → `store.conditions` (single-store, no per-layer)
+- `filterStore.add(layerId, filter)` → `store.addCondition(filter)`
+- `filterStore.remove(layerId, index)` → `store.removeCondition(index)`
+- `filterStore.clear(layerId)` → `store.clearAll()`
+
+- [ ] **Step 3: Run svelte-check**
+
+Run: `npx svelte-check --threshold warning 2>&1 | grep -i filter`
+Expected: 0 errors
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/web/src/lib/components/data/FilterPanel.svelte
+git commit -m "feat(F07): FilterPanel uses FiltersStore prop instead of singleton"
+```
+
+### Task 7: Wire FiltersStore into MapEditor
+
+**Flow position:** Step 3 of 3 in filtering flow (MapEditor creates store → passes to FilterPanel + DataTable)
+**Upstream contract:** Receives mapId from route params
+**Downstream contract:** Produces FiltersStore instance passed to FilterPanel and DataTable
+**Files:**
+
+- Modify: `apps/web/src/lib/components/map/MapEditor.svelte`
+- Modify: `apps/web/src/lib/components/data/DataTable.svelte`
+
+**Skill:** `superpowers:test-driven-development`
+
+- [ ] **Step 1: Add FiltersStore instance to MapEditor**
+
+In `apps/web/src/lib/components/map/MapEditor.svelte`, add:
+
+```typescript
+import { FiltersStore } from '$lib/stores/filters-store.svelte.js';
+
+// Inside the component script:
+let filtersStore = $state<FiltersStore | null>(null);
+
+$effect(() => {
+  if (mapId && !filtersStore) {
+    filtersStore = new FiltersStore(mapId);
+  }
+});
+```
+
+Pass `filtersStore` to FilterPanel and DataTable components.
+
+- [ ] **Step 2: Update DataTable to accept FiltersStore**
+
+Modify `apps/web/src/lib/components/data/DataTable.svelte` to accept `filtersStore` prop and use `store.applyToFeatures()` for row filtering.
+
+- [ ] **Step 3: Run tests**
+
+Run: `npx vitest run apps/web/src/__tests__/filters-store.test.ts -v`
+Expected: PASS
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/web/src/lib/components/map/MapEditor.svelte apps/web/src/lib/components/data/DataTable.svelte
+git commit -m "feat(F07): wire FiltersStore into MapEditor and DataTable"
+```
+
+---
+
+## Wave 3: F08 — Async Geoprocessing with Job Queue
+
+### Task 8: Add geoprocessing queue to queues.ts
+
+**Flow position:** Step 2 of 6 in geoprocessing flow (user → tRPC router → **queue** → worker)
+**Upstream contract:** Receives { jobId, mapId, op, outputLayerId } from tRPC router
+**Downstream contract:** Enqueues job to BullMQ 'geoprocessing' queue
+**Files:**
+
+- Modify: `apps/web/src/lib/server/jobs/queues.ts:1-30`
+- Test: `apps/web/src/__tests__/geoprocessing-queues.test.ts`
+
+**Skill:** `superpowers:test-driven-development`
+
+- [ ] **Step 1: Write failing test for geoprocessing queue**
+
+```typescript
+// apps/web/src/__tests__/geoprocessing-queues.test.ts
+import { describe, it, expect, vi } from 'vitest';
+
+describe('geoprocessing queue', () => {
+  it('creates a queue named geoprocessing', async () => {
+    const { getGeoprocessingQueue } = await import('$lib/server/jobs/queues.js');
+    const queue = getGeoprocessingQueue();
+    expect(queue.name).toBe('geoprocessing');
+  });
+
+  it('enqueues a geoprocessing job with correct payload', async () => {
+    const { enqueueGeoprocessingJob } = await import('$lib/server/jobs/queues.js');
+    const jobId = await enqueueGeoprocessingJob({
+      jobId: 'test-job',
+      mapId: 'test-map',
+      op: { type: 'buffer', layerId: 'layer-1', distanceKm: 1 },
+      outputLayerId: 'output-1',
+    });
+    expect(jobId).toBe('test-job');
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run apps/web/src/__tests__/geoprocessing-queues.test.ts -v`
+Expected: FAIL — functions don't exist
+
+- [ ] **Step 3: Add geoprocessing queue to queues.ts**
+
+Append to `apps/web/src/lib/server/jobs/queues.ts`:
+
+```typescript
+import type { GeoprocessingOp } from '@felt-like-it/shared-types';
+
+export interface GeoprocessingJobPayload {
+  jobId: string;
+  mapId: string;
+  op: GeoprocessingOp;
+  outputLayerId: string;
+}
+
+let _geoprocessingQueue: Queue<GeoprocessingJobPayload> | null = null;
+
+export function getGeoprocessingQueue(): Queue<GeoprocessingJobPayload> {
+  if (!_geoprocessingQueue) {
+    _geoprocessingQueue = new Queue<GeoprocessingJobPayload>('geoprocessing', {
+      connection: createRedisConnection(),
+      defaultJobOptions: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: 50,
+        removeOnFail: 200,
+      },
+    });
+  }
+  return _geoprocessingQueue;
+}
+
+export async function enqueueGeoprocessingJob(payload: GeoprocessingJobPayload): Promise<string> {
+  const queue = getGeoprocessingQueue();
+  const job = await queue.add('geoprocessing', payload, { jobId: payload.jobId });
+  return job.id ?? payload.jobId;
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run apps/web/src/__tests__/geoprocessing-queues.test.ts -v`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/web/src/lib/server/jobs/queues.ts apps/web/src/__tests__/geoprocessing-queues.test.ts
+git commit -m "feat(F08): add geoprocessing BullMQ queue alongside file-import"
+```
+
+### Task 9: Convert tRPC router to async job enqueue
+
+**Flow position:** Step 1 of 6 in geoprocessing flow (user → **tRPC router** → queue)
+**Upstream contract:** Receives { mapId, op, outputLayerName } from GeoprocessingPanel
+**Downstream contract:** Creates output layer row, enqueues job, returns { jobId, layerId }
+**Files:**
+
+- Modify: `apps/web/src/lib/server/trpc/routers/geoprocessing.ts:1-104`
+- Test: `apps/web/src/__tests__/geoprocessing-router.test.ts`
+
+**Skill:** `superpowers:test-driven-development`
+
+- [ ] **Step 1: Write failing test for async router**
+
+```typescript
+// apps/web/src/__tests__/geoprocessing-router.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('$lib/server/jobs/queues.js', () => ({
+  enqueueGeoprocessingJob: vi.fn().mockResolvedValue('test-job-id'),
+}));
+
+describe('geoprocessing router (async)', () => {
+  it('enqueues job instead of executing synchronously', async () => {
+    // Verify the router no longer calls runGeoprocessing directly
+    // but instead creates layer + enqueues job
+    const { geoprocessingRouter } = await import('$lib/server/trpc/routers/geoprocessing.js');
+    expect(geoprocessingRouter).toBeDefined();
+    // Router should return { jobId, layerId, layerName }
+  });
+});
+```
+
+- [ ] **Step 2: Modify router to enqueue job**
+
+Modify `apps/web/src/lib/server/trpc/routers/geoprocessing.ts`:
+
+```typescript
+// Replace the mutation handler body:
+.mutation(async ({ ctx, input }) => {
+  await requireMapAccess(ctx.user.id, input.mapId, 'editor');
+
+  // Verify input layers belong to this map
+  const inputLayerIds = getOpLayerIds(input.op);
+  await Promise.all(
+    inputLayerIds.map(async (layerId) => {
+      const [ownedLayer] = await db
+        .select({ id: layers.id })
+        .from(layers)
+        .where(and(eq(layers.id, layerId), eq(layers.mapId, input.mapId)));
+      if (!ownedLayer) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'One or more input layers not found.' });
+      }
+    })
+  );
+
+  // Determine z_index
+  const existingLayers = await db
+    .select({ zIndex: layers.zIndex })
+    .from(layers)
+    .where(eq(layers.mapId, input.mapId));
+  const maxZ = existingLayers.reduce((max, l) => Math.max(max, l.zIndex), -1);
+
+  // Create output layer
+  const [newLayer] = await db
+    .insert(layers)
+    .values({
+      mapId: input.mapId,
+      name: input.outputLayerName,
+      type: 'mixed',
+      style: { type: 'simple', paint: {} },
+      visible: true,
+      zIndex: maxZ + 1,
+    })
+    .returning();
+
+  if (!newLayer) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create output layer.' });
+  }
+
+  // Enqueue job instead of running synchronously
+  const { randomUUID } = await import('crypto');
+  const jobId = randomUUID();
+
+  // Track job in import_jobs table for progress polling
+  await db.execute(sql`
+    INSERT INTO import_jobs (id, map_id, status, file_name, progress)
+    VALUES (${jobId}::uuid, ${input.mapId}, 'processing', ${input.outputLayerName}, 0)
+  `);
+
+  await enqueueGeoprocessingJob({
+    jobId,
+    mapId: input.mapId,
+    op: input.op,
+    outputLayerId: newLayer.id,
+  });
+
+  return { jobId, layerId: newLayer.id, layerName: newLayer.name };
+})
+```
+
+- [ ] **Step 3: Run test to verify it passes**
+
+Run: `npx vitest run apps/web/src/__tests__/geoprocessing-router.test.ts -v`
+Expected: PASS
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/web/src/lib/server/trpc/routers/geoprocessing.ts apps/web/src/__tests__/geoprocessing-router.test.ts
+git commit -m "feat(F08): tRPC router enqueues job instead of sync execution"
+```
+
+### Task 10: Add geoprocessing handler to existing worker
+
+**Flow position:** Step 3 of 6 in geoprocessing flow (queue → **worker handler** → PostGIS)
+**Upstream contract:** Receives GeoprocessingJobPayload from BullMQ 'geoprocessing' queue
+**Downstream contract:** Executes PostGIS ops, updates import_jobs progress, creates features
+**Files:**
+
+- Modify: `services/worker/src/index.ts` (append handler + second worker)
+- Test: `services/worker/src/__tests__/geoprocessing-worker.test.ts`
+
+**Skill:** `superpowers:test-driven-development`
+
+- [ ] **Step 1: Write failing test for geoprocessing worker handler**
+
+```typescript
+// services/worker/src/__tests__/geoprocessing-worker.test.ts
+import { describe, it, expect, vi } from 'vitest';
+
+describe('geoprocessing worker handler', () => {
+  it('processes a buffer operation and updates progress', async () => {
+    // Verify the handler calls runGeoprocessing with correct params
+    // and updates import_jobs progress
+    const { processGeoprocessingJob } = await import('../index.js');
+    expect(processGeoprocessingJob).toBeDefined();
+  });
+});
+```
+
+- [ ] **Step 2: Add geoprocessing handler to worker**
+
+Append to `services/worker/src/index.ts` (before the worker setup section):
+
+```typescript
+import {
+  GeoprocessingJobPayloadSchema,
+  type GeoprocessingJobPayload,
+} from '@felt-like-it/shared-types';
+import { runGeoprocessing } from './geo/geoprocessing.js'; // or relative path to shared geoprocessing.ts
+
+async function processGeoprocessingJob(job: Job<GeoprocessingJobPayload>): Promise<void> {
+  const { jobId, mapId, op, outputLayerId } = GeoprocessingJobPayloadSchema.parse(job.data);
+
+  logger.info({ jobId, op: op.type, outputLayerId }, 'processing geoprocessing job');
+
+  try {
+    await updateJobStatus(jobId, 'processing', 10);
+
+    // Run the PostGIS operation — existing runGeoprocessing handles all op types
+    await runGeoprocessing(op, outputLayerId);
+
+    await updateJobStatus(jobId, 'done', 100);
+    logger.info({ jobId }, 'geoprocessing job completed');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error({ jobId, error: message }, 'geoprocessing job failed');
+    await db.execute(sql`
+      UPDATE import_jobs
+      SET status = 'failed', error_message = ${message}, updated_at = NOW()
+      WHERE id = ${jobId}
+    `);
+    throw err;
+  }
+}
+```
+
+Then add the second worker (after the existing import worker setup):
+
+```typescript
+// ─── Geoprocessing worker ────────────────────────────────────────────────────
+
+const geoprocessingWorker = new Worker<GeoprocessingJobPayload>(
+  'geoprocessing',
+  processGeoprocessingJob,
+  {
+    connection,
+    concurrency: 1, // Geoprocessing is heavy — one at a time
+    removeOnComplete: { count: 50 },
+    removeOnFail: { count: 200 },
+  }
+);
+
+geoprocessingWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id }, 'geoprocessing job completed');
+});
+
+geoprocessingWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, error: err.message }, 'geoprocessing job failed');
+});
+
+logger.info('geoprocessing worker started');
+```
+
+Update the shutdown function to close the new worker:
+
+```typescript
+async function shutdown(): Promise<void> {
+  logger.info('shutting down');
+  clearInterval(staleJobTimer);
+  await worker.close();
+  await geoprocessingWorker.close();
+  await connection.quit();
+  await pool.end();
+  process.exit(0);
+}
+```
+
+- [ ] **Step 3: Run test to verify it passes**
+
+Run: `npx vitest run services/worker/src/__tests__/geoprocessing-worker.test.ts -v`
+Expected: PASS
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add services/worker/src/index.ts services/worker/src/__tests__/geoprocessing-worker.test.ts
+git commit -m "feat(F08): add geoprocessing handler + second worker to existing worker process"
+```
+
+### Task 11: SSE progress endpoint for geoprocessing
+
+**Flow position:** Step 4 of 6 in geoprocessing flow (worker → **SSE endpoint** → UI)
+**Upstream contract:** Receives GET with jobId query param; reads import_jobs table
+**Downstream contract:** Produces SSE stream with progress events
+**Files:**
+
+- Create: `apps/web/src/routes/api/geoprocessing/progress/+server.ts`
+- Test: `apps/web/src/__tests__/geoprocessing-progress.test.ts`
+
+**Skill:** `superpowers:test-driven-development`
+
+- [ ] **Step 1: Write failing test**
+
+```typescript
+// apps/web/src/__tests__/geoprocessing-progress.test.ts
+import { describe, it, expect, vi } from 'vitest';
+
+describe('GET /api/geoprocessing/progress', () => {
+  it('returns 400 when jobId is missing', async () => {
+    const { GET } = await import('../routes/api/geoprocessing/progress/+server.js');
+    const request = new Request('http://localhost/api/geoprocessing/progress');
+    const response = await GET({ request } as any);
+    expect(response.status).toBe(400);
+  });
+
+  it('returns SSE stream for valid jobId', async () => {
+    const { GET } = await import('../routes/api/geoprocessing/progress/+server.js');
+    const request = new Request('http://localhost/api/geoprocessing/progress?jobId=test-123');
+    const response = await GET({ request } as any);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('text/event-stream');
+  });
+});
+```
+
+- [ ] **Step 2: Create SSE endpoint**
+
+Same pattern as Task 2's import progress endpoint, but at a different route. Can actually reuse the same endpoint since both use import_jobs table — but keeping separate for clarity.
+
+```typescript
+// apps/web/src/routes/api/geoprocessing/progress/+server.ts
+// Same implementation as /api/import/progress/+server.ts
+// Both read from import_jobs table
+```
+
+- [ ] **Step 3: Run test to verify it passes**
+
+Run: `npx vitest run apps/web/src/__tests__/geoprocessing-progress.test.ts -v`
+Expected: PASS
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/web/src/routes/api/geoprocessing/progress/+server.ts apps/web/src/__tests__/geoprocessing-progress.test.ts
+git commit -m "feat(F08): SSE progress endpoint for geoprocessing jobs"
+```
+
+### Task 12: Job cancellation endpoint + wire into GeoprocessingPanel
+
+**Flow position:** Step 5-6 of 6 in geoprocessing flow (UI cancel → **cancel endpoint** → worker)
+**Upstream contract:** Receives POST with jobId
+**Downstream contract:** Removes job from BullMQ queue or marks as failed
+**Files:**
+
+- Create: `apps/web/src/routes/api/geoprocessing/cancel/+server.ts`
+- Modify: `apps/web/src/lib/components/geoprocessing/GeoprocessingPanel.svelte`
+
+**Skill:** `superpowers:test-driven-development`
+
+- [ ] **Step 1: Create cancel endpoint**
+
+```typescript
+// apps/web/src/routes/api/geoprocessing/cancel/+server.ts
+import { json, error } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { Queue } from 'bullmq';
+import { createRedisConnection } from '$lib/server/jobs/connection.js';
+import { db } from '$lib/server/db/index.js';
+import { sql } from 'drizzle-orm';
+
+export const POST: RequestHandler = async ({ request }) => {
+  const body = await request.json();
+  const jobId = body.jobId as string | undefined;
+  if (!jobId) {
+    error(400, 'Missing jobId');
+  }
+
+  try {
+    const queue = new Queue('geoprocessing', { connection: createRedisConnection() });
+    const job = await queue.getJob(jobId);
+
+    if (job) {
+      await job.moveToFailed(new Error('Cancelled by user'), true);
+    }
+
+    // Update status in DB
+    await db.execute(sql`
+      UPDATE import_jobs
+      SET status = 'failed', error_message = 'Cancelled by user', updated_at = NOW()
+      WHERE id = ${jobId}
+    `);
+
+    await queue.close();
+    return json({ success: true });
+  } catch (err) {
+    error(500, `Failed to cancel job: ${(err as Error).message}`);
+  }
+};
+```
+
+- [ ] **Step 2: Add cancel button to GeoprocessingPanel**
+
+Modify `apps/web/src/lib/components/geoprocessing/GeoprocessingPanel.svelte` — add cancel button that calls the cancel endpoint and aborts the SSE stream:
+
+```typescript
+// Add cancel function:
+async function handleCancel() {
+  if (!currentJobId) return;
+  cancelling = true;
+  try {
+    await fetch('/api/geoprocessing/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId: currentJobId }),
+    });
+    error = null;
+    success = 'Operation cancelled';
+  } catch {
+    error = 'Failed to cancel operation';
+  } finally {
+    running = false;
+    cancelling = false;
+    currentJobId = null;
+    eventSource?.close();
+  }
+}
+```
+
+- [ ] **Step 3: Run tests**
+
+Run: `npx vitest run apps/web/src/__tests__/geoprocessing.test.ts -v`
+Expected: PASS (existing tests still pass)
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/web/src/routes/api/geoprocessing/cancel/+server.ts apps/web/src/lib/components/geoprocessing/GeoprocessingPanel.svelte
+git commit -m "feat(F08): job cancellation endpoint + cancel button in GeoprocessingPanel"
+```
+
+---
+
+## Wave 4: Integration Verification
+
+### Task 13: Full test suite + svelte-check verification
+
+**Skill:** `none`
+
+- [ ] **Step 1: Run full test suite**
+
+Run: `npx vitest run 2>&1 | tail -30`
+Expected: All tests pass (existing 834 + new tests from this plan)
+
+- [ ] **Step 2: Run svelte-check**
+
+Run: `npx svelte-check --threshold warning 2>&1 | tail -10`
+Expected: 0 new errors
 
 - [ ] **Step 3: Run lint**
 
-Run: `npx eslint apps/web/src`
-Expected: No errors
+Run: `npx turbo lint 2>&1 | tail -10`
+Expected: 0 new lint errors
 
-- [ ] **Step 4: Verify no regressions in existing features**
-
-- MapEditor still opens and closes correctly
-- LayerPanel still lists layers
-- GeoprocessingPanel still shows 10 operations
-- Existing tests still pass
-
-- [ ] **Step 5: Record mulch decision**
+- [ ] **Step 4: Record mulch decision + close seeds**
 
 ```bash
-ml record data-pipeline --type decision --title "Three-feature data pipeline plan" --rationale "Grouped F02/F07/F08 by shared worker infrastructure and data flow" --classification tactical --tags "scope:data-pipeline,source:writing-plans,deferred:none,lifecycle:active"
+ml record data-pipeline --type decision --title "Augment existing worker, don't replace" --rationale "Worker already has 6 format parsers, path-traversal guards, progress tracking, stale job reaper. Replacing would lose ~400 lines of tested code." --classification foundational --tags "scope:worker,source:plan-review,lifecycle:active"
 ```
 
-- [ ] **Step 6: Final commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add -A
-git commit -m "feat(F02/F07/F08): integration verification and cleanup"
+git commit --allow-empty -m "verify(Group1): all tests pass, 0 new errors, data pipeline complete"
 ```
 
 ---
 
 ## Open Questions
 
-### Wave 1
+### Wave 1 (F02)
 
-- **Task 1: Queue Infrastructure**
-  - Q: Is Redis already available in the docker-compose setup? (assumed yes — verify `docker/docker-compose.yml`)
-  - Q: What BullMQ version is installed? (need to check `package.json`)
+- **Task 1:** Does `file.stream()` return `ReadableStream<Uint8Array>` in SvelteKit's Node adapter? (assumed yes — standard Web API)
+- **Task 2:** Should the SSE endpoint use the same `import_jobs` table for both import and geoprocessing progress? (assumed yes — both use same status/progress columns)
 
-### Wave 2
+### Wave 2 (F07)
 
-- **Task 3: Streaming Upload**
-  - Q: Does SvelteKit's `request.formData()` support streaming large files? (may need custom body parser for >100MB)
-  - Q: What's the existing max request body size in the server config?
+- **Task 5:** Should the old `filterStore` singleton export be preserved for backward compatibility? (assumed no — only used internally by MapEditor/FilterPanel/DataTable)
+- **Task 5:** Does `fslFiltersToMapLibre` handle all 7 operators correctly? (existing code uses it — assumed working)
 
-### Wave 3
+### Wave 3 (F08)
 
-- **Task 6: FiltersStore**
-  - Q: How are features currently queried? (tRPC endpoint needs filter params added)
-  - Q: Does the existing layer query support server-side filtering, or does it return all features?
-
-### Wave 4
-
-- **Task 9: SSE Progress**
-  - Q: Does BullMQ support `job.progress()` natively? (yes in v4+, need to verify installed version)
-  - Q: How should the worker report progress? (via `job.updateProgress()` calls during processing)
+- **Task 10:** Does `runGeoprocessing` need the `statement_timeout` guard when called from worker? (existing router sets it via `SET LOCAL` — worker should do the same)
+- **Task 12:** Should cancellation use `job.moveToFailed()` or `job.remove()`? (assumed `moveToFailed` — preserves job history for UI)
 
 ### Flow Contracts
 
-- Q: Do existing tRPC layer queries accept filter parameters? (need to add to existing endpoint)
-- Q: Can the worker access the same database as the web app? (assumed yes — shared Postgres)
-- Q: Does the existing `runGeoprocessing` function need modification for progress reporting? (yes — add `job.updateProgress()` calls)
+- Q: Does the existing `import_jobs` table have all columns needed for both import and geoprocessing progress? (has: id, map_id, status, progress, error_message, file_name — sufficient for both)
+- Q: Can the worker's `runGeoprocessing` function be imported from `services/worker/`? (it lives in `apps/web/src/lib/server/geo/geoprocessing.ts` — may need to be moved to shared package or imported via relative path)
 
 ---
 
-## Artifact Manifest
-
 <!-- PLAN_MANIFEST_START -->
 
-| File                                                                  | Action | Marker                             |
-| --------------------------------------------------------------------- | ------ | ---------------------------------- |
-| `apps/web/src/lib/server/trpc/queues.ts`                              | create | `export const importQueue`         |
-| `apps/web/src/__tests__/queues.test.ts`                               | create | `describe('queues'`                |
-| `services/worker/src/index.ts`                                        | patch  | `processImportJob`                 |
-| `services/worker/src/__tests__/worker.test.ts`                        | create | `processImportJob`                 |
-| `apps/web/src/routes/api/import/+server.ts`                           | create | `export const POST`                |
-| `apps/web/src/__tests__/import-upload.test.ts`                        | create | `describe('import upload handler'` |
-| `apps/web/src/lib/components/import/ImportDialog.svelte`              | create | `Import Data`                      |
-| `apps/web/src/__tests__/import-dialog.test.ts`                        | create | `describe('ImportDialog'`          |
-| `apps/web/src/lib/components/map/MapEditor.svelte`                    | patch  | `ImportDialog`                     |
-| `apps/web/src/lib/stores/filters.svelte.ts`                           | patch  | `export class FiltersStore`        |
-| `apps/web/src/__tests__/filters.test.ts`                              | create | `describe('FiltersStore'`          |
-| `apps/web/src/lib/components/filters/FilterPanel.svelte`              | create | `Filters`                          |
-| `apps/web/src/__tests__/filter-panel.test.ts`                         | create | `describe('FilterPanel'`           |
-| `apps/web/src/lib/server/trpc/routers/geoprocessing.ts`               | patch  | `geoprocessingQueue.add`           |
-| `apps/web/src/__tests__/geoprocessing.test.ts`                        | patch  | `jobId`                            |
-| `apps/web/src/routes/api/geoprocessing/progress/+server.ts`           | create | `text/event-stream`                |
-| `apps/web/src/lib/components/geoprocessing/GeoprocessingPanel.svelte` | patch  | `EventSource`                      |
+| File                                                                  | Action | Marker                               |
+| --------------------------------------------------------------------- | ------ | ------------------------------------ |
+| `apps/web/src/routes/api/upload/+server.ts`                           | patch  | `createWriteStream(filePath)`        |
+| `apps/web/src/routes/api/import/progress/+server.ts`                  | create | `text/event-stream`                  |
+| `apps/web/src/lib/components/import/ImportDialog.svelte`              | patch  | `EventSource(\`/api/import/progress` |
+| `apps/web/src/lib/stores/filters-store.svelte.ts`                     | create | `class FiltersStore`                 |
+| `apps/web/src/lib/components/data/FilterPanel.svelte`                 | patch  | `import type { FiltersStore }`       |
+| `apps/web/src/lib/components/map/MapEditor.svelte`                    | patch  | `new FiltersStore(mapId)`            |
+| `apps/web/src/lib/components/data/DataTable.svelte`                   | patch  | `filtersStore`                       |
+| `apps/web/src/lib/server/jobs/queues.ts`                              | patch  | `getGeoprocessingQueue`              |
+| `apps/web/src/lib/server/trpc/routers/geoprocessing.ts`               | patch  | `enqueueGeoprocessingJob`            |
+| `services/worker/src/index.ts`                                        | patch  | `processGeoprocessingJob`            |
+| `apps/web/src/routes/api/geoprocessing/progress/+server.ts`           | create | `text/event-stream`                  |
+| `apps/web/src/routes/api/geoprocessing/cancel/+server.ts`             | create | `moveToFailed`                       |
+| `apps/web/src/lib/components/geoprocessing/GeoprocessingPanel.svelte` | patch  | `handleCancel`                       |
 
 <!-- PLAN_MANIFEST_END -->

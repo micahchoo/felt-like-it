@@ -3,6 +3,7 @@ import type { FilterOperator, UIFilter } from './filters.svelte.js';
 
 export type FieldType = 'string' | 'number' | 'boolean';
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface FilterCondition extends UIFilter {}
 
 /**
@@ -115,7 +116,7 @@ export class FiltersStore {
   }
 
   /** Apply conditions to features array (for DataTable filtering). */
-  applyToFeatures(features: Array<{ properties: Record<string, unknown> }>): typeof features {
+  applyToFeatures<T extends { properties?: Record<string, unknown> | null }>(features: T[]): T[] {
     if (this.conditions.length === 0) return features;
     return features.filter((f) =>
       this.conditions.every((cond) => matchesFilter(f.properties ?? {}, cond))

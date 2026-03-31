@@ -120,17 +120,17 @@ describe('Filter store singleton (current behavior)', () => {
 });
 
 // ─── 3. Geoprocessing router characterization ────────────────────────────────
-// Current behavior: synchronous execution — calls runGeoprocessing directly
-// This is being changed to async job enqueue via BullMQ.
+// After F08 async geoprocessing: router enqueues async job via BullMQ instead of
+// synchronous runGeoprocessing. Returns {jobId, layerId, layerName}.
+// Worker processes job asynchronously and updates import_jobs table for SSE tracking.
 
-describe('Geoprocessing router (current behavior — synchronous)', () => {
+describe('Geoprocessing router (async after F08)', () => {
   it('geoprocessing router file exists and exports router', async () => {
     const mod = await import('$lib/server/trpc/routers/geoprocessing.js');
     expect(mod.geoprocessingRouter).toBeDefined();
   });
 
   it('geoprocessing router source enqueues async job (read source)', async () => {
-    // After F08 async geoprocessing: router enqueues job instead of sync execution
     const fs = await import('fs/promises');
     const path = await import('path');
     const filePath = path.resolve(process.cwd(), 'src/lib/server/trpc/routers/geoprocessing.ts');
@@ -141,5 +141,15 @@ describe('Geoprocessing router (current behavior — synchronous)', () => {
     expect(source).toContain('jobId');
     // No longer calls runGeoprocessing directly
     expect(source).not.toContain('runGeoprocessing');
+  });
+
+  it('geoprocessing router has cancel endpoint', async () => {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const filePath = path.resolve(process.cwd(), 'src/lib/server/trpc/routers/geoprocessing.ts');
+    const source = await fs.readFile(filePath, 'utf-8');
+
+    expect(source).toContain('cancel:');
+    expect(source).toContain('UPDATE import_jobs');
   });
 });

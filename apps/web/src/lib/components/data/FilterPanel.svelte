@@ -1,16 +1,20 @@
 <script lang="ts">
-  import { filterStore, FILTER_OPERATOR_LABELS, type FilterOperator, type UIFilter } from '$lib/stores/filters.svelte.js';
+  import {
+    FILTER_OPERATOR_LABELS,
+    type FilterOperator,
+    type UIFilter,
+  } from '$lib/stores/filters.svelte.js';
+  import type { FiltersStore } from '$lib/stores/filters-store.svelte.js';
   import type { GeoJSONFeature } from '@felt-like-it/shared-types';
 
   interface Props {
+    store: FiltersStore;
     layerId: string;
     /** Features from which to derive available property columns. */
     features: GeoJSONFeature[];
-    /** Number of features passing current filters (for display). */
-    filteredCount?: number | undefined;
   }
 
-  let { layerId, features, filteredCount }: Props = $props();
+  let { store, layerId: _layerId, features }: Props = $props();
 
   // Derive available column names from the first 100 features
   const availableFields = $derived.by(() => {
@@ -26,9 +30,9 @@
   const OPERATORS: FilterOperator[] = ['eq', 'ne', 'lt', 'gt', 'cn', 'in', 'ni'];
 
   // Form state for the "add filter" row
-  let newField    = $state('');
+  let newField = $state('');
   let newOperator = $state<FilterOperator>('eq');
-  let newValue    = $state('');
+  let newValue = $state('');
 
   // Keep newField in sync when availableFields changes
   $effect(() => {
@@ -38,17 +42,17 @@
     }
   });
 
-  const activeFilters = $derived.by(() => filterStore.get(layerId));
+  const activeFilters = $derived(store.conditions);
 
   let addingFilter = $state(false);
 
   function addFilter() {
     if (!newField || !newValue.trim() || addingFilter) return;
     addingFilter = true;
-    filterStore.add(layerId, {
-      field:    newField,
+    store.addCondition({
+      field: newField,
       operator: newOperator,
-      value:    newValue.trim(),
+      value: newValue.trim(),
     } satisfies UIFilter);
     newValue = '';
     newField = availableFields[0] ?? '';
@@ -60,19 +64,23 @@
   }
 </script>
 
-<div class="flex flex-col gap-2 p-3 bg-surface-container border-b border-white/5 text-xs text-white">
+<div
+  class="flex flex-col gap-2 p-3 bg-surface-container border-b border-white/5 text-xs text-white"
+>
   <div class="flex items-center justify-between">
     <div class="flex items-center gap-2">
       <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Filters</span>
       {#if activeFilters.length > 0}
-        <span class="bg-primary/20 text-primary text-[9px] font-bold rounded-full px-1.5 py-0.5">{activeFilters.length} active</span>
+        <span class="bg-primary/20 text-primary text-[9px] font-bold rounded-full px-1.5 py-0.5"
+          >{activeFilters.length} active</span
+        >
       {/if}
     </div>
     {#if activeFilters.length > 0}
       <button
         type="button"
         class="text-[10px] text-on-surface-variant hover:text-on-surface transition-colors"
-        onclick={() => filterStore.clear(layerId)}
+        onclick={() => store.clearAll()}
       >
         Clear all
       </button>
@@ -80,7 +88,9 @@
   </div>
 
   {#if activeFilters.length === 0}
-    <p class="text-xs text-on-surface-variant text-center py-3 px-4">Add filters to show only features matching specific attribute values.</p>
+    <p class="text-xs text-on-surface-variant text-center py-3 px-4">
+      Add filters to show only features matching specific attribute values.
+    </p>
   {/if}
 
   <!-- Active filter chips -->
@@ -90,11 +100,13 @@
         <li class="flex items-center gap-2 bg-surface-low border border-white/5 rounded px-2 py-1">
           <span class="font-mono text-primary/80">{filter.field}</span>
           <span class="text-on-surface-variant/70">{FILTER_OPERATOR_LABELS[filter.operator]}</span>
-          <span class="flex-1 truncate text-amber-400/90 bg-amber-400/10 rounded px-1">{filter.value}</span>
+          <span class="flex-1 truncate text-amber-400/90 bg-amber-400/10 rounded px-1"
+            >{filter.value}</span
+          >
           <button
             type="button"
             class="text-on-surface-variant hover:text-red-400 transition-colors shrink-0"
-            onclick={() => filterStore.remove(layerId, i)}
+            onclick={() => store.removeCondition(i)}
             aria-label="Remove filter"
           >
             ×
@@ -102,9 +114,9 @@
         </li>
       {/each}
     </ul>
-    {#if filteredCount !== undefined}
-      <p class="text-[10px] text-on-surface-variant">Showing {filteredCount} of {features.length} features</p>
-    {/if}
+    <p class="text-[10px] text-on-surface-variant">
+      Showing {store.applyToFeatures(features).length} of {features.length} features
+    </p>
   {/if}
 
   <!-- Add filter row -->
@@ -148,7 +160,9 @@
         Add
       </button>
     </div>
-    <p class="text-[10px] text-on-surface-variant/50 mt-0.5">Fields are detected from the first 100 features.</p>
+    <p class="text-[10px] text-on-surface-variant/50 mt-0.5">
+      Fields are detected from the first 100 features.
+    </p>
   {:else}
     <p class="text-on-surface-variant/70 italic text-xs">Load layer data to add filters.</p>
   {/if}

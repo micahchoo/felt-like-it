@@ -1,3 +1,4 @@
+/* eslint-disable no-undef, @typescript-eslint/no-explicit-any */
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import { db } from '$lib/server/db/index.js';

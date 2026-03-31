@@ -1,0 +1,1 @@
+{"type":"decision","title":"Augment existing worker don't replace","rationale":"Worker already has 6 format parsers path-traversal guards progress tracking stale job reaper. Replacing would lose ~400 lines of tested code.","classification":"foundational","recorded_at":"2026-03-31T00:16:21.440Z","tags":["scope:worker","source:plan-review","lifecycle:active"],"id":"mx-93dc9a"}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  /* eslint-disable no-undef */
   import { trpc } from '$lib/utils/trpc.js';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { queryKeys } from '$lib/utils/query-keys.js';

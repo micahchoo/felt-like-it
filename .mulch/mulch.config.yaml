@@ -19,6 +19,8 @@ domains:
   - frontend
   - web
   - rest-api
+  - navigation
+  - data-pipeline
 governance:
   max_entries: 100
   warn_entries: 150
