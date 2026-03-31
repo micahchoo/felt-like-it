@@ -1,5 +1,7 @@
 import type { GeoJSON } from 'geojson';
+import type { DistanceMeasurement, AreaMeasurement } from '@felt-like-it/geo-engine';
 
+/** Unified measurement result with geometry for annotation saving and tooltip positioning. */
 export interface MeasurementResult {
   type: 'distance' | 'area';
   value: number;
@@ -15,6 +17,21 @@ export interface SaveAsAnnotationPayload {
   geometry: GeoJSON.Geometry;
 }
 
+/** Convert geo-engine DistanceMeasurement/AreaMeasurement to unified MeasurementResult. */
+function fromGeoEngine(result: DistanceMeasurement | AreaMeasurement): MeasurementResult {
+  return {
+    type: result.type,
+    value: result.type === 'distance' ? result.distanceKm * 1000 : result.areaM2,
+    vertexCount: result.vertexCount,
+    distanceKm: result.type === 'distance' ? result.distanceKm : undefined,
+    areaKm2: result.type === 'area' ? result.areaM2 / 1_000_000 : undefined,
+    geometry:
+      result.type === 'distance'
+        ? { type: 'LineString', coordinates: result.coordinates as [number, number][] }
+        : { type: 'Polygon', coordinates: result.coordinates as [number, number][][] },
+  };
+}
+
 export class MeasurementStore {
   active = $state(false);
   currentResult = $state<MeasurementResult | null>(null);
@@ -24,9 +41,13 @@ export class MeasurementStore {
     this.active = !this.active;
   }
 
-  setResult(result: MeasurementResult): void {
-    this.currentResult = result;
-    this.history.push(result);
+  /** Accept either geo-engine types or already-converted MeasurementResult. */
+  setResult(result: DistanceMeasurement | AreaMeasurement | MeasurementResult): void {
+    // If it already has geometry field, it's our MeasurementResult
+    const unified: MeasurementResult =
+      'geometry' in result ? (result as MeasurementResult) : fromGeoEngine(result);
+    this.currentResult = unified;
+    this.history.push(unified);
   }
 
   clear(): void {
@@ -43,7 +64,7 @@ export class MeasurementStore {
       const km = result.distanceKm ?? result.value / 1000;
       title = km >= 1 ? `Distance: ${km.toFixed(2)} km` : `Distance: ${result.value.toFixed(0)} m`;
     } else {
-      const km2 = result.areaKm2 ?? result.value / 1000000;
+      const km2 = result.areaKm2 ?? result.value / 1_000_000;
       title = km2 >= 1 ? `Area: ${km2.toFixed(2)} km²` : `Area: ${result.value.toFixed(0)} m²`;
     }
 

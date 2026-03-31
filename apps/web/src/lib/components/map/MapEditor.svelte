@@ -32,6 +32,8 @@
   import type { MeasurementResult } from '@felt-like-it/geo-engine';
   import { measureLine, measurePolygon } from '@felt-like-it/geo-engine';
   import MeasurementPanel from './MeasurementPanel.svelte';
+  import { MeasurementStore } from '$lib/stores/measurement-store.svelte.js';
+  import MeasurementTooltip from '$lib/components/measurements/MeasurementTooltip.svelte';
   import DrawActionRow from './DrawActionRow.svelte';
   import StatusBar from './StatusBar.svelte';
   import { useLayerDataManager } from './useLayerDataManager.svelte.js';
@@ -184,8 +186,49 @@
   let cursorLat = $state<number | null>(null);
   let cursorLng = $state<number | null>(null);
   let currentZoom = $state(0);
-  let measureResult = $state<MeasurementResult | null>(null);
   let savingViewport = $state(false);
+
+  // ── Measurement store (extracted from local state — F09) ──────────────────
+  const measurementStore = new MeasurementStore();
+
+  // ── Measurement tooltip position (centroid projected to screen pixels) ────
+  let measurementTooltipPos = $state<{ x: number; y: number }>({ x: 50, y: 50 });
+
+  $effect(() => {
+    const result = measurementStore.currentResult;
+    const map = mapStore.mapInstance;
+    if (!result || !map) {
+      measurementTooltipPos = { x: 50, y: 50 };
+      return;
+    }
+
+    const geom = result.geometry;
+    let centroid: [number, number];
+
+    if (geom.type === 'LineString') {
+      // Midpoint of the line
+      const coords = geom.coordinates as [number, number][];
+      const mid = Math.floor(coords.length / 2);
+      centroid = coords[mid];
+    } else if (geom.type === 'Polygon') {
+      // Average of all exterior ring vertices
+      const ring = geom.coordinates[0] as [number, number][];
+      const avg = ring.reduce((acc, c) => [acc[0] + c[0], acc[1] + c[1]], [0, 0] as [
+        number,
+        number,
+      ]);
+      centroid = [avg[0] / ring.length, avg[1] / ring.length];
+    } else {
+      centroid = [0, 0];
+    }
+
+    try {
+      const point = map.project(centroid);
+      measurementTooltipPos = { x: point.x, y: point.y };
+    } catch {
+      measurementTooltipPos = { x: 50, y: 50 };
+    }
+  });
 
   // ── Viewport-based pagination state for large layers ─────────────────────
   const viewportStore = createViewportStore({
@@ -209,13 +252,11 @@
   let eventCount = $state(0);
   let activityRefreshTrigger = $state(0);
 
-  const measureActive = $derived(
-    editorLayout.rightSection === 'analysis' && analysisTab === 'measure' && !designMode
-  );
+  const measureActive = $derived(measurementStore.active && !designMode);
 
   $effect(() => {
     effectEnter('ME:measureActive', { measureActive });
-    if (!measureActive) measureResult = null;
+    if (!measureActive) measurementStore.clear();
     effectExit('ME:measureActive');
   });
 
@@ -340,6 +381,9 @@
     selectionStore: editorState,
     toggleDesignMode: () => {
       designMode = !designMode;
+    },
+    toggleMeasurement: () => {
+      measurementStore.toggle();
     },
   });
 
@@ -655,7 +699,7 @@
         {...measureActive
           ? {
               onmeasured: (r: MeasurementResult) => {
-                measureResult = r;
+                measurementStore.setResult(r);
               },
             }
           : {}}
@@ -673,6 +717,37 @@
           scrollToAnnotationFeatureId = featureId;
         }}
       />
+
+      <!-- Measurement tooltip (floating overlay when measurement is active with result) -->
+      {#if measurementStore.currentResult && measurementStore.active}
+        <MeasurementTooltip
+          result={measurementStore.currentResult}
+          position={measurementTooltipPos}
+          onsave={() => {
+            const payload = measurementStore.saveAsAnnotation();
+            if (payload) {
+              transitionTo({
+                type: 'pendingMeasurement',
+                anchor: {
+                  type: 'measurement',
+                  geometry: payload.geometry,
+                },
+                content: {
+                  type: 'measurement',
+                  measurementType: measurementStore.currentResult?.type ?? 'distance',
+                  value: measurementStore.currentResult?.value ?? 0,
+                  unit: measurementStore.currentResult?.type === 'distance' ? 'km' : 'km2',
+                  displayValue: payload.title,
+                },
+              });
+              editorLayout.rightSection = 'annotations';
+            }
+          }}
+          onclear={() => {
+            measurementStore.clear();
+          }}
+        />
+      {/if}
 
       {#if effectiveReadonly}
         <div
@@ -726,9 +801,11 @@
               const { geometry } = interactionState.feature;
               transitionTo({ type: 'idle' });
               if (geometry.type === 'LineString') {
-                measureResult = measureLine(geometry.coordinates as [number, number][]);
+                measurementStore.setResult(measureLine(geometry.coordinates as [number, number][]));
               } else if (geometry.type === 'Polygon') {
-                measureResult = measurePolygon(geometry.coordinates as [number, number][][]);
+                measurementStore.setResult(
+                  measurePolygon(geometry.coordinates as [number, number][][])
+                );
               }
               editorLayout.rightSection = 'analysis';
               analysisTab = 'measure';
@@ -886,9 +963,9 @@
 
       {#if analysisTab === 'measure'}
         <MeasurementPanel
-          {measureResult}
+          measureResult={measurementStore.currentResult}
           onclear={() => {
-            measureResult = null;
+            measurementStore.clear();
           }}
           onsaveasannotation={(payload) => {
             transitionTo(payload);

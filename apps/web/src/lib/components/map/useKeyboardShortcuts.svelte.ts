@@ -15,6 +15,7 @@ export interface KeyboardShortcutsDeps {
     setActiveTool: (tool: DrawTool) => void;
   };
   toggleDesignMode: () => void;
+  toggleMeasurement?: () => void;
 }
 
 // ── Composable ──────────────────────────────────────────────────────────────
@@ -41,8 +42,25 @@ export function useKeyboardShortcuts(deps: KeyboardShortcutsDeps) {
       }
     }
 
-    // Skip when focus is inside a text input
+    // M — toggle measurement mode (skip when in text inputs)
     const tag = (e.target as HTMLElement)?.tagName;
+    if (
+      e.key.toLowerCase() === 'm' &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.shiftKey &&
+      tag !== 'INPUT' &&
+      tag !== 'TEXTAREA' &&
+      tag !== 'SELECT' &&
+      !(e.target as HTMLElement)?.isContentEditable
+    ) {
+      e.preventDefault();
+      deps.toggleMeasurement?.();
+      return;
+    }
+
+    // Skip when focus is inside a text input
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     if ((e.target as HTMLElement)?.isContentEditable) return;
 
@@ -67,11 +85,25 @@ export function useKeyboardShortcuts(deps: KeyboardShortcutsDeps) {
 
     // 1/2/3 — switch drawing tools (only in editing mode, no modifier keys, not in text inputs)
     const tag2 = (e.target as HTMLElement)?.tagName;
-    if (!deps.getDesignMode() && !mod && !e.shiftKey && !e.altKey && tag2 !== 'INPUT' && tag2 !== 'TEXTAREA' && !(e.target as HTMLElement)?.isContentEditable) {
+    if (
+      !deps.getDesignMode() &&
+      !mod &&
+      !e.shiftKey &&
+      !e.altKey &&
+      tag2 !== 'INPUT' &&
+      tag2 !== 'TEXTAREA' &&
+      !(e.target as HTMLElement)?.isContentEditable
+    ) {
       switch (e.key) {
-        case '1': deps.selectionStore.setActiveTool('select'); break;
-        case '2': deps.selectionStore.setActiveTool('point'); break;
-        case '3': deps.selectionStore.setActiveTool('polygon'); break;
+        case '1':
+          deps.selectionStore.setActiveTool('select');
+          break;
+        case '2':
+          deps.selectionStore.setActiveTool('point');
+          break;
+        case '3':
+          deps.selectionStore.setActiveTool('polygon');
+          break;
       }
     }
   }
