@@ -30,7 +30,13 @@ import {
   geocodeBatch,
   type GeocodingOptions,
 } from '@felt-like-it/geo-engine';
-import { ImportJobPayloadSchema, type ImportJobPayload } from '@felt-like-it/shared-types';
+import {
+  ImportJobPayloadSchema,
+  type ImportJobPayload,
+  GeoprocessingJobPayloadSchema,
+  type GeoprocessingJobPayload,
+  type GeoprocessingOp,
+} from '@felt-like-it/shared-types';
 import { logger } from './logger.js';
 
 // ─── Database connection ───────────────────────────────────────────────────────
@@ -78,10 +84,7 @@ async function processImportJob(job: Job<ImportJobPayload>): Promise<void> {
     logger.info({ jobId, staleLayerId }, 'cleaning up partial layer from previous attempt');
     await pool.query(`DELETE FROM features WHERE layer_id = $1`, [staleLayerId]);
     await pool.query(`DELETE FROM layers WHERE id = $1`, [staleLayerId]);
-    await pool.query(
-      `UPDATE import_jobs SET layer_id = NULL WHERE id = $1`,
-      [jobId]
-    );
+    await pool.query(`UPDATE import_jobs SET layer_id = NULL WHERE id = $1`, [jobId]);
   }
 
   await updateJobStatus(jobId, 'processing', 5);
@@ -102,7 +105,9 @@ async function processImportJob(job: Job<ImportJobPayload>): Promise<void> {
     } else if (ext === '.gpkg') {
       await processGeoPackage(jobId, mapId, layerName, filePath);
     } else {
-      throw new Error(`Unsupported format: ${ext}. Supported: .geojson, .json, .csv, .zip, .shp, .kml, .gpx, .gpkg`);
+      throw new Error(
+        `Unsupported format: ${ext}. Supported: .geojson, .json, .csv, .zip, .shp, .kml, .gpx, .gpkg`
+      );
     }
 
     await updateJobStatus(jobId, 'done', 100);
@@ -124,7 +129,10 @@ async function processImportJob(job: Job<ImportJobPayload>): Promise<void> {
     } catch (unlinkErr) {
       // File may already be gone (previous attempt, external cleanup) — not fatal
       if ((unlinkErr as NodeJS.ErrnoException).code !== 'ENOENT') {
-        logger.warn({ jobId, filePath: resolvedPath, error: (unlinkErr as Error).message }, 'failed to clean up uploaded file');
+        logger.warn(
+          { jobId, filePath: resolvedPath, error: (unlinkErr as Error).message },
+          'failed to clean up uploaded file'
+        );
       }
     }
   }
@@ -143,8 +151,15 @@ async function processGeoJSON(
     properties: f.properties,
   }));
 
-  const layerType = detectLayerType(featureList.map((f) => ({ geometry: { type: String((f.geometry as Record<string, unknown>)['type'] ?? 'Point') } })));
-  const style = generateAutoStyle(layerType, featureList.map((f) => ({ properties: f.properties })));
+  const layerType = detectLayerType(
+    featureList.map((f) => ({
+      geometry: { type: String((f.geometry as Record<string, unknown>)['type'] ?? 'Point') },
+    }))
+  );
+  const style = generateAutoStyle(
+    layerType,
+    featureList.map((f) => ({ properties: f.properties }))
+  );
 
   const layerResult = await db.execute(sql`
     INSERT INTO layers (map_id, name, type, style, source_file_name)
@@ -188,14 +203,14 @@ async function processCSV(
       properties: f.properties,
     }));
 
-  // ── Path B: address column → Nominatim geocoding ───────────────────────────
+    // ── Path B: address column → Nominatim geocoding ───────────────────────────
   } else {
     const addrCol = detectAddressColumn(headers);
 
     if (!addrCol) {
       throw new Error(
         'Could not detect lat/lng columns, and no address column was found. ' +
-        'Add lat/lng columns, or name an address column "address", "location", or similar.'
+          'Add lat/lng columns, or name an address column "address", "location", or similar.'
       );
     }
 
@@ -226,19 +241,25 @@ async function processCSV(
       const { row } = indexed[i] as { row: Record<string, string>; i: number; address: string };
       const props: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(row)) props[k] = v;
-      acc.push({ geometry: { type: 'Point', coordinates: [point.lng, point.lat] }, properties: props });
+      acc.push({
+        geometry: { type: 'Point', coordinates: [point.lng, point.lat] },
+        properties: props,
+      });
     }
 
     if (acc.length === 0) {
       throw new Error(
         `Geocoding failed for all ${indexed.length} rows. ` +
-        'Check address values or NOMINATIM_URL configuration.'
+          'Check address values or NOMINATIM_URL configuration.'
       );
     }
     features = acc;
   }
 
-  const style = generateAutoStyle('point', features.map((f) => ({ properties: f.properties })));
+  const style = generateAutoStyle(
+    'point',
+    features.map((f) => ({ properties: f.properties }))
+  );
 
   const layerResult = await db.execute(sql`
     INSERT INTO layers (map_id, name, type, style, source_file_name)
@@ -272,8 +293,9 @@ async function insertFeaturesBatch(
 
     if (batch.length > 0) {
       // Single multi-row INSERT per batch — one PostgreSQL round-trip regardless of batch size
-      const valueClauses = batch.map((f) =>
-        sql`(${layerId}::uuid, ST_GeomFromGeoJSON(${JSON.stringify(f.geometry)}), ${JSON.stringify(f.properties)}::jsonb)`
+      const valueClauses = batch.map(
+        (f) =>
+          sql`(${layerId}::uuid, ST_GeomFromGeoJSON(${JSON.stringify(f.geometry)}), ${JSON.stringify(f.properties)}::jsonb)`
       );
       // eslint-disable-next-line no-await-in-loop -- sequential batches: progress tracking requires ordered completion
       await db.execute(
@@ -300,8 +322,15 @@ async function processShapefile(
     properties: f.properties,
   }));
 
-  const layerType = detectLayerType(featureList.map((f) => ({ geometry: { type: String((f.geometry as Record<string, unknown>)['type'] ?? 'Point') } })));
-  const style = generateAutoStyle(layerType, featureList.map((f) => ({ properties: f.properties })));
+  const layerType = detectLayerType(
+    featureList.map((f) => ({
+      geometry: { type: String((f.geometry as Record<string, unknown>)['type'] ?? 'Point') },
+    }))
+  );
+  const style = generateAutoStyle(
+    layerType,
+    featureList.map((f) => ({ properties: f.properties }))
+  );
 
   const layerResult = await db.execute(sql`
     INSERT INTO layers (map_id, name, type, style, source_file_name)
@@ -327,9 +356,7 @@ async function processXmlGeo(
   filePath: string,
   format: 'kml' | 'gpx'
 ): Promise<void> {
-  const features = format === 'kml'
-    ? await parseKML(filePath)
-    : await parseGPX(filePath);
+  const features = format === 'kml' ? await parseKML(filePath) : await parseGPX(filePath);
 
   if (features.length === 0) {
     throw new Error(`${format.toUpperCase()} file contains no features with valid geometry`);
@@ -341,9 +368,14 @@ async function processXmlGeo(
   }));
 
   const layerType = detectLayerType(
-    featureList.map((f) => ({ geometry: { type: String((f.geometry as Record<string, unknown>)['type'] ?? 'Point') } }))
+    featureList.map((f) => ({
+      geometry: { type: String((f.geometry as Record<string, unknown>)['type'] ?? 'Point') },
+    }))
   );
-  const style = generateAutoStyle(layerType, featureList.map((f) => ({ properties: f.properties })));
+  const style = generateAutoStyle(
+    layerType,
+    featureList.map((f) => ({ properties: f.properties }))
+  );
 
   const layerResult = await db.execute(sql`
     INSERT INTO layers (map_id, name, type, style, source_file_name)
@@ -370,7 +402,10 @@ async function processGeoPackage(
 ): Promise<void> {
   const { features, layerType } = await parseGeoPackage(filePath);
 
-  const style = generateAutoStyle(layerType, features.map((r) => ({ properties: r.properties })));
+  const style = generateAutoStyle(
+    layerType,
+    features.map((r) => ({ properties: r.properties }))
+  );
 
   const layerResult = await db.execute(sql`
     INSERT INTO layers (map_id, name, type, style, source_file_name)
@@ -420,6 +455,275 @@ async function updateJobStatus(
   `);
 }
 
+// ─── Geoprocessing job processor ─────────────────────────────────────────────
+
+async function processGeoprocessingJob(job: Job<GeoprocessingJobPayload>): Promise<void> {
+  const { jobId, op, outputLayerId } = GeoprocessingJobPayloadSchema.parse(job.data);
+
+  logger.info({ jobId, opType: op.type }, 'processing geoprocessing job');
+
+  try {
+    // Set statement timeout to prevent unbounded operations
+    await db.execute(sql`SET LOCAL statement_timeout = '30s'`);
+
+    // Dispatch to the appropriate SQL handler
+    switch (op.type) {
+      case 'buffer':
+        await runBuffer(op.layerId, outputLayerId, op.distanceKm * 1000);
+        break;
+      case 'convex_hull':
+        await runConvexHull(op.layerId, outputLayerId);
+        break;
+      case 'centroid':
+        await runCentroid(op.layerId, outputLayerId);
+        break;
+      case 'dissolve':
+        await runDissolve(op.layerId, outputLayerId, op.field);
+        break;
+      case 'intersect':
+        await runIntersect(op.layerIdA, op.layerIdB, outputLayerId);
+        break;
+      case 'union':
+        await runUnion(op.layerId, outputLayerId);
+        break;
+      case 'clip':
+        await runClip(op.layerIdA, op.layerIdB, outputLayerId);
+        break;
+      case 'point_in_polygon':
+        await runPointInPolygon(op.layerIdPoints, op.layerIdPolygons, outputLayerId);
+        break;
+      case 'nearest_neighbor':
+        await runNearestNeighbor(op.layerIdA, op.layerIdB, outputLayerId);
+        break;
+      case 'aggregate':
+        await runAggregate(op, outputLayerId);
+        break;
+      default: {
+        const _exhaustive: never = op;
+        throw new Error(`Unknown geoprocessing type: ${(_exhaustive as { type: string }).type}`);
+      }
+    }
+
+    await updateJobStatus(jobId, 'done', 100);
+    logger.info({ jobId, opType: op.type }, 'geoprocessing job completed');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error({ jobId, error: message }, 'geoprocessing job failed');
+    await db.execute(sql`
+      UPDATE import_jobs
+      SET status = 'failed', error_message = ${message}, updated_at = NOW()
+      WHERE id = ${jobId}
+    `);
+    throw err;
+  }
+}
+
+// ─── Geoprocessing SQL implementations ───────────────────────────────────────
+// These mirror the functions in apps/web/src/lib/server/geo/geoprocessing.ts
+// but use raw SQL via drizzle since the worker cannot import from the web app.
+
+async function runBuffer(layerId: string, newLayerId: string, distanceM: number): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO features (layer_id, geometry, properties)
+    SELECT
+      ${newLayerId}::uuid,
+      ST_Buffer(geometry::geography, ${distanceM})::geometry,
+      properties
+    FROM features
+    WHERE layer_id = ${layerId}::uuid
+  `);
+}
+
+async function runConvexHull(layerId: string, newLayerId: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO features (layer_id, geometry, properties)
+    SELECT ${newLayerId}::uuid, ST_ConvexHull(ST_Collect(geometry)), '{}'::jsonb
+    FROM features
+    WHERE layer_id = ${layerId}::uuid
+    HAVING COUNT(*) > 0
+  `);
+}
+
+async function runCentroid(layerId: string, newLayerId: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO features (layer_id, geometry, properties)
+    SELECT ${newLayerId}::uuid, ST_Centroid(geometry), properties
+    FROM features
+    WHERE layer_id = ${layerId}::uuid
+  `);
+}
+
+async function runDissolve(
+  layerId: string,
+  newLayerId: string,
+  field: string | undefined
+): Promise<void> {
+  if (field !== undefined) {
+    await db.execute(sql`
+      INSERT INTO features (layer_id, geometry, properties)
+      SELECT
+        ${newLayerId}::uuid,
+        ST_Union(geometry),
+        jsonb_build_object(${field}, MAX(properties->>${field}))
+      FROM features
+      WHERE layer_id = ${layerId}::uuid
+      GROUP BY properties->>${field}
+    `);
+  } else {
+    await db.execute(sql`
+      INSERT INTO features (layer_id, geometry, properties)
+      SELECT ${newLayerId}::uuid, ST_Union(geometry), '{}'::jsonb
+      FROM features
+      WHERE layer_id = ${layerId}::uuid
+      HAVING COUNT(*) > 0
+    `);
+  }
+}
+
+async function runIntersect(layerIdA: string, layerIdB: string, newLayerId: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO features (layer_id, geometry, properties)
+    SELECT
+      ${newLayerId}::uuid,
+      ST_Intersection(a.geometry, b.geometry),
+      a.properties
+    FROM features a
+    JOIN features b
+      ON b.layer_id = ${layerIdB}::uuid
+      AND ST_Intersects(a.geometry, b.geometry)
+    WHERE a.layer_id = ${layerIdA}::uuid
+      AND NOT ST_IsEmpty(ST_Intersection(a.geometry, b.geometry))
+  `);
+}
+
+async function runUnion(layerId: string, newLayerId: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO features (layer_id, geometry, properties)
+    SELECT ${newLayerId}::uuid, ST_Union(geometry), '{}'::jsonb
+    FROM features
+    WHERE layer_id = ${layerId}::uuid
+    HAVING COUNT(*) > 0
+  `);
+}
+
+async function runClip(layerIdA: string, layerIdB: string, newLayerId: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO features (layer_id, geometry, properties)
+    SELECT
+      ${newLayerId}::uuid,
+      ST_Intersection(a.geometry, mask.geom),
+      a.properties
+    FROM features a
+    JOIN (
+      SELECT ST_Union(geometry) AS geom FROM features WHERE layer_id = ${layerIdB}::uuid
+    ) mask
+      ON ST_Intersects(a.geometry, mask.geom)
+    WHERE a.layer_id = ${layerIdA}::uuid
+      AND NOT ST_IsEmpty(ST_Intersection(a.geometry, mask.geom))
+  `);
+}
+
+async function runPointInPolygon(
+  layerIdPoints: string,
+  layerIdPolygons: string,
+  newLayerId: string
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO features (layer_id, geometry, properties)
+    SELECT DISTINCT ON (p.id)
+      ${newLayerId}::uuid,
+      p.geometry,
+      CASE
+        WHEN poly.id IS NOT NULL THEN p.properties || poly.properties
+        ELSE p.properties
+      END
+    FROM features p
+    LEFT JOIN features poly
+      ON poly.layer_id = ${layerIdPolygons}::uuid
+      AND ST_Within(p.geometry, poly.geometry)
+    WHERE p.layer_id = ${layerIdPoints}::uuid
+    ORDER BY p.id
+  `);
+}
+
+async function runNearestNeighbor(
+  layerIdA: string,
+  layerIdB: string,
+  newLayerId: string
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO features (layer_id, geometry, properties)
+    SELECT
+      ${newLayerId}::uuid,
+      a.geometry,
+      a.properties || nb.properties
+    FROM features a
+    CROSS JOIN LATERAL (
+      SELECT b.properties
+      FROM features b
+      WHERE b.layer_id = ${layerIdB}::uuid
+      ORDER BY a.geometry <-> b.geometry
+      LIMIT 1
+    ) nb
+    WHERE a.layer_id = ${layerIdA}::uuid
+  `);
+}
+
+async function runAggregate(
+  op: Extract<GeoprocessingOp, { type: 'aggregate' }>,
+  newLayerId: string
+): Promise<void> {
+  const outField = op.outputField ?? op.aggregation;
+
+  if (op.aggregation === 'count') {
+    await db.execute(sql`
+      INSERT INTO features (layer_id, geometry, properties)
+      SELECT
+        ${newLayerId}::uuid,
+        poly.geometry,
+        poly.properties || jsonb_build_object(${outField}, COUNT(pt.id))
+      FROM features poly
+      LEFT JOIN features pt
+        ON pt.layer_id = ${op.layerIdPoints}::uuid
+        AND ST_Within(pt.geometry, poly.geometry)
+      WHERE poly.layer_id = ${op.layerIdPolygons}::uuid
+      GROUP BY poly.id, poly.geometry, poly.properties
+    `);
+  } else if (op.aggregation === 'sum') {
+    if (!op.field) throw new Error('field is required for sum aggregation');
+    const field = op.field;
+    await db.execute(sql`
+      INSERT INTO features (layer_id, geometry, properties)
+      SELECT
+        ${newLayerId}::uuid,
+        poly.geometry,
+        poly.properties || jsonb_build_object(${outField}, COALESCE(SUM((pt.properties->>${field})::numeric), 0))
+      FROM features poly
+      LEFT JOIN features pt
+        ON pt.layer_id = ${op.layerIdPoints}::uuid
+        AND ST_Within(pt.geometry, poly.geometry)
+      WHERE poly.layer_id = ${op.layerIdPolygons}::uuid
+      GROUP BY poly.id, poly.geometry, poly.properties
+    `);
+  } else {
+    if (!op.field) throw new Error('field is required for avg aggregation');
+    const field = op.field;
+    await db.execute(sql`
+      INSERT INTO features (layer_id, geometry, properties)
+      SELECT
+        ${newLayerId}::uuid,
+        poly.geometry,
+        poly.properties || jsonb_build_object(${outField}, AVG((pt.properties->>${field})::numeric))
+      FROM features poly
+      LEFT JOIN features pt
+        ON pt.layer_id = ${op.layerIdPoints}::uuid
+        AND ST_Within(pt.geometry, poly.geometry)
+      WHERE poly.layer_id = ${op.layerIdPolygons}::uuid
+      GROUP BY poly.id, poly.geometry, poly.properties
+    `);
+  }
+}
+
 // ─── Worker setup ─────────────────────────────────────────────────────────────
 
 const worker = new Worker<ImportJobPayload>('file-import', processImportJob, {
@@ -443,6 +747,33 @@ worker.on('error', (err) => {
 
 logger.info('import worker started, waiting for jobs');
 
+// ─── Geoprocessing worker setup ──────────────────────────────────────────────
+
+const geoprocessingWorker = new Worker<GeoprocessingJobPayload>(
+  'geoprocessing',
+  processGeoprocessingJob,
+  {
+    connection,
+    concurrency: 1,
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 500 },
+  }
+);
+
+geoprocessingWorker.on('completed', (job) => {
+  logger.info({ jobId: job.id ?? 'unknown' }, 'geoprocessing job completed');
+});
+
+geoprocessingWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id ?? 'unknown', error: err.message }, 'geoprocessing job failed');
+});
+
+geoprocessingWorker.on('error', (err) => {
+  logger.error({ err }, 'geoprocessing worker error');
+});
+
+logger.info('geoprocessing worker started, waiting for jobs');
+
 // ─── Stale job reaper ────────────────────────────────────────────────────────
 // Jobs stuck in 'processing' for >1 hour were likely owned by a killed worker.
 // Mark them failed so the UI doesn't show a perpetual spinner.
@@ -457,7 +788,7 @@ async function reapStaleJobs(): Promise<void> {
        WHERE status = 'processing' AND updated_at < NOW() - INTERVAL '1 hour'`
     );
     if ((result.rowCount ?? 0) > 0) {
-      logger.info({ count: result.rowCount }, 'reaped stale import jobs');
+      logger.info({ count: result.rowCount }, 'reaped stale jobs');
     }
   } catch (err) {
     logger.error({ error: (err as Error).message }, 'stale job reaper failed');
@@ -473,6 +804,7 @@ async function shutdown(): Promise<void> {
   logger.info('shutting down');
   clearInterval(staleJobTimer);
   await worker.close();
+  await geoprocessingWorker.close();
   await connection.quit();
   await pool.end();
   process.exit(0);

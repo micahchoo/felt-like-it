@@ -129,21 +129,17 @@ describe('Geoprocessing router (current behavior — synchronous)', () => {
     expect(mod.geoprocessingRouter).toBeDefined();
   });
 
-  it('geoprocessing router source calls runGeoprocessing directly (read source)', async () => {
-    // Characterize that the current implementation calls runGeoprocessing synchronously
+  it('geoprocessing router source enqueues async job (read source)', async () => {
+    // After F08 async geoprocessing: router enqueues job instead of sync execution
     const fs = await import('fs/promises');
     const path = await import('path');
     const filePath = path.resolve(process.cwd(), 'src/lib/server/trpc/routers/geoprocessing.ts');
     const source = await fs.readFile(filePath, 'utf-8');
 
-    // Current implementation imports and calls runGeoprocessing directly
-    expect(source).toContain('runGeoprocessing');
-    // Current implementation does NOT enqueue jobs
-    expect(source).not.toContain('enqueueGeoprocessingJob');
-    expect(source).not.toContain('getGeoprocessingQueue');
-    // Current implementation returns { layerId, layerName } (no jobId)
-    expect(source).toContain('layerId: newLayer.id');
-    expect(source).toContain('layerName: newLayer.name');
-    expect(source).not.toContain('jobId');
+    // Implementation enqueues job and returns jobId
+    expect(source).toContain('enqueueGeoprocessingJob');
+    expect(source).toContain('jobId');
+    // No longer calls runGeoprocessing directly
+    expect(source).not.toContain('runGeoprocessing');
   });
 });
