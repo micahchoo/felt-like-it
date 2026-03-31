@@ -29,3 +29,10 @@ uploads/
 .worktrees/
 .claude/anti-pattern-report.txt
 .worktrees/
+
+# Foxhound context cache
+.context/
+**/.context/
+
+# v8 compile cache
+v8-compile-cache-*/

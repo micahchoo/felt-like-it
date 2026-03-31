@@ -10,49 +10,54 @@ Enhance/flesh out/simplify FLI's feature sets and E2E flows using `svelte-maplib
 - ✅ 8 mulch records captured (conventions, decisions, failure)
 - ✅ F01 bug fix: `DashboardScreen.svelte:30` — `handleCreate` infinite recursion fixed
 - ✅ Design spec written and approved
-- 🔄 Wave 1 plan (F03 + F04) — started writing-plans, discovered critical API constraint, needs plan written
-- ⬚ Waves 2-7 not started
+- ✅ F03: MapCanvas decomposed 887→369 LOC — `DataLayerRenderer` + `AnnotationRenderer` extracted (commits `3bcd14a`, `0a527ee`, `e5f406c`)
+- ✅ F04: Feature-state selection highlight, event-identity click dedup, cache decoupled from `selectedFeature` (commit `1b5e40b`)
+- ✅ F05: Optimistic draw UI (no visual gap), DrawActionRow auto-dismiss removed (commit `876796e`)
+- ✅ F06: oninput/onchange split eliminates per-tick paint rebuilds, Revert button added (commit `260177f`)
+- ⬚ F07: Filtering — split-brain, ephemeral, incomplete (`felt-like-it-565b`)
+- ⬚ F08: Geoprocessing — black box with no preview (`felt-like-it-ccff`)
+- ⬚ F12: Panel navigation — three systems fighting (`felt-like-it-2eaa`, High)
+- ⬚ F02: Data import — blind upload, dangerous buffering (`felt-like-it-864d`)
+- ⬚ N01/N02/N03: Cluster, rich marker, data join new flows
 
 ## What Worked
-- Parallel audit agents (4 agents x 4 flows) — completed full audit in ~5 minutes
-- context-mode `ctx_batch_execute` for exploring both reference repos without flooding context
-- Flow-level problem framing made the audit findings actionable instead of a laundry list
+- DAG-following: F03→F04→F05→F06 in dependency order, each building on the last
+- Wave-based extraction: DataLayerRenderer + AnnotationRenderer in parallel agents, then integrate
+- Feature-state over paint-manipulation: `getHoverAwarePaint(layer, type, highlightColor)` bakes both hover and selected into static expressions — cache never references selection state
+- `oninput`/`onchange` split for continuous inputs: local pending state for preview, one `layersStore` flush per drag gesture
 
 ## What Didn't Work
-- **Assumed API parity between `svelte-maplibre` (reference) and `svelte-maplibre-gl` (FLI's dep)**. They are different libraries. `svelte-maplibre-gl` v1.0.3 does NOT have: `manageHoverState`, `eventsIfTopMost`, `hoverCursor`, `beforeLayerType`, nested popup-in-layer, `cluster` prop, `MarkerLayer`, `JoinedData`, `ZoomRange`. The entire S1/S2/S3/S4 simplification strategy assumed these existed.
-- This means Wave 1 must implement hover/interaction primitives manually using `FeatureState` component + `onmouseenter`/`onmouseleave` handlers, not simply "add props".
+- **`bash ~/.claude/scripts/sd-next.sh` crashes** with `jq: Cannot index boolean with string "labels"` — `sd ready --json` seems to return something unexpected. Use `sd ready` (non-JSON) instead for next task selection.
+- **`svelte-maplibre-gl` v1.0.3 API mismatch**: Does NOT have `manageHoverState`, `eventsIfTopMost`, `hoverCursor`, `beforeLayerType`, nested popup-in-layer. All interaction primitives must be implemented manually.
 
 ## Key Decisions
-- **Approach C**: Audit-first, then flow-driven execution. Each wave is a sandwich: simplify → enhance → feature → simplify.
-- **E2E flow framing**: Every task is trigger → path → outcome. No orphan component work.
-- **Reference-driven**: Changes cite specific patterns from svelte-maplibre or Allmaps.
-- **Wave ordering**: Layer rendering (foundation) → Interaction → Panels → Data → Content → Features → Sharing → Collaboration
-- **MapCanvas decomposition target**: DataLayers + AnnotationLayers + MeasurementLayers + InteractionManager as children inside `<MapLibre>`
-- **Lightweight viewer for share/embed**: Instead of full MapEditor in readonly mode
+- **Feature-state for both hover and selected**: `getHoverAwarePaint()` now handles both. Cache computes once per layer-style change, not per selection change.
+- **Event-identity click dedup**: `e.originalEvent === _lastClickEvent` replaces 300ms timestamp hack. Overlapping layers share the same DOM event.
+- **Optimistic hotOverlay with temp ID**: `temp-${Date.now()}` added before mutateAsync, swapped with real ID on success, removed on error.
+- **DrawActionRow stays until user acts**: Removed 8s auto-dismiss — user drives dismiss.
+- **`oninput` → local state only, `onchange` → flush stores**: Prevents layerRenderCache recompute on every slider tick.
 
 ## Active Skills & Routing
-- `brainstorming` — completed (design approved)
-- `writing-plans` — **next step**: write Wave 1 implementation plan accounting for svelte-maplibre-gl API constraints
-- `executing-plans` — will execute the plan once written
+- `executing-plans` — was active for Wave 1 (F03/F04). Plan at `docs/superpowers/plans/2026-03-30-wave1-mapcanvas-decomposition.md` is fully executed.
+- Next task (F07, F08, or F12) should use `shadow-walk` to trace the filtering/panel flows before editing.
 
 ## Infrastructure Delta
 No infrastructure changes this session.
 
 ## Knowledge State
-- **Indexed**: Both reference repos explored via context-mode (not `context add`). `svelte-maplibre-gl` API surface verified from installed package.
-- **Productive tiers**: Default foxhound routing not used this session — manual exploration was primary.
-- **Gaps**: `svelte-maplibre-gl` has minimal docs. Its `FeatureState` component needs investigation — it's exported but not documented. The `MapLayerEventProps` type (from `layers/common.d.ts`) defines what event handlers layers accept — next agent should read this file.
+- **Indexed**: Neither reference repo was `context add`'d — explored via context-mode sandbox only.
+- **Productive tiers**: Default foxhound routing not used this session — direct file reads were primary.
+- **Gaps**: `svelte-maplibre-gl` v1.0.3 has minimal docs. Layer event props (`MapLayerEventProps`) in `layers/common.d.ts`. `FeatureState` component is exported and works — `id`, `source`, `state` props confirmed working.
 
 ## Next Steps
-1. **Read `svelte-maplibre-gl` internals** — especially `layers/common.js` (MapLayerEventProps), `sources/FeatureState.svelte`, and a layer implementation like `CircleLayer.svelte` to understand what interaction primitives are actually available
-2. **Write Wave 1 plan** using `writing-plans` skill — F03 (MapCanvas decomposition) + F04 (feature interaction) accounting for the real API surface
-3. **Execute Wave 1** using `executing-plans` — claim seeds `felt-like-it-2b53` (F03) and `felt-like-it-aab0` (F04)
-4. **Continue through Waves 2-7** per the design spec
+1. **Pick next from DAG** — `sd ready` shows: F07 (filtering split-brain), F08 (geoprocessing), F12 (panel nav High), N01/N02/N03 new flows. F12 is highest priority but needs new EditorLayout store — use `brainstorming` skill first.
+2. **F07 (felt-like-it-565b)** — Filtering split-brain: `filterStore` ephemeral state vs layer DB state. Find filter UI components and trace the split.
+3. **F12 (felt-like-it-2eaa)** — High priority. Three panel systems (activePanelIcon, activeSection, showDataTable+dialogs). Needs brainstorming before coding — unified EditorLayout store + URL-reflected state.
+4. **Fix `sd-next.sh`** — jq fails when `sd ready --json` output contains non-object items. Until fixed, use `sd ready` (plain text) for task selection.
 
 ## Context Files
 - `docs/superpowers/specs/2026-03-30-reference-driven-enhancement-design.md` — design spec with wave ordering
-- `docs/research/e2e-flow-problems.md` — 20 flow problems (canonical reference for all seeds)
-- `docs/research/e2e-flow-audit.md` — detailed findings for flows 1-4 (Wave 1 targets)
-- `apps/web/src/lib/components/map/MapCanvas.svelte` — 887-line target for decomposition (F03)
-- `apps/web/src/lib/stores/map-editor-state.svelte.ts` — interaction state machine (F04)
-- `node_modules/.pnpm/svelte-maplibre-gl@1.0.3_.../node_modules/svelte-maplibre-gl/dist/` — actual API surface
+- `docs/research/e2e-flow-audit-consolidated.md` — all 20 flow problems with severity ratings
+- `apps/web/src/lib/components/map/DataLayerRenderer.svelte` — 184 LOC, extracted from MapCanvas
+- `apps/web/src/lib/components/map/MapCanvas.svelte` — 369 LOC (was 887), now delegates to child renderers
+- `apps/web/src/lib/components/map/map-styles.ts` — `getHoverAwarePaint(layer, type, highlightColor?)` — both hover+selected in one call
