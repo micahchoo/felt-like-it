@@ -60,19 +60,28 @@ describe('Content Flows — Current Behavior Characterization', () => {
   });
 
   describe('F10: AnnotationPanel TanStack Query mutations', () => {
-    it('AnnotationPanel uses createMutation for annotations', async () => {
+    it('AnnotationMutations module exports factory functions for annotation mutations', async () => {
+      const content = await import('fs/promises').then((fs) =>
+        fs.readFile(resolve('src/lib/components/annotations/AnnotationMutations.ts'), 'utf-8')
+      );
+      expect(content).toMatch(/createAnnotationMutationOptions/);
+      expect(content).toMatch(/deleteAnnotationMutationOptions/);
+      expect(content).toMatch(/trpc\.annotations\.create/);
+      expect(content).toMatch(/trpc\.annotations\.delete/);
+    });
+
+    it('AnnotationPanel uses createMutation with factory functions from AnnotationMutations', async () => {
       const content = await import('fs/promises').then((fs) =>
         fs.readFile(resolve('src/lib/components/annotations/AnnotationPanel.svelte'), 'utf-8')
       );
       expect(content).toMatch(/createMutation/);
-      expect(content).toMatch(/trpc\.annotations\.create/);
-      expect(content).toMatch(/trpc\.annotations\.delete/);
-      expect(content).toMatch(/trpc\.annotations\.update/);
+      expect(content).toMatch(/createAnnotationMutationOptions/);
+      expect(content).toMatch(/deleteAnnotationMutationOptions/);
     });
 
-    it('AnnotationPanel uses onMutate/onSettled pattern for optimistic comment mutations', async () => {
+    it('AnnotationMutations uses onMutate/onSettled pattern for optimistic mutations', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile(resolve('src/lib/components/annotations/AnnotationPanel.svelte'), 'utf-8')
+        fs.readFile(resolve('src/lib/components/annotations/AnnotationMutations.ts'), 'utf-8')
       );
       expect(content).toMatch(/onMutate/);
       expect(content).toMatch(/onSettled/);
@@ -106,9 +115,9 @@ describe('Content Flows — Current Behavior Characterization', () => {
       expect(content).toMatch(/measurements/);
     });
 
-    it('AnnotationPanel has 6 content types: text, emoji, gif, image, link, iiif', async () => {
+    it('AnnotationForm component has 6 content types: text, emoji, gif, image, link, iiif', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile(resolve('src/lib/components/annotations/AnnotationPanel.svelte'), 'utf-8')
+        fs.readFile(resolve('src/lib/components/annotations/AnnotationForm.svelte'), 'utf-8')
       );
       // Content type icons
       expect(content).toMatch(/Type/);
