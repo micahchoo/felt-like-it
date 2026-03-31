@@ -1,8 +1,8 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import { db } from '$lib/server/db/index.js';
-import { importJobs, layers, maps } from '$lib/server/db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { importJobs, layers } from '$lib/server/db/schema.js';
+import { eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { getExportData, toFeatureCollection } from '$lib/server/export/shared.js';
 import { exportAsGeoPackage } from '$lib/server/export/geopackage.js';
@@ -53,15 +53,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   }
 
   // Check ownership of all layers
-  for (const id of targetLayerIds) {
-    const layer = await db.query.layers.findFirst({
-      where: eq(layers.id, id),
-      with: { map: true },
-    });
-    if (!layer || layer.map.ownerId !== locals.user.id) {
-      error(403, `Access denied to layer ${id}`);
-    }
-  }
+  await Promise.all(
+    targetLayerIds.map(async (id) => {
+      const layer = await db.query.layers.findFirst({
+        where: eq(layers.id, id),
+        with: { map: true },
+      });
+      if (!layer || layer.map.ownerId !== locals.user.id) {
+        error(403, `Access denied to layer ${id}`);
+      }
+    })
+  );
 
   // For single-layer exports without annotations, use existing direct export
   if (targetLayerIds.length === 1 && !includeAnnotations) {
@@ -76,9 +78,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   // Create export job for async processing
   const jobId = randomUUID();
-  const mapId = (await db.query.layers.findFirst({
+  const firstLayer = await db.query.layers.findFirst({
     where: eq(layers.id, targetLayerIds[0]),
-  }))!.mapId;
+  });
+  if (!firstLayer) {
+    error(404, 'Layer not found');
+  }
+  const mapId = firstLayer.mapId;
 
   await db.insert(importJobs).values({
     id: jobId,
@@ -159,6 +165,7 @@ async function handleDirectExport(
  * Process export job asynchronously.
  * Updates job status/progress in database.
  */
+// eslint-disable-next-line no-await-in-loop -- Sequential processing required for progress tracking
 async function processExportJob(
   jobId: string,
   layerIds: string[],
