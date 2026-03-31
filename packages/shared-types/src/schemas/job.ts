@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { GeoprocessingOpSchema } from './geoprocessing.js';
 
 export const JobStatusSchema = z.enum(['pending', 'processing', 'done', 'failed']);
 
@@ -22,3 +23,13 @@ export const ImportJobPayloadSchema = z.object({
   filePath: z.string(),
   fileName: z.string(),
 });
+
+/** Payload enqueued to the 'geoprocessing' BullMQ queue. */
+export const GeoprocessingJobPayloadSchema = z.object({
+  jobId: z.string().uuid(),
+  mapId: z.string().uuid(),
+  op: GeoprocessingOpSchema,
+  outputLayerId: z.string().uuid(),
+});
+
+export type GeoprocessingJobPayload = z.infer<typeof GeoprocessingJobPayloadSchema>;

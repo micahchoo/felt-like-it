@@ -1,8 +1,9 @@
 import { Queue } from 'bullmq';
 import { createRedisConnection } from './connection.js';
-import type { ImportJobPayload } from '@felt-like-it/shared-types';
+import type { ImportJobPayload, GeoprocessingJobPayload } from '@felt-like-it/shared-types';
 
-// Lazily created queue instance
+// ─── Import queue ────────────────────────────────────────────────────────────
+
 let _importQueue: Queue<ImportJobPayload> | null = null;
 
 export function getImportQueue(): Queue<ImportJobPayload> {
@@ -26,5 +27,33 @@ export function getImportQueue(): Queue<ImportJobPayload> {
 export async function enqueueImportJob(payload: ImportJobPayload): Promise<string> {
   const queue = getImportQueue();
   const job = await queue.add('import', payload, { jobId: payload.jobId });
+  return job.id ?? payload.jobId;
+}
+
+// ─── Geoprocessing queue ─────────────────────────────────────────────────────
+
+let _geoprocessingQueue: Queue<GeoprocessingJobPayload> | null = null;
+
+export function getGeoprocessingQueue(): Queue<GeoprocessingJobPayload> {
+  if (!_geoprocessingQueue) {
+    _geoprocessingQueue = new Queue<GeoprocessingJobPayload>('geoprocessing', {
+      connection: createRedisConnection(),
+      defaultJobOptions: {
+        attempts: 2,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: 50,
+        removeOnFail: 200,
+      },
+    });
+  }
+  return _geoprocessingQueue;
+}
+
+export async function enqueueGeoprocessingJob(payload: GeoprocessingJobPayload): Promise<string> {
+  const queue = getGeoprocessingQueue();
+  const job = await queue.add('geoprocessing', payload, { jobId: payload.jobId });
   return job.id ?? payload.jobId;
 }
