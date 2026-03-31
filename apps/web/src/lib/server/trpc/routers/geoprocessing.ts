@@ -4,8 +4,11 @@ import { eq, and } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
 import { db, layers } from '../../db/index.js';
 import { GeoprocessingOpSchema } from '@felt-like-it/shared-types';
-import { runGeoprocessing, getOpLayerIds } from '../../geo/geoprocessing.js';
+import { getOpLayerIds } from '../../geo/geoprocessing.js';
 import { requireMapAccess } from '../../geo/access.js';
+import { randomUUID } from 'crypto';
+import { enqueueGeoprocessingJob } from '../../jobs/queues.js';
+import { sql } from 'drizzle-orm';
 
 export const geoprocessingRouter = router({
   /**
@@ -16,27 +19,25 @@ export const geoprocessingRouter = router({
    */
   run: protectedProcedure
     .input(
-      z.object({
-        mapId: z.string().uuid(),
-        op: GeoprocessingOpSchema,
-        outputLayerName: z.string().min(1).max(255).trim(),
-      }).superRefine((data, ctx) => {
-        // Cross-field invariant: aggregate sum/avg require a non-empty `field`.
-        // GeoprocessingOpSchema uses the base schema (not the refined export) so that
-        // z.discriminatedUnion can inspect `.shape`. This superRefine is the single
-        // authoritative enforcement point for that constraint.
-        if (
-          data.op.type === 'aggregate' &&
-          data.op.aggregation !== 'count' &&
-          !data.op.field
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'field is required for sum and avg aggregations.',
-            path: ['op', 'field'],
-          });
-        }
-      })
+      z
+        .object({
+          mapId: z.string().uuid(),
+          op: GeoprocessingOpSchema,
+          outputLayerName: z.string().min(1).max(255).trim(),
+        })
+        .superRefine((data, ctx) => {
+          // Cross-field invariant: aggregate sum/avg require a non-empty `field`.
+          // GeoprocessingOpSchema uses the base schema (not the refined export) so that
+          // z.discriminatedUnion can inspect `.shape`. This superRefine is the single
+          // authoritative enforcement point for that constraint.
+          if (data.op.type === 'aggregate' && data.op.aggregation !== 'count' && !data.op.field) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: 'field is required for sum and avg aggregations.',
+              path: ['op', 'field'],
+            });
+          }
+        })
     )
     .mutation(async ({ ctx, input }) => {
       // 1 — Editor+ access required to run geoprocessing
@@ -54,7 +55,10 @@ export const geoprocessingRouter = router({
             .where(and(eq(layers.id, layerId), eq(layers.mapId, input.mapId)));
 
           if (!ownedLayer) {
-            throw new TRPCError({ code: 'NOT_FOUND', message: 'One or more input layers not found on this map.' });
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'One or more input layers not found on this map.',
+            });
           }
         })
       );
@@ -83,22 +87,28 @@ export const geoprocessingRouter = router({
         .returning();
 
       if (!newLayer) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create output layer.' });
-      }
-
-      // 5 — Run the PostGIS operation, writing into the new layer
-      try {
-        await runGeoprocessing(input.op, newLayer.id);
-      } catch (err) {
-        // Roll back the empty layer so the user doesn't see a ghost layer
-        await db.delete(layers).where(eq(layers.id, newLayer.id));
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'Geoprocessing failed.',
-          cause: err,
+          message: 'Failed to create output layer.',
         });
       }
 
-      return { layerId: newLayer.id, layerName: newLayer.name };
+      // 5 — Enqueue async job instead of running synchronously
+      const jobId = randomUUID();
+
+      // Track job in import_jobs table for SSE progress polling
+      await db.execute(sql`
+        INSERT INTO import_jobs (id, map_id, status, file_name, progress)
+        VALUES (${jobId}::uuid, ${input.mapId}, 'processing', ${input.outputLayerName}, 0)
+      `);
+
+      await enqueueGeoprocessingJob({
+        jobId,
+        mapId: input.mapId,
+        op: input.op,
+        outputLayerId: newLayer.id,
+      });
+
+      return { jobId, layerId: newLayer.id, layerName: newLayer.name };
     }),
 });

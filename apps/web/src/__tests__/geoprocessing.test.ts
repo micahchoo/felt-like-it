@@ -5,43 +5,57 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('$lib/server/db/index.js', () => ({
   db: {
-    select:  vi.fn(),
-    insert:  vi.fn(),
-    update:  vi.fn(),
-    delete:  vi.fn(),
-    execute: vi.fn(),
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    execute: vi.fn().mockResolvedValue(undefined),
   },
-  maps:             { id: {}, userId: {} },
-  layers:           { id: {}, mapId: {}, zIndex: {} },
+  maps: { id: {}, userId: {} },
+  layers: { id: {}, mapId: {}, zIndex: {} },
   mapCollaborators: { mapId: {}, userId: {}, role: {} },
+}));
+
+vi.mock('$lib/server/jobs/queues.js', () => ({
+  enqueueGeoprocessingJob: vi.fn().mockResolvedValue('test-job-id'),
 }));
 
 // Stub the PostGIS execution so tests don't need a real DB
 vi.mock('../lib/server/geo/geoprocessing.js', () => ({
-  runGeoprocessing: vi.fn().mockResolvedValue(undefined),
-  getOpLayerIds: vi.fn((op: { type: string; layerId?: string; layerIdA?: string; layerIdB?: string }) => {
-    if (op.layerId !== undefined) return [op.layerId];
-    return [op.layerIdA, op.layerIdB];
-  }),
+  getOpLayerIds: vi.fn(
+    (op: { type: string; layerId?: string; layerIdA?: string; layerIdB?: string }) => {
+      if (op.layerId !== undefined) return [op.layerId];
+      return [op.layerIdA, op.layerIdB];
+    }
+  ),
 }));
 
 import { geoprocessingRouter } from '../lib/server/trpc/routers/geoprocessing.js';
 import { db } from '$lib/server/db/index.js';
-import { runGeoprocessing } from '../lib/server/geo/geoprocessing.js';
+import { enqueueGeoprocessingJob } from '$lib/server/jobs/queues.js';
 import { drizzleChain, mockContext } from './test-utils.js';
 
 // --- Helpers ---
 
-const USER_ID      = 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
-const MAP_ID       = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
-const LAYER_ID     = 'cccccccc-0000-0000-0000-cccccccccccc';
-const LAYER_ID_B   = 'dddddddd-0000-0000-0000-dddddddddddd';
+const USER_ID = 'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa';
+const MAP_ID = 'bbbbbbbb-0000-0000-0000-bbbbbbbbbbbb';
+const LAYER_ID = 'cccccccc-0000-0000-0000-cccccccccccc';
+const LAYER_ID_B = 'dddddddd-0000-0000-0000-dddddddddddd';
 const NEW_LAYER_ID = 'eeeeeeee-0000-0000-0000-eeeeeeeeeeee';
 
-const MOCK_MAP    = { id: MAP_ID, userId: USER_ID };
-const MOCK_LAYER  = { id: LAYER_ID };
+const MOCK_MAP = { id: MAP_ID, userId: USER_ID };
+const MOCK_LAYER = { id: LAYER_ID };
 const MOCK_LAYER_B = { id: LAYER_ID_B };
-const MOCK_NEW_LAYER = { id: NEW_LAYER_ID, name: 'Buffered Layer', mapId: MAP_ID, type: 'mixed', style: {}, visible: true, zIndex: 1, sourceFileName: null };
+const MOCK_NEW_LAYER = {
+  id: NEW_LAYER_ID,
+  name: 'Buffered Layer',
+  mapId: MAP_ID,
+  type: 'mixed',
+  style: {},
+  visible: true,
+  zIndex: 1,
+  sourceFileName: null,
+};
 
 function makeCaller() {
   return geoprocessingRouter.createCaller(mockContext({ userId: USER_ID }));
@@ -51,14 +65,14 @@ function makeCaller() {
 
 describe('geoprocessing.run — single-layer ops', () => {
   // clearAllMocks preserves mockImplementation (needed for getOpLayerIds) while still
-// flushing the mockReturnValueOnce queues on db.select / db.insert between tests.
-beforeEach(() => vi.clearAllMocks());
+  // flushing the mockReturnValueOnce queues on db.select / db.insert between tests.
+  beforeEach(() => vi.clearAllMocks());
 
   it('creates output layer and runs buffer op', async () => {
     vi.mocked(db.select)
-      .mockReturnValueOnce(drizzleChain([MOCK_MAP]))           // ownership
-      .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))         // layer on map
-      .mockReturnValueOnce(drizzleChain([{ zIndex: 0 }]));    // max zIndex
+      .mockReturnValueOnce(drizzleChain([MOCK_MAP])) // ownership
+      .mockReturnValueOnce(drizzleChain([MOCK_LAYER])) // layer on map
+      .mockReturnValueOnce(drizzleChain([{ zIndex: 0 }])); // max zIndex
     vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_NEW_LAYER]));
 
     const result = await makeCaller().run({
@@ -69,14 +83,21 @@ beforeEach(() => vi.clearAllMocks());
 
     expect(result.layerId).toBe(NEW_LAYER_ID);
     expect(result.layerName).toBe('Buffered Layer');
-    expect(runGeoprocessing).toHaveBeenCalledOnce();
+    expect(result.jobId).toBeDefined();
+    expect(enqueueGeoprocessingJob).toHaveBeenCalledOnce();
+    expect(enqueueGeoprocessingJob).toHaveBeenCalledWith({
+      jobId: result.jobId,
+      mapId: MAP_ID,
+      op: { type: 'buffer', layerId: LAYER_ID, distanceKm: 1 },
+      outputLayerId: NEW_LAYER_ID,
+    });
   });
 
   it('runs centroid op', async () => {
     vi.mocked(db.select)
       .mockReturnValueOnce(drizzleChain([MOCK_MAP]))
       .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))
-      .mockReturnValueOnce(drizzleChain([]));                  // no existing layers -> maxZ = -1
+      .mockReturnValueOnce(drizzleChain([])); // no existing layers -> maxZ = -1
     vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_NEW_LAYER]));
 
     const result = await makeCaller().run({
@@ -86,7 +107,26 @@ beforeEach(() => vi.clearAllMocks());
     });
 
     expect(result.layerId).toBe(NEW_LAYER_ID);
-    expect(runGeoprocessing).toHaveBeenCalledOnce();
+    expect(result.jobId).toBeDefined();
+    expect(enqueueGeoprocessingJob).toHaveBeenCalledOnce();
+  });
+
+  it('runs centroid op', async () => {
+    vi.mocked(db.select)
+      .mockReturnValueOnce(drizzleChain([MOCK_MAP]))
+      .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))
+      .mockReturnValueOnce(drizzleChain([])); // no existing layers -> maxZ = -1
+    vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_NEW_LAYER]));
+
+    const result = await makeCaller().run({
+      mapId: MAP_ID,
+      op: { type: 'centroid', layerId: LAYER_ID },
+      outputLayerName: 'Centroids',
+    });
+
+    expect(result.layerId).toBe(NEW_LAYER_ID);
+    expect(result.jobId).toBeDefined();
+    expect(enqueueGeoprocessingJob).toHaveBeenCalledOnce();
   });
 
   it('throws NOT_FOUND when map does not belong to caller', async () => {
@@ -138,14 +178,14 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('geoprocessing.run — two-layer ops', () => {
   // clearAllMocks preserves mockImplementation (needed for getOpLayerIds) while still
-// flushing the mockReturnValueOnce queues on db.select / db.insert between tests.
-beforeEach(() => vi.clearAllMocks());
+  // flushing the mockReturnValueOnce queues on db.select / db.insert between tests.
+  beforeEach(() => vi.clearAllMocks());
 
   it('creates output layer and runs intersect op', async () => {
     vi.mocked(db.select)
-      .mockReturnValueOnce(drizzleChain([MOCK_MAP]))      // ownership
-      .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))    // layer A verified
-      .mockReturnValueOnce(drizzleChain([MOCK_LAYER_B]))  // layer B verified
+      .mockReturnValueOnce(drizzleChain([MOCK_MAP])) // ownership
+      .mockReturnValueOnce(drizzleChain([MOCK_LAYER])) // layer A verified
+      .mockReturnValueOnce(drizzleChain([MOCK_LAYER_B])) // layer B verified
       .mockReturnValueOnce(drizzleChain([{ zIndex: 2 }])); // max zIndex
     vi.mocked(db.insert).mockReturnValue(drizzleChain([MOCK_NEW_LAYER]));
 
@@ -156,13 +196,15 @@ beforeEach(() => vi.clearAllMocks());
     });
 
     expect(result.layerId).toBe(NEW_LAYER_ID);
+    expect(result.jobId).toBeDefined();
+    expect(enqueueGeoprocessingJob).toHaveBeenCalledOnce();
   });
 
   it('throws NOT_FOUND when one input layer is not on the map', async () => {
     vi.mocked(db.select)
-      .mockReturnValueOnce(drizzleChain([MOCK_MAP]))  // ownership
+      .mockReturnValueOnce(drizzleChain([MOCK_MAP])) // ownership
       .mockReturnValueOnce(drizzleChain([MOCK_LAYER])) // layer A found
-      .mockReturnValueOnce(drizzleChain([]));           // layer B NOT found -> throws
+      .mockReturnValueOnce(drizzleChain([])); // layer B NOT found -> throws
 
     await expect(
       makeCaller().run({
