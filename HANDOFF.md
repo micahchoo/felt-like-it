@@ -1,63 +1,98 @@
-# Handoff
+# Group 2 Content Flows (F09, F10, F11) — Handoff
 
-## Goal
-Enhance/flesh out/simplify FLI's feature sets and E2E flows using `svelte-maplibre` and `allmaps` repos (at `/mnt/Ghar/2TA/DevStuff/Patterning/Maps/`) as reference patterns.
+## Current Status
 
-## Progress
-- ✅ Full 16-flow E2E audit against both reference repos — 64 findings
-- ✅ Reframed as 20 flow-level problems (16 existing + 4 new flows)
-- ✅ 20 seeds issues created, all labeled `flow` + `audit-2026-03-30`
-- ✅ 8 mulch records captured (conventions, decisions, failure)
-- ✅ F01 bug fix: `DashboardScreen.svelte:30` — `handleCreate` infinite recursion fixed
-- ✅ Design spec written and approved
-- ✅ F03: MapCanvas decomposed 887→369 LOC — `DataLayerRenderer` + `AnnotationRenderer` extracted (commits `3bcd14a`, `0a527ee`, `e5f406c`)
-- ✅ F04: Feature-state selection highlight, event-identity click dedup, cache decoupled from `selectedFeature` (commit `1b5e40b`)
-- ✅ F05: Optimistic draw UI (no visual gap), DrawActionRow auto-dismiss removed (commit `876796e`)
-- ✅ F06: oninput/onchange split eliminates per-tick paint rebuilds, Revert button added (commit `260177f`)
-- ⬚ F07: Filtering — split-brain, ephemeral, incomplete (`felt-like-it-565b`)
-- ⬚ F08: Geoprocessing — black box with no preview (`felt-like-it-ccff`)
-- ⬚ F12: Panel navigation — three systems fighting (`felt-like-it-2eaa`, High)
-- ⬚ F02: Data import — blind upload, dangerous buffering (`felt-like-it-864d`)
-- ⬚ N01/N02/N03: Cluster, rich marker, data join new flows
+### Waves Completed
 
-## What Worked
-- DAG-following: F03→F04→F05→F06 in dependency order, each building on the last
-- Wave-based extraction: DataLayerRenderer + AnnotationRenderer in parallel agents, then integrate
-- Feature-state over paint-manipulation: `getHoverAwarePaint(layer, type, highlightColor)` bakes both hover and selected into static expressions — cache never references selection state
-- `oninput`/`onchange` split for continuous inputs: local pending state for preview, one `layersStore` flush per drag gesture
+**Wave 1: F09 Measurement (COMPLETE)**
 
-## What Didn't Work
-- **`bash ~/.claude/scripts/sd-next.sh` crashes** with `jq: Cannot index boolean with string "labels"` — `sd ready --json` seems to return something unexpected. Use `sd ready` (non-JSON) instead for next task selection.
-- **`svelte-maplibre-gl` v1.0.3 API mismatch**: Does NOT have `manageHoverState`, `eventsIfTopMost`, `hoverCursor`, `beforeLayerType`, nested popup-in-layer. All interaction primitives must be implemented manually.
+- Task 1: MeasurementStore class with 9 unit tests ✅
+- Task 2: MeasurementTooltip component ✅
+- Task 3: MapEditor wiring + M keyboard shortcut ✅
+- Task 4: MeasurementPanel verification ✅
+- Commit: 9489784
 
-## Key Decisions
-- **Feature-state for both hover and selected**: `getHoverAwarePaint()` now handles both. Cache computes once per layer-style change, not per selection change.
-- **Event-identity click dedup**: `e.originalEvent === _lastClickEvent` replaces 300ms timestamp hack. Overlapping layers share the same DOM event.
-- **Optimistic hotOverlay with temp ID**: `temp-${Date.now()}` added before mutateAsync, swapped with real ID on success, removed on error.
-- **DrawActionRow stays until user acts**: Removed 8s auto-dismiss — user drives dismiss.
-- **`oninput` → local state only, `onchange` → flush stores**: Prevents layerRenderCache recompute on every slider tick.
+**Wave 2: F10 Annotations (COMPLETE)**
 
-## Active Skills & Routing
-- `executing-plans` — was active for Wave 1 (F03/F04). Plan at `docs/superpowers/plans/2026-03-30-wave1-mapcanvas-decomposition.md` is fully executed.
-- Next task (F07, F08, or F12) should use `shadow-walk` to trace the filtering/panel flows before editing.
+- Task 5: AnnotationMutations.ts module with 8 factory functions ✅
+- Task 6: AnnotationForm.svelte component (6 content types, image upload, measurement pre-fill) ✅
+- Task 7: AnnotationList.svelte component ✅
+- Task 8: AnnotationPanel orchestrator rewritten from 1280 to ~350 lines ✅
+- Commit: 373a14d
 
-## Infrastructure Delta
-No infrastructure changes this session.
+**Wave 3: F11 Export (COMPLETE)**
 
-## Knowledge State
-- **Indexed**: Neither reference repo was `context add`'d — explored via context-mode sandbox only.
-- **Productive tiers**: Default foxhound routing not used this session — direct file reads were primary.
-- **Gaps**: `svelte-maplibre-gl` v1.0.3 has minimal docs. Layer event props (`MapLayerEventProps`) in `layers/common.d.ts`. `FeatureState` component is exported and works — `id`, `source`, `state` props confirmed working.
+- Task 9: ExportStore class with 11 unit tests ✅
+- Task 10: Unified POST /api/export + SSE progress endpoint ✅
+- Task 11: ExportDialog wired to ExportStore ✅
+- Task 12: Existing GET routes verified via characterization tests ✅
+- Commits: 6f1880c, f645bfe, [TASK11_COMMIT]
+
+### Test Status
+
+- 838/848 tests passing (10 pre-existing failures from pg/sql.js infrastructure)
+- All new tests pass (11 export-store + 9 export-api)
+- ExportDialog: no new svelte-check errors
+
+## Completed Work
+
+### Task 11: ExportDialog Wiring
+
+**Changes made to `apps/web/src/lib/components/data/ExportDialog.svelte`:**
+
+1. ✅ Import ExportStore and create instance
+2. ✅ Replace 4 boolean states (exportingGeoJSON, exportingGpkg, exportingShp, exportingPdf) with ExportStore
+3. ✅ Keep PNG and annotations exports separate (different patterns)
+4. ✅ Add `subscribeToProgress()` for SSE progress tracking
+5. ✅ Add `handleExport()` unified handler for POST /api/export
+6. ✅ Update progress bar to show real progress from ExportStore
+7. ✅ Update all export buttons to use ExportStore state
+
+**Architecture:**
+
+- Simple exports (GeoJSON, GeoPackage, Shapefile): immediate download via 200 OK
+- Async exports (PDF): 202 Accepted → SSE progress → download when complete
+- PNG export: stays client-side via html-to-image (no server job)
+- Annotations export: stays on existing GET endpoint
+
+### Task 12: Existing GET Route Verification
+
+**Files verified:**
+
+- `apps/web/src/routes/api/export/[layerId]/+server.ts` - unchanged, still works for direct exports
+- Characterization tests confirm backward compatibility
+
+## Key Design Decisions
+
+1. **ExportStore Pattern:** Unified state machine (idle → pending → processing → complete/error)
+2. **Async Exports:** PDF creates jobs; simple exports return immediately
+3. **SSE Progress:** Reuses F02 pattern from import jobs
+4. **Backward Compatibility:** Existing GET endpoints preserved
+5. **PNG Export:** Stays separate (client-side, no server round-trip)
+6. **Annotations Export:** Stays on separate endpoint (different data source)
+
+## Files Created/Modified
+
+**New files:**
+
+- `apps/web/src/lib/stores/export-store.svelte.ts`
+- `apps/web/src/__tests__/export-store.test.ts`
+- `apps/web/src/routes/api/export/+server.ts`
+- `apps/web/src/routes/api/export/progress/+server.ts`
+- `apps/web/src/__tests__/export-api.test.ts`
+
+**Modified files:**
+
+- `apps/web/src/lib/components/data/ExportDialog.svelte` (387 → ~470 lines)
+
+## Open Questions (Resolved)
+
+1. ✅ PNG export stays separate (client-side, no ExportStore needed)
+2. ✅ Annotations export stays on separate endpoint
+3. ✅ ZIP creation for multi-layer exports deferred to future iteration
 
 ## Next Steps
-1. **Pick next from DAG** — `sd ready` shows: F07 (filtering split-brain), F08 (geoprocessing), F12 (panel nav High), N01/N02/N03 new flows. F12 is highest priority but needs new EditorLayout store — use `brainstorming` skill first.
-2. **F07 (felt-like-it-565b)** — Filtering split-brain: `filterStore` ephemeral state vs layer DB state. Find filter UI components and trace the split.
-3. **F12 (felt-like-it-2eaa)** — High priority. Three panel systems (activePanelIcon, activeSection, showDataTable+dialogs). Needs brainstorming before coding — unified EditorLayout store + URL-reflected state.
-4. **Fix `sd-next.sh`** — jq fails when `sd ready --json` output contains non-object items. Until fixed, use `sd ready` (plain text) for task selection.
 
-## Context Files
-- `docs/superpowers/specs/2026-03-30-reference-driven-enhancement-design.md` — design spec with wave ordering
-- `docs/research/e2e-flow-audit-consolidated.md` — all 20 flow problems with severity ratings
-- `apps/web/src/lib/components/map/DataLayerRenderer.svelte` — 184 LOC, extracted from MapCanvas
-- `apps/web/src/lib/components/map/MapCanvas.svelte` — 369 LOC (was 887), now delegates to child renderers
-- `apps/web/src/lib/components/map/map-styles.ts` — `getHoverAwarePaint(layer, type, highlightColor?)` — both hover+selected in one call
+1. Commit Task 11 changes
+2. Run Wave 4 verification (full test suite + svelte-check + lint)
+3. Close F11 feature group
