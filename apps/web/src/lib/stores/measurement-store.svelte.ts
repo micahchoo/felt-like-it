@@ -1,13 +1,16 @@
 import type { GeoJSON } from 'geojson';
 import type { DistanceMeasurement, AreaMeasurement } from '@felt-like-it/geo-engine';
 
-/** Unified measurement result with geometry for annotation saving and tooltip positioning. */
+/** Unified measurement result with geometry for annotation saving and tooltip positioning.
+ *  Extends geo-engine fields so MeasurementPanel can still access areaM2/perimeterKm. */
 export interface MeasurementResult {
   type: 'distance' | 'area';
   value: number;
   vertexCount: number;
   distanceKm?: number;
   areaKm2?: number;
+  areaM2?: number;
+  perimeterKm?: number;
   geometry: GeoJSON.Geometry;
 }
 
@@ -25,6 +28,8 @@ function fromGeoEngine(result: DistanceMeasurement | AreaMeasurement): Measureme
     vertexCount: result.vertexCount,
     distanceKm: result.type === 'distance' ? result.distanceKm : undefined,
     areaKm2: result.type === 'area' ? result.areaM2 / 1_000_000 : undefined,
+    areaM2: result.type === 'area' ? result.areaM2 : undefined,
+    perimeterKm: result.type === 'area' ? result.perimeterKm : undefined,
     geometry:
       result.type === 'distance'
         ? { type: 'LineString', coordinates: result.coordinates as [number, number][] }
