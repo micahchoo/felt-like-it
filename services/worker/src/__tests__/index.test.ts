@@ -35,11 +35,11 @@ vi.mock('ioredis', () => ({
   })),
 }));
 
-// BullMQ mock — capture the processor function
-let capturedProcessor: ((job: unknown) => Promise<void>) | null = null;
+// BullMQ mock — capture processor functions by queue name
+let capturedProcessors: Record<string, (job: unknown) => Promise<void>> = {};
 vi.mock('bullmq', () => ({
-  Worker: vi.fn().mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
-    capturedProcessor = processor;
+  Worker: vi.fn().mockImplementation((name: string, processor: (job: unknown) => Promise<void>) => {
+    capturedProcessors[name] = processor;
     return {
       on: vi.fn(),
       close: vi.fn(),
@@ -142,13 +142,20 @@ beforeEach(async () => {
   mockDetectCoordinateColumns.mockReset();
   mockDetectAddressColumn.mockReset();
   mockGeocodeBatch.mockReset();
-  capturedProcessor = null;
+  capturedProcessors = {};
   await import('../../src/index.js');
 });
 
 async function runProcessor(data: unknown): Promise<void> {
-  if (!capturedProcessor) throw new Error('Worker processor was not captured — import failed');
-  return capturedProcessor(fakeJob(data));
+  const processor = capturedProcessors['file-import'];
+  if (!processor) throw new Error('Worker processor was not captured — import failed');
+  return processor(fakeJob(data));
+}
+
+async function runGeoprocessingProcessor(data: unknown): Promise<void> {
+  const processor = capturedProcessors['geoprocessing'];
+  if (!processor) throw new Error('Geoprocessing processor was not captured — import failed');
+  return processor(fakeJob(data));
 }
 
 // ─── 1. ImportJobPayload Zod validation ───────────────────────────────────────
@@ -269,7 +276,10 @@ describe('format detection routes to correct parser', () => {
   });
 
   it('routes .csv to parseCSV', async () => {
-    mockParseCSV.mockResolvedValue({ headers: ['lat', 'lng', 'name'], rows: [{ lat: '0', lng: '0', name: 'a' }] });
+    mockParseCSV.mockResolvedValue({
+      headers: ['lat', 'lng', 'name'],
+      rows: [{ lat: '0', lng: '0', name: 'a' }],
+    });
     mockDetectCoordinateColumns.mockReturnValue({ lat: 'lat', lng: 'lng' });
     mockCsvRowsToFeatures.mockReturnValue(pointFeature);
     await runProcessor(validPayload({ fileName: 'data.csv', filePath: `${UPLOAD_DIR}/data.csv` }));
@@ -310,7 +320,9 @@ describe('format detection routes to correct parser', () => {
       features: [{ wkbHex: '0101000000', srid: 4326, properties: {} }],
       layerType: 'point',
     });
-    await runProcessor(validPayload({ fileName: 'data.gpkg', filePath: `${UPLOAD_DIR}/data.gpkg` }));
+    await runProcessor(
+      validPayload({ fileName: 'data.gpkg', filePath: `${UPLOAD_DIR}/data.gpkg` })
+    );
 
     expect(mockParseGeoPackage).toHaveBeenCalledOnce();
   });
@@ -335,7 +347,9 @@ describe('format detection routes to correct parser', () => {
 describe('error handling', () => {
   it('marks job as failed when parser throws', async () => {
     setupDbForLayerCreation();
-    mockParseGeoJSON.mockRejectedValue(new Error('File not found: /tmp/felt-uploads/missing.geojson'));
+    mockParseGeoJSON.mockRejectedValue(
+      new Error('File not found: /tmp/felt-uploads/missing.geojson')
+    );
 
     await expect(
       runProcessor(validPayload({ filePath: `${UPLOAD_DIR}/missing.geojson` }))
@@ -357,9 +371,7 @@ describe('error handling', () => {
     setupDbForLayerCreation();
     mockParseGeoJSON.mockRejectedValue('string error');
 
-    await expect(
-      runProcessor(validPayload())
-    ).rejects.toBe('string error');
+    await expect(runProcessor(validPayload())).rejects.toBe('string error');
 
     // The catch block uses String(err) for non-Error values
     const failCall = (mockDbExecute as Mock).mock.calls.find((call) =>
@@ -391,11 +403,11 @@ describe('error handling', () => {
     await runProcessor(validPayload());
 
     // Verify cleanup queries were issued
-    const deleteFeatures = (mockPoolQuery as Mock).mock.calls.find((call) =>
-      typeof call[0] === 'string' && call[0].includes('DELETE FROM features')
+    const deleteFeatures = (mockPoolQuery as Mock).mock.calls.find(
+      (call) => typeof call[0] === 'string' && call[0].includes('DELETE FROM features')
     );
-    const deleteLayers = (mockPoolQuery as Mock).mock.calls.find((call) =>
-      typeof call[0] === 'string' && call[0].includes('DELETE FROM layers')
+    const deleteLayers = (mockPoolQuery as Mock).mock.calls.find(
+      (call) => typeof call[0] === 'string' && call[0].includes('DELETE FROM layers')
     );
     expect(deleteFeatures).toBeDefined();
     expect(deleteLayers).toBeDefined();
