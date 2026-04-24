@@ -389,10 +389,12 @@ Both touch the annotation object but along orthogonal axes — groups adds a FK,
 **Codebooks:** `interactive-spatial-editing`
 **Files:**
 - Modify: `apps/web/src/lib/components/map/AnnotationRenderer.svelte` (paint expressions branch on `feature.properties.style`)
-- Test: add a Playwright UI test asserting the stroke-dasharray attribute on a rendered annotation matches `style.strokeStyle === 'dashed'`.
+- Test: add a Playwright UI test asserting the stroke-color / stroke-width / fill-opacity attributes on a rendered annotation match the style payload.
 
 - [ ] **Steps:** Define a `styleToPaint(style)` helper that returns the MapLibre paint properties, unit-test that directly. Then wire it into the SymbolLayer / LineLayer / FillLayer paint props.
 - [ ] **Commit** · `git commit -m "feat(annotations): renderer honors style (Wave 3.3)"`.
+
+> **Known v1 limitation (`felt-like-it-2b5c`):** MapLibre GL JS does **not** support data-driven `line-dasharray`. Per-annotation dash style (`strokeStyle: 'dashed' | 'dotted'`) is therefore accepted by the schema and round-trips through the API, but the renderer cannot apply it on a single mixed-style LineLayer. Workaround paths: (a) split into N parallel LineLayers filtered by `strokeStyle`, accepting the layer-count cost; (b) wait for upstream MapLibre data-driven dash support; (c) document as v1 limitation. Defaulting to (c) — color/width/opacity per-annotation styling already covers the most common Felt-parity ask.
 
 ### Task 3.4 (Styling): UI — Style tab in AnnotationStylePanel
 

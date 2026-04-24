@@ -50,7 +50,7 @@ The left toolbar provides drawing tools:
 
 | Tool | Icon | Action |
 |------|------|--------|
-| Select | Arrow | Click features to select; drag to move |
+| Select | Arrow | Click features to select. **Drawn features** can be dragged to move; **imported features** (from a layer file) cannot — to edit imported features, use the data table or re-import. |
 | Point | Circle | Click to place a point |
 | Line | Line | Click to add vertices; double-click to finish |
 | Polygon | Pentagon | Click to add vertices; double-click to close |
