@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { resolve } from 'path';
 
 describe('Export API', () => {
-  describe('POST /api/export endpoint', () => {
+  describe('POST /api/v1/export endpoint', () => {
     it('exists and handles export requests', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile(resolve('src/routes/api/export/+server.ts'), 'utf-8')
+        fs.readFile(resolve('src/routes/api/v1/export/+server.ts'), 'utf-8')
       );
       expect(content).toMatch(/export const POST/);
       expect(content).toMatch(/ExportFormat/);
@@ -14,7 +14,7 @@ describe('Export API', () => {
 
     it('validates format parameter', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile(resolve('src/routes/api/export/+server.ts'), 'utf-8')
+        fs.readFile(resolve('src/routes/api/v1/export/+server.ts'), 'utf-8')
       );
       expect(content).toMatch(/validFormats/);
       expect(content).toMatch(/geojson/);
@@ -25,7 +25,7 @@ describe('Export API', () => {
 
     it('creates jobs for async processing', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile(resolve('src/routes/api/export/+server.ts'), 'utf-8')
+        fs.readFile(resolve('src/routes/api/v1/export/+server.ts'), 'utf-8')
       );
       expect(content).toMatch(/importJobs/);
       expect(content).toMatch(/processExportJob/);
@@ -34,17 +34,17 @@ describe('Export API', () => {
 
     it('handles direct exports for single layers', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile(resolve('src/routes/api/export/+server.ts'), 'utf-8')
+        fs.readFile(resolve('src/routes/api/v1/export/+server.ts'), 'utf-8')
       );
       expect(content).toMatch(/handleDirectExport/);
       expect(content).toMatch(/targetLayerIds\.length === 1/);
     });
   });
 
-  describe('GET /api/export/progress SSE endpoint', () => {
+  describe('GET /api/v1/export/progress SSE endpoint', () => {
     it('exists and streams progress', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile(resolve('src/routes/api/export/progress/+server.ts'), 'utf-8')
+        fs.readFile(resolve('src/routes/api/v1/export/progress/+server.ts'), 'utf-8')
       );
       expect(content).toMatch(/export const GET/);
       expect(content).toMatch(/ReadableStream/);
@@ -53,7 +53,7 @@ describe('Export API', () => {
 
     it('polls job status every second', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile(resolve('src/routes/api/export/progress/+server.ts'), 'utf-8')
+        fs.readFile(resolve('src/routes/api/v1/export/progress/+server.ts'), 'utf-8')
       );
       expect(content).toMatch(/setInterval/);
       expect(content).toMatch(/1000/);
@@ -61,7 +61,7 @@ describe('Export API', () => {
 
     it('closes stream when job completes or fails', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile(resolve('src/routes/api/export/progress/+server.ts'), 'utf-8')
+        fs.readFile(resolve('src/routes/api/v1/export/progress/+server.ts'), 'utf-8')
       );
       expect(content).toMatch(/status === 'done'/);
       expect(content).toMatch(/status === 'failed'/);

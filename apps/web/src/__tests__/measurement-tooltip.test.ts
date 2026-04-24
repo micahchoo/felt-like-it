@@ -22,16 +22,18 @@ describe('MeasurementTooltip', () => {
     type: 'area' as const,
     value: 5000000,
     vertexCount: 4,
+    areaM2: 5000000,
     areaKm2: 5.0,
+    perimeterKm: 4,
     geometry: {
       type: 'Polygon' as const,
       coordinates: [
         [
-          [0, 0],
-          [1, 0],
-          [1, 1],
-          [0, 1],
-          [0, 0],
+          [0, 0] as [number, number],
+          [1, 0] as [number, number],
+          [1, 1] as [number, number],
+          [0, 1] as [number, number],
+          [0, 0] as [number, number],
         ],
       ],
     },

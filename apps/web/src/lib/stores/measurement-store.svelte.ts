@@ -1,39 +1,53 @@
-import type { GeoJSON } from 'geojson';
 import type { DistanceMeasurement, AreaMeasurement } from '@felt-like-it/geo-engine';
 
-/** Unified measurement result with geometry for annotation saving and tooltip positioning.
- *  Extends geo-engine fields so MeasurementPanel can still access areaM2/perimeterKm. */
-export interface MeasurementResult {
-  type: 'distance' | 'area';
-  value: number;
-  vertexCount: number;
-  distanceKm?: number;
-  areaKm2?: number;
-  areaM2?: number;
-  perimeterKm?: number;
-  geometry: GeoJSON.Geometry;
-}
+export type MeasurementLineString = { type: 'LineString'; coordinates: [number, number][] };
+export type MeasurementPolygon = { type: 'Polygon'; coordinates: [number, number][][] };
+
+/** Unified measurement result — discriminated union so TS narrows
+ *  distance-only vs area-only fields and geometry shape by `type`. */
+export type MeasurementResult =
+  | {
+      type: 'distance';
+      value: number;
+      vertexCount: number;
+      distanceKm: number;
+      geometry: MeasurementLineString;
+    }
+  | {
+      type: 'area';
+      value: number;
+      vertexCount: number;
+      areaM2: number;
+      areaKm2: number;
+      perimeterKm: number;
+      geometry: MeasurementPolygon;
+    };
 
 export interface SaveAsAnnotationPayload {
   title: string;
   content: string;
-  geometry: GeoJSON.Geometry;
+  geometry: MeasurementLineString | MeasurementPolygon;
 }
 
 /** Convert geo-engine DistanceMeasurement/AreaMeasurement to unified MeasurementResult. */
 function fromGeoEngine(result: DistanceMeasurement | AreaMeasurement): MeasurementResult {
+  if (result.type === 'distance') {
+    return {
+      type: 'distance',
+      value: result.distanceKm * 1000,
+      vertexCount: result.vertexCount,
+      distanceKm: result.distanceKm,
+      geometry: { type: 'LineString', coordinates: result.coordinates as [number, number][] },
+    };
+  }
   return {
-    type: result.type,
-    value: result.type === 'distance' ? result.distanceKm * 1000 : result.areaM2,
+    type: 'area',
+    value: result.areaM2,
     vertexCount: result.vertexCount,
-    distanceKm: result.type === 'distance' ? result.distanceKm : undefined,
-    areaKm2: result.type === 'area' ? result.areaM2 / 1_000_000 : undefined,
-    areaM2: result.type === 'area' ? result.areaM2 : undefined,
-    perimeterKm: result.type === 'area' ? result.perimeterKm : undefined,
-    geometry:
-      result.type === 'distance'
-        ? { type: 'LineString', coordinates: result.coordinates as [number, number][] }
-        : { type: 'Polygon', coordinates: result.coordinates as [number, number][][] },
+    areaM2: result.areaM2,
+    areaKm2: result.areaM2 / 1_000_000,
+    perimeterKm: result.perimeterKm,
+    geometry: { type: 'Polygon', coordinates: result.coordinates as [number, number][][] },
   };
 }
 

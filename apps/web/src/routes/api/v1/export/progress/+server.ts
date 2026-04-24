@@ -1,39 +1,50 @@
+/* global ReadableStream, TextEncoder */
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import { db } from '$lib/server/db/index.js';
-import { importJobs } from '$lib/server/db/schema.js';
+import { importJobs, maps } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 /**
  * SSE endpoint for export job progress.
- * GET /api/export/progress?jobId=<jobId>
+ * GET /api/v1/export/progress?jobId=<jobId>
  *
  * Streams progress updates for async export jobs.
  * Reuses the same pattern as import progress (F02).
  */
 export const GET: RequestHandler = async ({ url, locals, request }) => {
   if (!locals.user) {
-    error(401, 'Unauthorized');
+    throw error(401, 'Unauthorized');
   }
+  const user = locals.user;
 
   const jobId = url.searchParams.get('jobId');
   if (!jobId) {
-    error(400, 'Missing jobId parameter');
+    throw error(400, 'Missing jobId parameter');
   }
 
-  // Verify job exists and user has access
-  const job = await db.query.importJobs.findFirst({
-    where: eq(importJobs.id, jobId),
-    with: { map: true },
-  });
+  // Verify job exists and user has access (joined query — Drizzle relations not declared)
+  const [row] = await db
+    .select({
+      status: importJobs.status,
+      progress: importJobs.progress,
+      errorMessage: importJobs.errorMessage,
+      ownerId: maps.userId,
+    })
+    .from(importJobs)
+    .innerJoin(maps, eq(importJobs.mapId, maps.id))
+    .where(eq(importJobs.id, jobId))
+    .limit(1);
 
-  if (!job) {
-    error(404, 'Export job not found');
+  if (!row) {
+    throw error(404, 'Export job not found');
   }
 
-  if (job.map.ownerId !== locals.user.id) {
-    error(403, 'Access denied');
+  if (row.ownerId !== user.id) {
+    throw error(403, 'Access denied');
   }
+
+  const job = row;
 
   const stream = new ReadableStream({
     start(controller) {

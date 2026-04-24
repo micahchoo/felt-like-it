@@ -10,11 +10,20 @@
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { MousePointer2, Circle, Spline, Pentagon } from 'lucide-svelte';
   import { measureLine, measurePolygon } from '@felt-like-it/geo-engine';
-  import type { MeasurementResult } from '@felt-like-it/geo-engine';
+  import type { DistanceMeasurement, AreaMeasurement } from '@felt-like-it/geo-engine';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { queryKeys } from '$lib/utils/query-keys.js';
   import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
   import type { GeoJSONStoreFeatures } from 'terra-draw';
+
+  // TYPE_DEBT: terra-draw's GeoJSONStoreFeatures treats `id` as an optional property
+  // and `properties` as an opaque record. Shape SnapshotFeature structurally compatible
+  // under exactOptionalPropertyTypes; non-null-assert `.id!` is safe at call sites because
+  // terra-draw assigns an id on every finish event (validated at runtime).
+  type SnapshotFeature = {
+    id?: string | number | undefined;
+    properties: Record<string, unknown>;
+  };
 
   interface Props {
     map: MapLibreMap;
@@ -24,7 +33,7 @@
      * are NOT saved to any layer — instead, the computed measurement is passed
      * to this callback.  The caller is responsible for displaying the result.
      */
-    onmeasured?: ((_result: MeasurementResult) => void) | undefined;
+    onmeasured?: ((_result: DistanceMeasurement | AreaMeasurement) => void) | undefined;
     /**
      * When provided, the next drawn polygon is captured as an annotation region
      * instead of being saved to a layer. The callback receives the polygon geometry.
@@ -38,16 +47,20 @@
   const editorState = getMapEditorState();
   const queryClient = useQueryClient();
 
+  // TYPE_DEBT: TanStack Query v5 + tRPC client don't unify the mutationFn return shape
+  // when used through createMutation(). Cast unblocks the factory; call sites below
+  // consume .mutateAsync() via the same cast.
+  type FeatureUpsertInput = {
+    layerId: string;
+    features: { geometry: Record<string, unknown>; properties: Record<string, unknown> }[];
+  };
   const featureUpsertMutation = createMutation(() => ({
-    mutationFn: ((input: { layerId: string; features: { geometry: Record<string, unknown>; properties: Record<string, unknown> }[] }) =>
-      trpc.features.upsert.mutate(input)) as any,
-    onSuccess: (_data: { upsertedIds: string[] }, variables: { layerId: string }) => {
+    mutationFn: ((input: FeatureUpsertInput) =>
+      trpc.features.upsert.mutate(input)) as unknown as (input: FeatureUpsertInput) => Promise<{ upsertedIds: string[] }>,
+    onSuccess: (_data: { upsertedIds: string[] }, variables: FeatureUpsertInput) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
     },
-    onError: (_err: unknown, variables: { layerId: string }, _context: unknown) => {
-      // Clear any hot features that may have been optimistically added for this layer.
-      // saveFeature() only adds to hotOverlay after a successful await, so this is
-      // defensive coverage for any call-site that doesn't use a try/catch wrapper.
+    onError: (_err: unknown, variables: FeatureUpsertInput) => {
       hotOverlay.clearHotFeatures(variables.layerId);
       toastStore.error('Failed to save feature. Please try again.');
     },
@@ -55,11 +68,11 @@
 
   const featureDeleteMutation = createMutation(() => ({
     mutationFn: ((input: { layerId: string; ids: string[] }) =>
-      trpc.features.delete.mutate(input)) as any,
-    onSuccess: (_data: unknown, variables: { layerId: string }) => {
+      trpc.features.delete.mutate(input)) as unknown as (input: { layerId: string; ids: string[] }) => Promise<unknown>,
+    onSuccess: (_data: unknown, variables: { layerId: string; ids: string[] }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
     },
-    onError: (_err: unknown, _variables: unknown, _context: unknown) => {
+    onError: () => {
       // The feature was NOT deleted — it still exists in the DB.
       // No hotOverlay cleanup needed; notify the user so they can retry.
       toastStore.error('Failed to delete feature. Please try again.');
@@ -176,7 +189,7 @@
     });
 
     try {
-      const { upsertedIds } = await (featureUpsertMutation as any).mutateAsync({
+      const { upsertedIds } = await featureUpsertMutation.mutateAsync({
         layerId: activeLayer.id,
         features: [{ geometry, properties }],
       });
@@ -196,12 +209,12 @@
         description: `Draw ${f.geometry.type}`,
         undo: async () => {
           if (upsertedIds[0]) {
-            await (featureDeleteMutation as any).mutateAsync({ layerId: activeLayer.id, ids: [upsertedIds[0]] });
+            await featureDeleteMutation.mutateAsync({ layerId: activeLayer.id, ids: [upsertedIds[0]] });
             hotOverlay.removeHotFeature(activeLayer.id, upsertedIds[0]);
           }
         },
         redo: async () => {
-          const result = await (featureUpsertMutation as any).mutateAsync({
+          const result = await featureUpsertMutation.mutateAsync({
             layerId: activeLayer.id,
             features: [{ geometry, properties }],
           });
@@ -238,7 +251,7 @@
       // Before switching modes, check for in-progress (unsaved) geometry
       const snapshot = editorState.drawingInstance.getSnapshot() ?? [];
       // TYPE_DEBT: terra-draw GeoJSONStoreFeatures properties are typed as Record<string,unknown>
-      const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
+      const inProgress = snapshot.filter((f: SnapshotFeature) => f.properties?.mode !== 'static');
       if (inProgress.length > 0) {
         // Schedule confirm outside reactive cycle to avoid blocking $effect
         const instance = editorState.drawingInstance;
@@ -246,7 +259,7 @@
           const confirmed = window.confirm('You have an unfinished drawing. Discard it?');
           if (!confirmed) return;
           try {
-            instance.removeFeatures(inProgress.map((f: any) => f.id!));
+            instance.removeFeatures(inProgress.map((f: SnapshotFeature) => f.id!));
           } catch (e) {
             console.warn('[DrawingToolbar] removeFeatures during tool switch failed:', e);
           }
@@ -276,10 +289,10 @@
         const snapshot = editorState.drawingInstance?.getSnapshot();
         if (snapshot) {
           // TYPE_DEBT: terra-draw GeoJSONStoreFeatures properties are typed as Record<string,unknown>
-          const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
+          const inProgress = snapshot.filter((f: SnapshotFeature) => f.properties?.mode !== 'static');
           if (inProgress.length > 0) {
             try {
-              editorState.drawingInstance?.removeFeatures(inProgress.map((f: any) => f.id!));
+              editorState.drawingInstance?.removeFeatures(inProgress.map((f: SnapshotFeature) => f.id!));
             } catch (e) {
               console.warn('[DrawingToolbar] removeFeatures on Escape failed:', e);
             }
@@ -320,10 +333,10 @@
       // Clean up in-progress features now so the $effect sync won't prompt again
       if (editorState.drawingInstance) {
         const snapshot = editorState.drawingInstance.getSnapshot() ?? [];
-        const inProgress = snapshot.filter((f: any) => f.properties?.mode !== 'static');
+        const inProgress = snapshot.filter((f: SnapshotFeature) => f.properties?.mode !== 'static');
         if (inProgress.length > 0) {
           try {
-            editorState.drawingInstance.removeFeatures(inProgress.map((f: any) => f.id!));
+            editorState.drawingInstance.removeFeatures(inProgress.map((f: SnapshotFeature) => f.id!));
           } catch (e) {
             console.warn('[DrawingToolbar] removeFeatures during tool switch failed:', e);
           }

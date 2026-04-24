@@ -194,17 +194,20 @@
     // Use first annotation's coordinates if available
     const ann = annotations.find((a) => a.id === annotation.id);
     if (!ann) return;
-    const coords =
-      ann.anchor?.type === 'point'
-        ? (ann.anchor as { coordinates: [number, number] }).coordinates
-        : ann.anchor?.type === 'region'
-          ? (ann.anchor.geometry as { coordinates: [[number, number]] }).coordinates[0][0]
-          : [0, 0];
+    let coords: [number, number] = [0, 0];
+    if (ann.anchor?.type === 'point') {
+      const pt = ann.anchor.geometry.coordinates;
+      coords = [pt[0], pt[1]];
+    } else if (ann.anchor?.type === 'region') {
+      const firstRing = ann.anchor.geometry.coordinates[0];
+      const firstVertex = firstRing?.[0];
+      if (firstVertex) coords = [firstVertex[0], firstVertex[1]];
+    }
     try {
       await convertToPoint.mutateAsync({
         mapId,
         annotationId: annotation.id,
-        coordinates: coords as [number, number],
+        coordinates: coords,
       });
     } catch {
       toastStore.error('Failed to convert annotation to point.');

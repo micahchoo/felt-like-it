@@ -35,7 +35,7 @@ describe('FiltersStore', () => {
   it('adds a condition and updates URL', () => {
     store.addCondition({ field: 'name', operator: 'eq', value: 'test' });
     expect(store.conditions).toHaveLength(1);
-    expect(store.conditions[0].field).toBe('name');
+    expect(store.conditions[0]!.field).toBe('name');
   });
 
   it('removes a condition by index', () => {
@@ -43,7 +43,7 @@ describe('FiltersStore', () => {
     store.addCondition({ field: 'type', operator: 'cn', value: 'b' });
     store.removeCondition(0);
     expect(store.conditions).toHaveLength(1);
-    expect(store.conditions[0].field).toBe('type');
+    expect(store.conditions[0]!.field).toBe('type');
   });
 
   it('serializes conditions to URL params', () => {

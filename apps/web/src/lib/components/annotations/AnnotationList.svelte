@@ -18,7 +18,7 @@
   interface Props {
     annotations: AnnotationObject[];
     comments: CommentEntry[];
-    userId?: string;
+    userId?: string | undefined;
     expandedAnnotationId: string | null;
     replyingTo: string | null;
     replyText: string;

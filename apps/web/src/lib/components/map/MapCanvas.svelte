@@ -10,7 +10,7 @@
   import type { Layer, GeoJSONFeature } from '@felt-like-it/shared-types';
   import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
   import { fslFiltersToMapLibre } from '@felt-like-it/geo-engine';
-  import type { MeasurementResult } from '@felt-like-it/geo-engine';
+  import type { DistanceMeasurement, AreaMeasurement } from '@felt-like-it/geo-engine';
   import {
     getHoverAwarePaint,
     getLabelAttribute,
@@ -20,7 +20,7 @@
     getSymbolLayout,
     getLayerFilter as getLayerFilterBase,
   } from './map-styles.js';
-  import { filterStore } from '$lib/stores/filters.svelte.js';
+  import type { FiltersStore } from '$lib/stores/filters-store.svelte.js';
   import DrawingToolbar from './DrawingToolbar.svelte';
   import FeaturePopup from './FeaturePopup.svelte';
   import DeckGLOverlay from './DeckGLOverlay.svelte';
@@ -49,7 +49,7 @@
      * When provided, the drawing toolbar enters measurement mode: drawn features
      * are NOT saved to any layer — instead the computed MeasurementResult is passed here.
      */
-    onmeasured?: (_result: MeasurementResult) => void;
+    onmeasured?: (_result: DistanceMeasurement | AreaMeasurement) => void;
     /**
      * When provided, the next drawn polygon is captured as an annotation region.
      */
@@ -64,9 +64,11 @@
     onbadgeclick?: (_featureId: string) => void;
     /** Measurement annotation geometries rendered as dashed lines/fills. */
     measurementAnnotations?: { type: 'FeatureCollection'; features: { type: 'Feature'; geometry: unknown; properties: Record<string, unknown> }[] };
+    /** Map-scoped filter store (owned by MapEditor). When omitted, no UI filters are applied. */
+    filtersStore?: FiltersStore;
   }
 
-  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions, annotatedFeatures, onbadgeclick, measurementAnnotations }: Props = $props();
+  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions, annotatedFeatures, onbadgeclick, measurementAnnotations, filtersStore }: Props = $props();
 
   const editorState = getMapEditorState();
   let mapInstance = $state<MapLibreMap | undefined>(undefined);
@@ -227,10 +229,10 @@
     return result;
   });
 
-  /** Wrapper: pure FSL filter + reactive session-level UI filters from filterStore. */
+  /** Wrapper: pure FSL filter + reactive session-level UI filters from filtersStore prop. */
   function getLayerFilter(layer: Layer): unknown[] | undefined {
     const baseFilter = getLayerFilterBase(layer, fslFiltersToMapLibre);
-    const uiFilter = filterStore.toMapLibreFilter(layer.id);
+    const uiFilter = filtersStore?.toMapLibreFilter(layer.id);
     if (!baseFilter && !uiFilter) return undefined;
     const parts: unknown[][] = [];
     if (baseFilter) parts.push(baseFilter);
@@ -300,9 +302,11 @@
 </script>
 
 <div class="relative w-full h-full">
+  <!-- TYPE_DEBT: svelte-maplibre-gl's Props type marks `map` as required,
+       but bind:map writes it post-mount — the undefined initial value is fine. -->
   <MapLibre
     style={mapStore.basemapUrl}
-    bind:map={mapInstance as maplibregl.Map | undefined}
+    bind:map={mapInstance as unknown as maplibregl.Map}
     bind:center={mapCenter}
     bind:zoom={mapZoom}
     bind:bearing={mapBearing}

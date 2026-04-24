@@ -11,7 +11,7 @@
     /** Whether the anchored feature has been deleted. */
     featureDeleted?: boolean;
     /** Called when the user clicks "Convert to point" on an orphaned annotation. */
-    onconverttopoint?: () => void;
+    onconverttopoint?: (() => void) | undefined;
     /** Compact mode — used for hover tooltips (hides full content, shows preview). */
     compact?: boolean;
   }

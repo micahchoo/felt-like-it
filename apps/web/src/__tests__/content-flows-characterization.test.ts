@@ -162,9 +162,9 @@ describe('Content Flows — Current Behavior Characterization', () => {
       expect(content).toMatch(/Exporting/);
     });
 
-    it('Existing export routes exist at /api/export/[layerId]/+server.ts', async () => {
+    it('Existing export routes exist at /api/v1/export/[layerId]/+server.ts', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile(resolve('src/routes/api/export/[layerId]/+server.ts'), 'utf-8')
+        fs.readFile(resolve('src/routes/api/v1/export/[layerId]/+server.ts'), 'utf-8')
       );
       // Route handles GET requests via export const GET
       expect(content).toMatch(/export const GET/);

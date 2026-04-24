@@ -68,11 +68,14 @@ describe('AnnotationMutations', () => {
     const { createAnnotationMutationOptions } =
       await import('$lib/components/annotations/AnnotationMutations.js');
     const options = createAnnotationMutationOptions({ queryClient, mapId: 'map-1' });
-    await options.mutationFn!({
-      mapId: 'map-1',
-      anchor: { type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
-      content: { kind: 'single', body: { type: 'text', text: 'test' } },
-    });
+    await options.mutationFn!(
+      {
+        mapId: 'map-1',
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
+        content: { kind: 'single', body: { type: 'text', text: 'test' } },
+      },
+      {} as any,
+    );
     const { trpc } = await import('$lib/utils/trpc.js');
     expect(trpc.annotations.create.mutate).toHaveBeenCalled();
   });
@@ -81,7 +84,7 @@ describe('AnnotationMutations', () => {
     const { deleteAnnotationMutationOptions } =
       await import('$lib/components/annotations/AnnotationMutations.js');
     const options = deleteAnnotationMutationOptions({ queryClient, mapId: 'map-1' });
-    await options.mutationFn!({ id: 'ann-1' });
+    await options.mutationFn!({ id: 'ann-1' }, {} as any);
     const { trpc } = await import('$lib/utils/trpc.js');
     expect(trpc.annotations.delete.mutate).toHaveBeenCalled();
   });
@@ -90,7 +93,7 @@ describe('AnnotationMutations', () => {
     const { createCommentMutationOptions } =
       await import('$lib/components/annotations/AnnotationMutations.js');
     const options = createCommentMutationOptions({ queryClient, mapId: 'map-1' });
-    await options.mutationFn!({ mapId: 'map-1', body: 'hello' });
+    await options.mutationFn!({ mapId: 'map-1', body: 'hello' }, {} as any);
     const { trpc } = await import('$lib/utils/trpc.js');
     expect(trpc.comments.create.mutate).toHaveBeenCalled();
   });
@@ -99,7 +102,7 @@ describe('AnnotationMutations', () => {
     const { deleteCommentMutationOptions } =
       await import('$lib/components/annotations/AnnotationMutations.js');
     const options = deleteCommentMutationOptions({ queryClient, mapId: 'map-1' });
-    await options.mutationFn!({ id: 'comment-1' });
+    await options.mutationFn!({ id: 'comment-1' }, {} as any);
     const { trpc } = await import('$lib/utils/trpc.js');
     expect(trpc.comments.delete.mutate).toHaveBeenCalled();
   });
@@ -117,18 +120,21 @@ describe('AnnotationMutations', () => {
     const options = createAnnotationMutationOptions({ queryClient, mapId: 'map-1' });
 
     // Call onMutate directly to test the optimistic update
-    const context = await options.onMutate!({
-      mapId: 'map-1',
-      anchor: { type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
-      content: { kind: 'single', body: { type: 'text', text: 'test' } },
-    });
+    const context = await options.onMutate!(
+      {
+        mapId: 'map-1',
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
+        content: { kind: 'single', body: { type: 'text', text: 'test' } },
+      },
+      {} as any,
+    );
 
     const cache = queryClient.getQueryData(['annotations', 'list', { mapId: 'map-1' }]) as Array<{
       id: string;
     }>;
     // Should have the existing item + the optimistic temp item
     expect(cache.length).toBe(2);
-    expect(cache[1].id).toMatch(/^temp-\d+$/);
+    expect(cache[1]!.id).toMatch(/^temp-\d+$/);
     // Context should contain previous state and optimisticId
     expect(context).toHaveProperty('previous');
     expect(context).toHaveProperty('optimisticId');
@@ -147,13 +153,13 @@ describe('AnnotationMutations', () => {
     );
 
     const options = deleteAnnotationMutationOptions({ queryClient, mapId: 'map-1' });
-    await options.onMutate!({ id: 'ann-1' });
+    await options.onMutate!({ id: 'ann-1' }, {} as any);
 
     const cache = queryClient.getQueryData(['annotations', 'list', { mapId: 'map-1' }]) as Array<{
       id: string;
     }>;
     expect(cache.length).toBe(1);
-    expect(cache[0].id).toBe('ann-2');
+    expect(cache[0]!.id).toBe('ann-2');
   });
 
   it('createAnnotation onError restores previous cache', async () => {
@@ -166,11 +172,14 @@ describe('AnnotationMutations', () => {
     const options = createAnnotationMutationOptions({ queryClient, mapId: 'map-1' });
 
     // Simulate onMutate adding optimistic item
-    const context = await options.onMutate!({
-      mapId: 'map-1',
-      anchor: { type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
-      content: { kind: 'single', body: { type: 'text', text: 'test' } },
-    });
+    const context = await options.onMutate!(
+      {
+        mapId: 'map-1',
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
+        content: { kind: 'single', body: { type: 'text', text: 'test' } },
+      },
+      {} as any,
+    );
 
     // Verify optimistic item was added
     let cache = queryClient.getQueryData(['annotations', 'list', { mapId: 'map-1' }]) as Array<{
@@ -179,11 +188,11 @@ describe('AnnotationMutations', () => {
     expect(cache.length).toBe(2);
 
     // Simulate error — onError should restore previous
-    options.onError!(new Error('fail'), {} as any, context as any);
+    options.onError!(new Error('fail'), {} as any, context as any, {} as any);
     cache = queryClient.getQueryData(['annotations', 'list', { mapId: 'map-1' }]) as Array<{
       id: string;
     }>;
     expect(cache.length).toBe(1);
-    expect(cache[0].id).toBe('existing-1');
+    expect(cache[0]!.id).toBe('existing-1');
   });
 });

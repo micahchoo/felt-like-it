@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import { db } from '$lib/server/db/index.js';
-import { importJobs, layers } from '$lib/server/db/schema.js';
+import { importJobs, layers, maps } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { getExportData, toFeatureCollection } from '$lib/server/export/shared.js';
@@ -21,21 +21,22 @@ interface ExportRequest {
 
 /**
  * Unified export endpoint with job tracking.
- * POST /api/export
+ * POST /api/v1/export
  *
  * Creates an export job and returns jobId for SSE progress tracking.
  * For immediate exports (single layer, no annotations), may return directly.
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
   if (!locals.user) {
-    error(401, 'Unauthorized');
+    throw error(401, 'Unauthorized');
   }
+  const user = locals.user;
 
   let body: ExportRequest;
   try {
     body = await request.json();
   } catch {
-    error(400, 'Invalid JSON body');
+    throw error(400, 'Invalid JSON body');
   }
 
   const { layerId, layerIds, format, includeAnnotations, title, screenshot } = body;
@@ -43,53 +44,57 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   // Validate format
   const validFormats: ExportFormat[] = ['geojson', 'gpkg', 'shp', 'pdf'];
   if (!format || !validFormats.includes(format)) {
-    error(400, `Invalid format. Supported: ${validFormats.join(', ')}`);
+    throw error(400, `Invalid format. Supported: ${validFormats.join(', ')}`);
   }
 
   // Validate layer access
   const targetLayerIds = layerIds ?? (layerId ? [layerId] : []);
   if (targetLayerIds.length === 0) {
-    error(400, 'No layers specified for export');
+    throw error(400, 'No layers specified for export');
   }
 
-  // Check ownership of all layers
+  // Check ownership of all layers (joined query — no Drizzle relations declared)
   await Promise.all(
     targetLayerIds.map(async (id) => {
-      const layer = await db.query.layers.findFirst({
-        where: eq(layers.id, id),
-        with: { map: true },
-      });
-      if (!layer || layer.map.ownerId !== locals.user.id) {
-        error(403, `Access denied to layer ${id}`);
+      const [row] = await db
+        .select({ userId: maps.userId })
+        .from(layers)
+        .innerJoin(maps, eq(layers.mapId, maps.id))
+        .where(eq(layers.id, id))
+        .limit(1);
+      if (!row || row.userId !== user.id) {
+        throw error(403, `Access denied to layer ${id}`);
       }
     })
   );
 
+  const firstLayerId = targetLayerIds[0];
+  if (!firstLayerId) {
+    throw error(400, 'No layers specified for export');
+  }
+
   // For single-layer exports without annotations, use existing direct export
   if (targetLayerIds.length === 1 && !includeAnnotations) {
-    const singleLayerId = targetLayerIds[0];
-
     // PDF is always async due to screenshot processing
     if (format !== 'pdf') {
-      // Direct export for immediate formats
-      return await handleDirectExport(singleLayerId, format, locals.user.id);
+      return await handleDirectExport(firstLayerId, format, user.id);
     }
   }
 
   // Create export job for async processing
   const jobId = randomUUID();
   const firstLayer = await db.query.layers.findFirst({
-    where: eq(layers.id, targetLayerIds[0]),
+    where: eq(layers.id, firstLayerId),
   });
   if (!firstLayer) {
-    error(404, 'Layer not found');
+    throw error(404, 'Layer not found');
   }
   const mapId = firstLayer.mapId;
 
   await db.insert(importJobs).values({
     id: jobId,
     mapId,
-    layerId: targetLayerIds[0], // Primary layer for reference
+    layerId: firstLayerId,
     status: 'pending',
     fileName: `export-${format}-${Date.now()}`,
     fileSize: 0,
@@ -104,7 +109,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     includeAnnotations,
     title,
     screenshot,
-    locals.user.id
+    user.id
   );
 
   // Return jobId for SSE progress tracking
@@ -157,7 +162,7 @@ async function handleDirectExport(
     }
 
     default:
-      error(400, `Format ${format} requires async processing`);
+      throw error(400, `Format ${format} requires async processing`);
   }
 }
 
@@ -165,7 +170,6 @@ async function handleDirectExport(
  * Process export job asynchronously.
  * Updates job status/progress in database.
  */
-// eslint-disable-next-line no-await-in-loop -- Sequential processing required for progress tracking
 async function processExportJob(
   jobId: string,
   layerIds: string[],
@@ -187,8 +191,10 @@ async function processExportJob(
 
     for (let i = 0; i < layerIds.length; i++) {
       const layerId = layerIds[i];
+      if (!layerId) continue;
       const progress = 10 + Math.floor((i / layerIds.length) * 70);
 
+      /* eslint-disable no-await-in-loop -- Sequential export preserves progress semantics; layers share job-row progress updates */
       await db.update(importJobs).set({ progress }).where(eq(importJobs.id, jobId));
 
       const data = await getExportData(layerId, userId);
@@ -216,6 +222,7 @@ async function processExportJob(
         default:
           throw new Error(`Unsupported format: ${format}`);
       }
+      /* eslint-enable no-await-in-loop */
 
       results.push({ layerName: data.layerName, data: result, format });
     }

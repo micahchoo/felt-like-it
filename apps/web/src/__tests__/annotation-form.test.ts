@@ -31,7 +31,7 @@ describe('AnnotationForm', () => {
           [0, 0],
           [1, 1],
           [2, 0],
-        ],
+        ] as [number, number][],
       },
     };
     render(AnnotationForm, {
@@ -54,7 +54,7 @@ describe('AnnotationForm', () => {
     const submitBtn = screen.getByRole('button', { name: /save/i });
     await submitBtn.click();
     expect(oncreate).toHaveBeenCalledTimes(1);
-    const call = oncreate.mock.calls[0][0];
+    const call = oncreate.mock.calls[0]![0];
     expect(call.mapId).toBe('map-1');
     expect(call.content.kind).toBe('single');
     expect(call.content.body.type).toBe('text');
@@ -70,7 +70,7 @@ describe('AnnotationForm', () => {
 
   it('disables submit when required field is empty', () => {
     render(AnnotationForm, { props: defaultProps });
-    const submitBtn = screen.getByRole('button', { name: /save/i });
+    const submitBtn = screen.getByRole('button', { name: /save/i }) as HTMLButtonElement;
     // Text type with empty text should disable submit
     expect(submitBtn.disabled).toBe(true);
   });

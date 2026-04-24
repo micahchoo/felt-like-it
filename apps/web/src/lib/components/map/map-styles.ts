@@ -183,8 +183,8 @@ export function getSymbolLayout(layer: Layer, labelAttr: string): NonNullable<Sy
  *   1. FSL style.filters (user-defined attribute filters)
  *   2. showOther:false guard (only show features in config.categories list)
  *
- * It does NOT include session-level UI filters (filterStore) — those are
- * ephemeral reactive state handled by MapCanvas at render time.
+ * It does NOT include session-level UI filters (FiltersStore instance) — those
+ * are ephemeral reactive state composed in MapCanvas.getLayerFilter at render time.
  *
  * @param fslFiltersToMapLibre - Injected converter (from @felt-like-it/geo-engine)
  *   so this module stays dependency-light for testing.

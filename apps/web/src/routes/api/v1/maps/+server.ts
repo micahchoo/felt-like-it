@@ -33,7 +33,15 @@ export const GET: RequestHandler = async ({ request, url, locals }) => {
     ? sql`AND (m.created_at, m.id) > (${cursor.createdAt}, ${cursor.id}::uuid)`
     : sql``;
 
-  const rows = await typedExecute<Record<string, unknown>>(sql`
+  type MapListRow = {
+    id: string;
+    title: string;
+    description: string | null;
+    basemap: string;
+    created_at: string | Date;
+    updated_at: string | Date;
+  };
+  const rows = await typedExecute<MapListRow>(sql`
     SELECT m.id, m.title, m.description, m.basemap, m.created_at, m.updated_at
     FROM maps m
     LEFT JOIN map_collaborators mc ON mc.map_id = m.id AND mc.user_id = ${auth.userId}::uuid

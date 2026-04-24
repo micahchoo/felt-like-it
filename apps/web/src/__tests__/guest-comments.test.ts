@@ -48,7 +48,10 @@ describe('comments.listForShare', () => {
       .mockReturnValueOnce(drizzleChain([MOCK_SHARE]))
       .mockReturnValueOnce(drizzleChain([MOCK_COMMENT]));
 
-    const result = await makeCaller().listForShare({ shareToken: SHARE_TOKEN });
+    const result = (await makeCaller().listForShare({ shareToken: SHARE_TOKEN })) as Array<{
+      body: string;
+      authorName: string;
+    }>;
     expect(result).toHaveLength(1);
     expect(result[0]?.body).toBe('Hello from guest');
     expect(result[0]?.authorName).toBe('Guest User');

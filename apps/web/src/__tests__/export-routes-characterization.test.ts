@@ -3,9 +3,9 @@
  * Characterization tests for existing GET export routes
  *
  * These tests document the behavior of the legacy export endpoints:
- *   - GET /api/export/[layerId]?format=(geojson|gpkg|shp)
- *   - GET /api/export/annotations/[mapId]
- *   - POST /api/export/[layerId] (PDF export)
+ *   - GET /api/v1/export/[layerId]?format=(geojson|gpkg|shp)
+ *   - GET /api/v1/export/annotations/[mapId]
+ *   - POST /api/v1/export/[layerId] (PDF export)
  *
  * The handlers are tightly coupled to SvelteKit's RequestEvent (locals.user,
  * params.layerId/mapId) and use SvelteKit's error() helper. We characterize
@@ -15,11 +15,11 @@
 
 import { describe, it, expect } from 'vitest';
 
-describe('GET /api/export/[layerId] - legacy layer export endpoint', () => {
+describe('GET /api/v1/export/[layerId] - legacy layer export endpoint', () => {
   describe('Authentication & Authorization', () => {
     it('requires authenticated user (401 if locals.user is null)', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/if\s*\(\s*!locals\.user\s*\)\s*error\s*\(\s*401/);
     });
@@ -44,14 +44,14 @@ describe('GET /api/export/[layerId] - legacy layer export endpoint', () => {
   describe('Format parameter handling', () => {
     it('defaults to geojson when format param is missing', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/url\.searchParams\.get\(['"]format['"]\)\s*\?\?\s*['"]geojson['"]/);
     });
 
     it('supports geojson, gpkg, shp formats via switch statement', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/switch\s*\(\s*format\s*\)/);
       expect(content).toMatch(/case\s*['"]geojson['"]/);
@@ -61,7 +61,7 @@ describe('GET /api/export/[layerId] - legacy layer export endpoint', () => {
 
     it('returns 400 for unsupported formats', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/error\s*\(\s*400/);
       expect(content).toMatch(/Unsupported format/);
@@ -71,7 +71,7 @@ describe('GET /api/export/[layerId] - legacy layer export endpoint', () => {
   describe('Response contracts by format', () => {
     it('geojson: returns application/geo+json with .geojson filename', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/Content-Type.*application\/geo\+json/);
       expect(content).toMatch(/filename=.*\.geojson/);
@@ -79,7 +79,7 @@ describe('GET /api/export/[layerId] - legacy layer export endpoint', () => {
 
     it('gpkg: returns application/geopackage+sqlite3 with .gpkg filename', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/Content-Type.*application\/geopackage\+sqlite3/);
       expect(content).toMatch(/filename=.*\.gpkg/);
@@ -87,7 +87,7 @@ describe('GET /api/export/[layerId] - legacy layer export endpoint', () => {
 
     it('shp: returns application/zip with .shp.zip filename', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/Content-Type.*application\/zip/);
       expect(content).toMatch(/filename=.*\.shp\.zip/);
@@ -95,7 +95,7 @@ describe('GET /api/export/[layerId] - legacy layer export endpoint', () => {
 
     it('filenames are sanitized (non-alphanumeric → underscore)', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/sanitizeFilename/);
       expect(content).toMatch(/replace\(\/\[\^a-z0-9_-\]\/gi,\s*['"]_['"]\)/);
@@ -105,39 +105,39 @@ describe('GET /api/export/[layerId] - legacy layer export endpoint', () => {
   describe('Data pipeline', () => {
     it('uses getExportData to fetch layer features with access check', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/getExportData\s*\(\s*params\.layerId/);
     });
 
     it('uses toFeatureCollection for geojson conversion', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/toFeatureCollection\s*\(\s*data\s*\)/);
     });
 
     it('uses exportAsGeoPackage for gpkg format', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/exportAsGeoPackage\s*\(\s*data\s*\)/);
     });
 
     it('uses exportAsShapefile for shp format', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/exportAsShapefile\s*\(\s*data\s*\)/);
     });
   });
 });
 
-describe('POST /api/export/[layerId] - PDF export endpoint', () => {
+describe('POST /api/v1/export/[layerId] - PDF export endpoint', () => {
   describe('Authentication', () => {
     it('requires authenticated user (401 if locals.user is null)', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       // Second occurrence is for POST handler
       const matches = content.match(/if\s*\(\s*!locals\.user\s*\)\s*error\s*\(\s*401/g);
@@ -148,7 +148,7 @@ describe('POST /api/export/[layerId] - PDF export endpoint', () => {
   describe('Request body handling', () => {
     it('accepts optional screenshot (base64 data URL) and title', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/screenshot\?/);
       expect(content).toMatch(/title\?/);
@@ -156,7 +156,7 @@ describe('POST /api/export/[layerId] - PDF export endpoint', () => {
 
     it('returns 400 for invalid JSON body', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/error\s*\(\s*400.*Invalid JSON/);
     });
@@ -165,7 +165,7 @@ describe('POST /api/export/[layerId] - PDF export endpoint', () => {
   describe('Response contract', () => {
     it('returns application/pdf with .pdf filename', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/Content-Type.*application\/pdf/);
       expect(content).toMatch(/filename=.*\.pdf/);
@@ -173,7 +173,7 @@ describe('POST /api/export/[layerId] - PDF export endpoint', () => {
 
     it('uses exportAsPdf with data + optional screenshot/title', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/[layerId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/[layerId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/exportAsPdf\s*\(\s*\{/);
       expect(content).toMatch(/data/);
@@ -182,18 +182,18 @@ describe('POST /api/export/[layerId] - PDF export endpoint', () => {
   });
 });
 
-describe('GET /api/export/annotations/[mapId] - annotations export endpoint', () => {
+describe('GET /api/v1/export/annotations/[mapId] - annotations export endpoint', () => {
   describe('Authentication & Authorization', () => {
     it('requires authenticated user (401 if locals.user is null)', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/annotations/[mapId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/annotations/[mapId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/if\s*\(\s*!locals\.user\s*\)\s*error\s*\(\s*401/);
     });
 
     it('uses annotationService.list which checks viewer access internally', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/annotations/[mapId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/annotations/[mapId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/annotationService\.list/);
       expect(content).toMatch(/checks viewer access internally/);
@@ -203,7 +203,7 @@ describe('GET /api/export/annotations/[mapId] - annotations export endpoint', ()
   describe('Response contract', () => {
     it('returns application/geo+json with annotations-[mapId].geojson filename', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/annotations/[mapId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/annotations/[mapId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/Content-Type.*application\/geo\+json/);
       expect(content).toMatch(/annotations-/);
@@ -212,7 +212,7 @@ describe('GET /api/export/annotations/[mapId] - annotations export endpoint', ()
 
     it('uses annotationsToFeatureCollection for conversion', async () => {
       const content = await import('fs/promises').then((fs) =>
-        fs.readFile('src/routes/api/export/annotations/[mapId]/+server.ts', 'utf-8')
+        fs.readFile('src/routes/api/v1/export/annotations/[mapId]/+server.ts', 'utf-8')
       );
       expect(content).toMatch(/annotationsToFeatureCollection\s*\(\s*items\s*\)/);
     });

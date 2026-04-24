@@ -33,7 +33,13 @@ export const GET: RequestHandler = async ({ request, url, params, locals }) => {
     ? sql`AND (created_at, id) > (${cursor.createdAt}, ${cursor.id}::uuid)`
     : sql``;
 
-  const rows = await typedExecute<Record<string, unknown>>(sql`
+  type FeatureRow = {
+    id: string;
+    properties: Record<string, unknown> | null;
+    geometry_type: string;
+    created_at: string | Date;
+  };
+  const rows = await typedExecute<FeatureRow>(sql`
     SELECT id, properties, GeometryType(geometry) AS geometry_type, created_at
     FROM features
     WHERE layer_id = ${layerId}::uuid ${cursorClause}

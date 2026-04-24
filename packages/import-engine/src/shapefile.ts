@@ -20,6 +20,9 @@ type ShpFeatureCollection = {
  * Uses shpjs which handles both raw .shp and .zip containing .shp/.dbf/.prj.
  */
 export async function parseShapefile(filePath: string): Promise<ParsedFeature[]> {
+  // TYPE_DEBT: shpjs ships no type declarations (no DefinitelyTyped entry for v6).
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-expect-error — shpjs has no .d.ts; runtime default export matches usage below.
   const { default: shpjs } = await import('shpjs');
 
   const ext = extname(filePath).toLowerCase();

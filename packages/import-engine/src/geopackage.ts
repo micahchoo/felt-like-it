@@ -134,10 +134,11 @@ export interface GeoPackageResult {
 export async function parseGeoPackage(
   filePath: string
 ): Promise<GeoPackageResult> {
-  const [{ default: initSqlJs }, buf] = await Promise.all([
-    import('sql.js'),
-    readFile(filePath),
-  ]);
+  // TYPE_DEBT: sql.js v1 ships no .d.ts — use any for the dynamic import default.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sqlJsMod = (await import('sql.js' as any)) as { default: any };
+  const buf = await readFile(filePath);
+  const initSqlJs = sqlJsMod.default;
 
   const SQL = await initSqlJs();
   const sqlDb = new SQL.Database(new Uint8Array(buf));

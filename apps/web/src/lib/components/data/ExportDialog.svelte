@@ -46,7 +46,7 @@
    * Returns a cleanup function to close the connection.
    */
   function subscribeToProgress(jobId: string): () => void {
-    const eventSource = new EventSource(`/api/export/progress?jobId=${jobId}`);
+    const eventSource = new EventSource(`/api/v1/export/progress?jobId=${jobId}`);
 
     eventSource.addEventListener('progress', (event) => {
       const data = JSON.parse(event.data);
@@ -107,7 +107,7 @@
         }
       }
 
-      const response = await fetch('/api/export', {
+      const response = await fetch('/api/v1/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -201,7 +201,7 @@
     if (!mapId) return;
     exportingAnnotations = true;
     try {
-      const res = await fetch(`/api/export/annotations/${mapId}`);
+      const res = await fetch(`/api/v1/export/annotations/${mapId}`);
       if (!res.ok) throw new Error('Export failed');
 
       const blob = await res.blob();

@@ -1,5 +1,3 @@
-import type { Layer } from '@felt-like-it/shared-types';
-
 export type ExportFormat = 'geojson' | 'gpkg' | 'shp' | 'pdf';
 export type ExportStatus = 'idle' | 'pending' | 'processing' | 'complete' | 'error';
 

@@ -11,7 +11,7 @@
  * They serve as a regression safety net — the NEW behavior should have its own tests.
  */
 
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 // ─── 1. Upload endpoint characterization ─────────────────────────────────────
 // Current behavior: uses Buffer.from(await file.arrayBuffer()) to write file to disk
@@ -36,82 +36,31 @@ describe('Upload endpoint (current behavior — streaming)', () => {
   });
 });
 
-// ─── 2. Filter store singleton characterization ──────────────────────────────
-// Current behavior: module-level singleton with per-layer API
-// filterStore.get(layerId), filterStore.add(layerId, filter), etc.
-// This is being replaced by FiltersStore class with map-scoped instances.
+// ─── 2. Filter store migration complete (Batch 2) ────────────────────────────
+// Post-migration: singleton filterStore removed, replaced by FiltersStore class.
+// The singleton-specific tests previously here were the intended regression
+// safety net — they were expected to fail once the singleton was deleted.
+// New behavior is covered by filters-store.test.ts (class-level tests).
 
-describe('Filter store singleton (current behavior)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let filterStore: any;
-
-  beforeAll(async () => {
-    const mod = await import('$lib/stores/filters.svelte.js');
-    filterStore = mod.filterStore;
+describe('Filter store migration (post-singleton)', () => {
+  it('singleton filterStore module no longer exists', async () => {
+    // Importing the deleted module must fail — singleton is gone.
+    await expect(
+      // @ts-expect-error — module intentionally deleted
+      import('$lib/stores/filters.svelte.js')
+    ).rejects.toThrow();
   });
 
-  it('filterStore is a singleton object with known methods', () => {
-    expect(typeof filterStore).toBe('object');
-    expect(typeof filterStore.get).toBe('function');
-    expect(typeof filterStore.add).toBe('function');
-    expect(typeof filterStore.remove).toBe('function');
-    expect(typeof filterStore.clear).toBe('function');
-    expect(typeof filterStore.hasFilters).toBe('function');
-    expect(typeof filterStore.toMapLibreFilter).toBe('function');
-    expect(typeof filterStore.applyToFeatures).toBe('function');
+  it('FiltersStore class is exported from filters-store', async () => {
+    const mod = await import('$lib/stores/filters-store.svelte.js');
+    expect(typeof mod.FiltersStore).toBe('function');
   });
 
-  it('filterStore.get returns empty array for unknown layer', () => {
-    expect(filterStore.get('nonexistent-layer')).toEqual([]);
-  });
-
-  it('filterStore.add/Get/remove work per-layer', () => {
-    const layerA = 'char-layer-a';
-    const layerB = 'char-layer-b';
-
-    filterStore.add(layerA, { field: 'name', operator: 'eq', value: 'test' });
-    expect(filterStore.get(layerA)).toHaveLength(1);
-    expect(filterStore.get(layerB)).toEqual([]);
-
-    filterStore.remove(layerA, 0);
-    expect(filterStore.get(layerA)).toEqual([]);
-  });
-
-  it('filterStore.clear removes all filters for a layer', () => {
-    const layer = 'char-layer-clear';
-    filterStore.add(layer, { field: 'a', operator: 'eq', value: '1' });
-    filterStore.add(layer, { field: 'b', operator: 'eq', value: '2' });
-    expect(filterStore.get(layer)).toHaveLength(2);
-
-    filterStore.clear(layer);
-    expect(filterStore.get(layer)).toEqual([]);
-  });
-
-  it('filterStore.toMapLibreFilter returns undefined when no filters', () => {
-    const layer = 'char-layer-ml';
-    filterStore.clear(layer);
-    expect(filterStore.toMapLibreFilter(layer)).toBeUndefined();
-  });
-
-  it('filterStore.applyToFeatures filters features correctly', () => {
-    const layer = 'char-layer-apply';
-    filterStore.clear(layer);
-    filterStore.add(layer, { field: 'type', operator: 'eq', value: 'park' });
-
-    const features = [{ properties: { type: 'park' } }, { properties: { type: 'school' } }];
-
-    const filtered = filterStore.applyToFeatures(layer, features as any);
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0]?.properties?.type).toBe('park');
-  });
-
-  it('filterStore.hasFilters returns true when filters exist', () => {
-    const layer = 'char-layer-has';
-    filterStore.clear(layer);
-    expect(filterStore.hasFilters(layer)).toBe(false);
-
-    filterStore.add(layer, { field: 'x', operator: 'eq', value: 'y' });
-    expect(filterStore.hasFilters(layer)).toBe(true);
+  it('FiltersStore type exports are available for UI consumers', async () => {
+    const mod = await import('$lib/stores/filters-store.svelte.js');
+    // Runtime-visible exports that previously lived in filters.svelte.ts
+    expect(mod.FILTER_OPERATOR_LABELS).toBeTypeOf('object');
+    expect(mod.FILTER_OPERATOR_LABELS.eq).toBe('=');
   });
 });
 

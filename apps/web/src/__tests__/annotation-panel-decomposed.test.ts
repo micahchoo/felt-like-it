@@ -7,6 +7,7 @@ describe('AnnotationPanel (decomposed)', () => {
     render(AnnotationPanel, {
       mapId: 'map-1',
       oncountchange: vi.fn(),
+      onannotationsaved: vi.fn(),
     });
     // After decomposition, should still render the annotation form area
     // AnnotationForm renders content type buttons (text, emoji, gif, etc.)
@@ -18,6 +19,7 @@ describe('AnnotationPanel (decomposed)', () => {
     render(AnnotationPanel, {
       mapId: 'map-1',
       oncountchange,
+      onannotationsaved: vi.fn(),
       pendingMeasurement: {
         anchor: {
           type: 'measurement',
@@ -47,6 +49,7 @@ describe('AnnotationPanel (decomposed)', () => {
     render(AnnotationPanel, {
       mapId: 'map-1',
       oncountchange,
+      onannotationsaved: vi.fn(),
     });
     // Count change effect fires on mount with 0 annotations + 0 comments
     // (TanStack Query isPending means data is empty initially)

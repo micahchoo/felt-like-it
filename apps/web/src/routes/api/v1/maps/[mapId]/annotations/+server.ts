@@ -37,7 +37,7 @@ export const GET: RequestHandler = async ({ request, url, params, locals }) => {
   const items = result.items.map(toAnnotation);
   const last = items[items.length - 1];
   const nextCursor = items.length === limit && last
-    ? encodeCursor(last.createdAt, last.id)
+    ? encodeCursor(last.createdAt as string | Date, last.id as string)
     : null;
   const basePath = `/api/v1/maps/${mapId}/annotations`;
 

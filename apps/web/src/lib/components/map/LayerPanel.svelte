@@ -2,6 +2,7 @@
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { styleStore } from '$lib/stores/style.svelte.js';
   import { trpc } from '$lib/utils/trpc.js';
+  import { getErrorCode } from '$lib/utils/handle-error.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
@@ -55,10 +56,10 @@
     layersStore.toggle(layerId);
     try {
       await trpc.layers.update.mutate({ id: layerId, visible: !layer.visible, version: layer.version });
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Revert optimistic update
       layersStore.toggle(layerId);
-      const msg = err?.data?.code === 'CONFLICT'
+      const msg = getErrorCode(err) === 'CONFLICT'
         ? 'Modified by another user. Please reload.'
         : 'Failed to update visibility.';
       loadErrors = { ...loadErrors, [layerId]: msg };
@@ -79,9 +80,9 @@
         mapId,
         order: layersStore.getOrderedIdsWithVersions(),
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       const id = layersStore.all[targetIndex]?.id;
-      const msg = err?.data?.code === 'CONFLICT'
+      const msg = getErrorCode(err) === 'CONFLICT'
         ? 'Order modified by another user. Please reload.'
         : 'Failed to reorder layers.';
       if (id) loadErrors = { ...loadErrors, [id]: msg };

@@ -1,4 +1,4 @@
-/* eslint-disable no-undef, @typescript-eslint/no-explicit-any */
+/* eslint-disable no-undef */
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import { db } from '$lib/server/db/index.js';
@@ -39,10 +39,15 @@ export const GET: RequestHandler = async ({ request, url }) => {
         // Poll the import_jobs table for status updates
         interval = setInterval(async () => {
           try {
-            const result = await db.execute(
+            const result = await db.execute<{
+              status: string;
+              progress: number | null;
+              error_message: string | null;
+              layer_id: string | null;
+            }>(
               sql`SELECT status, progress, error_message, layer_id FROM import_jobs WHERE id = ${jobId}`
             );
-            const row = (result as any).rows?.[0];
+            const row = result.rows?.[0];
             if (!row) {
               send({ type: 'error', message: 'Job not found' });
               cleanup();

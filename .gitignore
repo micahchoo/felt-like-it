@@ -36,3 +36,4 @@ uploads/
 
 # v8 compile cache
 v8-compile-cache-*/
+.foxhound/

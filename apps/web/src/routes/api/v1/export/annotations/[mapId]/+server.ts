@@ -7,7 +7,7 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[^a-z0-9_-]/gi, '_');
 }
 
-export const GET: RequestHandler = async ({ params, locals, url }) => {
+export const GET: RequestHandler = async ({ params, locals, url: _url }) => {
   if (!locals.user) error(401, 'Unauthorized');
 
   const { mapId } = params;

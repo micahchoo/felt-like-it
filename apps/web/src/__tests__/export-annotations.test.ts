@@ -35,7 +35,7 @@ describe('anchorToGeometry', () => {
   });
 
   it('returns Polygon geometry for region anchors', () => {
-    const ring = [[0, 0], [1, 0], [1, 1], [0, 0]];
+    const ring: [number, number][] = [[0, 0], [1, 0], [1, 1], [0, 0]];
     const geo = anchorToGeometry({ type: 'region', geometry: { type: 'Polygon', coordinates: [ring] } });
     expect(geo).toEqual({ type: 'Polygon', coordinates: [ring] });
   });
@@ -83,7 +83,7 @@ describe('annotationsToFeatureCollection', () => {
   });
 
   it('includes region-anchored annotations', () => {
-    const ring = [[0, 0], [1, 0], [1, 1], [0, 0]];
+    const ring: [number, number][] = [[0, 0], [1, 0], [1, 1], [0, 0]];
     const fc = annotationsToFeatureCollection([
       makeAnnotation({
         id: 'reg-1',
@@ -117,7 +117,7 @@ describe('annotationsToFeatureCollection', () => {
   });
 
   it('handles mixed anchor types — only exportable ones appear', () => {
-    const ring = [[0, 0], [1, 0], [1, 1], [0, 0]];
+    const ring: [number, number][] = [[0, 0], [1, 0], [1, 1], [0, 0]];
     const annotations = [
       makeAnnotation({ id: 'pt-1' }),
       makeAnnotation({
@@ -185,7 +185,7 @@ describe('annotationsToFeatureCollection', () => {
         },
         content: {
           kind: 'single',
-          body: { type: 'measurement', displayValue: '3.2 km', value: 3200, unit: 'meters' },
+          body: { type: 'measurement', measurementType: 'distance', displayValue: '3.2 km', value: 3200, unit: 'meters' },
         },
       }),
     ]);

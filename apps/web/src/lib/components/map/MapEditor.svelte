@@ -1,5 +1,6 @@
 <script lang="ts">
   import { effectEnter, effectExit } from '$lib/debug/effect-tracker.js';
+  import { browser } from '$app/environment';
   import { trpc } from '$lib/utils/trpc.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { mapStore } from '$lib/stores/map.svelte.js';
@@ -29,7 +30,7 @@
   import type { SectionId } from './SidePanel.svelte';
   import { createAnnotationGeoStore } from '$lib/stores/annotation-geo.svelte.js';
   import { createViewportStore } from '$lib/stores/viewport.svelte.js';
-  import type { MeasurementResult } from '@felt-like-it/geo-engine';
+  import type { DistanceMeasurement, AreaMeasurement } from '@felt-like-it/geo-engine';
   import { measureLine, measurePolygon } from '@felt-like-it/geo-engine';
   import MeasurementPanel from './MeasurementPanel.svelte';
   import { MeasurementStore } from '$lib/stores/measurement-store.svelte.js';
@@ -37,9 +38,13 @@
   import DrawActionRow from './DrawActionRow.svelte';
   import StatusBar from './StatusBar.svelte';
   import { useLayerDataManager } from './useLayerDataManager.svelte.js';
+  import { useMeasurementTooltip } from './useMeasurementTooltip.svelte.js';
+  import { useCursorStatus } from './useCursorStatus.svelte.js';
   // useInteractionBridge removed — replaced by MapEditorState atomic methods
   import { useKeyboardShortcuts } from './useKeyboardShortcuts.svelte.js';
   import { useViewportSave } from './useViewportSave.svelte.js';
+  import { ActivityStore } from '$lib/stores/activity-store.svelte.js';
+  import { getErrorCode } from '$lib/utils/handle-error.js';
   import type { Geometry } from 'geojson';
   import { PUBLIC_MARTIN_URL } from '$env/static/public';
   import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
@@ -136,7 +141,9 @@
   // ── Unified panel layout state (replaces activePanelIcon, activeSection, editorLayout.bottomPanel === 'table', dialogs) ──
   const editorLayout = new EditorLayout();
   // Initialize from URL params
-  const urlState = EditorLayout.fromSearchParams(new URLSearchParams(window.location.search));
+  const urlState = EditorLayout.fromSearchParams(
+    new URLSearchParams(browser ? window.location.search : '')
+  );
   editorLayout.leftPanel = urlState.leftPanel ?? 'layers';
   editorLayout.rightSection = urlState.rightSection ?? 'annotations';
   editorLayout.bottomPanel = urlState.bottomPanel;
@@ -183,51 +190,16 @@
     editorLayout.openDialog(null);
   }
 
-  let cursorLat = $state<number | null>(null);
-  let cursorLng = $state<number | null>(null);
-  let currentZoom = $state(0);
   let savingViewport = $state(false);
 
   // ── Measurement store (extracted from local state — F09) ──────────────────
   const measurementStore = new MeasurementStore();
 
-  // ── Measurement tooltip position (centroid projected to screen pixels) ────
-  let measurementTooltipPos = $state<{ x: number; y: number }>({ x: 50, y: 50 });
-
-  $effect(() => {
-    const result = measurementStore.currentResult;
-    const map = mapStore.mapInstance;
-    if (!result || !map) {
-      measurementTooltipPos = { x: 50, y: 50 };
-      return;
-    }
-
-    const geom = result.geometry;
-    let centroid: [number, number];
-
-    if (geom.type === 'LineString') {
-      // Midpoint of the line
-      const coords = geom.coordinates as [number, number][];
-      const mid = Math.floor(coords.length / 2);
-      centroid = coords[mid];
-    } else if (geom.type === 'Polygon') {
-      // Average of all exterior ring vertices
-      const ring = geom.coordinates[0] as [number, number][];
-      const avg = ring.reduce((acc, c) => [acc[0] + c[0], acc[1] + c[1]], [0, 0] as [
-        number,
-        number,
-      ]);
-      centroid = [avg[0] / ring.length, avg[1] / ring.length];
-    } else {
-      centroid = [0, 0];
-    }
-
-    try {
-      const point = map.project(centroid);
-      measurementTooltipPos = { x: point.x, y: point.y };
-    } catch {
-      measurementTooltipPos = { x: 50, y: 50 };
-    }
+  // ── Measurement tooltip position + active state ───────────────────────────
+  const measurement = useMeasurementTooltip({
+    getMeasurementStore: () => measurementStore,
+    getMap: () => mapStore.mapInstance ?? undefined,
+    getDesignMode: () => designMode,
   });
 
   // ── Viewport-based pagination state for large layers ─────────────────────
@@ -246,19 +218,11 @@
   let designMode = $state(false);
   let analysisTab = $state<'measure' | 'process'>('process');
 
-  // Count tracking for sidebar badges
-  let annotationCount = $state(0);
-  let commentCount = $state(0);
-  let eventCount = $state(0);
-  let activityRefreshTrigger = $state(0);
-
-  const measureActive = $derived(measurementStore.active && !designMode);
-
-  $effect(() => {
-    effectEnter('ME:measureActive', { measureActive });
-    if (!measureActive) measurementStore.clear();
-    effectExit('ME:measureActive');
-  });
+  // ── Activity tracking (counts for sidebar badges, event logging) ─────────
+  const activityStore = new ActivityStore(
+    (action, metadata) =>
+      trpc.events.log.mutate({ mapId, action, metadata }).catch(() => undefined)
+  );
 
   // ── Interaction state (discriminated union) ───────────────────────────────
   // State lives in MapEditorState class, provided via Svelte 5 context.
@@ -295,11 +259,6 @@
     return viewportStore.bindMap(map);
   });
 
-  function logActivity(action: string, metadata?: Record<string, unknown>) {
-    trpc.events.log.mutate({ mapId, action, metadata }).catch(() => undefined);
-    activityRefreshTrigger++;
-  }
-
   async function handleFeatureDrawn(
     layerId: string,
     _feature: Record<string, unknown> & { id?: string | undefined }
@@ -323,7 +282,7 @@
       });
     }
 
-    logActivity('feature.drawn', {
+    activityStore.log('feature.drawn', {
       layerId,
       layerName: drawnLayer?.name ?? '',
       geometryType: geom?.type ?? '',
@@ -341,8 +300,8 @@
       toastStore.success('Viewport saved.');
       // Fire-and-forget: log activity event (best-effort, never blocks the UI)
       trpc.events.log.mutate({ mapId, action: 'viewport.saved' }).catch(() => undefined);
-    } catch (err: any) {
-      if (err?.data?.code === 'CONFLICT') {
+    } catch (err: unknown) {
+      if (getErrorCode(err) === 'CONFLICT') {
         toastStore.error('Map was modified by another user. Please reload.');
       } else {
         toastStore.error('Failed to save viewport.');
@@ -397,27 +356,7 @@
   });
 
   // ── Status bar: cursor position + zoom level ───────────────────────────────
-  $effect(() => {
-    const map = mapStore.mapInstance;
-    if (!map) return;
-
-    const onMouseMove = (e: { lngLat: { lat: number; lng: number } }) => {
-      cursorLat = e.lngLat.lat;
-      cursorLng = e.lngLat.lng;
-    };
-    const onZoom = () => {
-      currentZoom = map.getZoom();
-    };
-
-    currentZoom = map.getZoom();
-    map.on('mousemove', onMouseMove);
-    map.on('zoom', onZoom);
-
-    return () => {
-      map.off('mousemove', onMouseMove);
-      map.off('zoom', onZoom);
-    };
-  });
+  const cursorStatus = useCursorStatus({ getMap: () => mapStore.mapInstance ?? undefined });
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -693,12 +632,13 @@
       <MapCanvas
         readonly={effectiveReadonly}
         {layerData}
+        {filtersStore}
         onfeaturedrawn={handleFeatureDrawn}
         annotationPins={annotationGeo.pins}
         annotationRegions={annotationGeo.regions}
-        {...measureActive
+        {...measurement.measureActive
           ? {
-              onmeasured: (r: MeasurementResult) => {
+              onmeasured: (r: DistanceMeasurement | AreaMeasurement) => {
                 measurementStore.setResult(r);
               },
             }
@@ -722,7 +662,7 @@
       {#if measurementStore.currentResult && measurementStore.active}
         <MeasurementTooltip
           result={measurementStore.currentResult}
-          position={measurementTooltipPos}
+          position={measurement.tooltipPos}
           onsave={() => {
             const payload = measurementStore.saveAsAnnotation();
             if (payload) {
@@ -783,7 +723,7 @@
         </div>
       {/if}
 
-      {#if interactionState.type === 'featureSelected' && !measureActive}
+      {#if interactionState.type === 'featureSelected' && !measurement.measureActive}
         <div class="absolute bottom-16 left-1/2 -translate-x-1/2 z-40">
           <DrawActionRow
             onannotate={() => {
@@ -828,7 +768,7 @@
     </div>
 
     <!-- Status bar -->
-    <StatusBar {cursorLat} {cursorLng} {currentZoom} />
+    <StatusBar cursorLat={cursorStatus.cursorLat} cursorLng={cursorStatus.cursorLng} currentZoom={cursorStatus.currentZoom} />
 
     <!-- Data table + filter panel (collapsible bottom panel) -->
     {#if editorLayout.bottomPanel === 'table' && layersStore.active}
@@ -909,7 +849,7 @@
           }
         }
         if (action) {
-          logActivity(`annotation.${action}`);
+          activityStore.log(`annotation.${action}`);
         }
       }}
       onrequestregion={() => {
@@ -927,8 +867,8 @@
         : null}
       scrollToFeatureId={scrollToAnnotationFeatureId}
       oncountchange={(a, c) => {
-        annotationCount = a;
-        commentCount = c;
+        activityStore.annotationCount = a;
+        activityStore.commentCount = c;
       }}
     />
   {/snippet}
@@ -982,7 +922,7 @@
             layersStore.set(newLayers);
             await loadLayerData(layerId);
             const newLayer = newLayers.find((l: { id: string }) => l.id === layerId);
-            logActivity('geoprocessing.completed', {
+            activityStore.log('geoprocessing.completed', {
               outputLayerId: layerId,
               outputLayerName: newLayer?.name ?? '',
             });
@@ -996,9 +936,9 @@
     <ActivityFeed
       {mapId}
       embedded
-      refreshTrigger={activityRefreshTrigger}
+      refreshTrigger={activityStore.refreshTrigger}
       oncountchange={(n) => {
-        eventCount = n;
+        activityStore.eventCount = n;
       }}
     />
   {/snippet}
@@ -1011,7 +951,7 @@
           id: 'annotations',
           label: 'Annotations',
           icon: 'M8 1a6 6 0 100 12A6 6 0 008 1zM0 8a8 8 0 1116 0A8 8 0 010 8zm8-3a1 1 0 011 1v2h2a1 1 0 010 2H9v2a1 1 0 01-2 0v-2H5a1 1 0 010-2h2V6a1 1 0 011-1z',
-          count: annotationCount + commentCount,
+          count: activityStore.badgeCount,
           helpText:
             'Add notes, comments, and observations to specific places on the map. Pin annotations to points, draw regions, or attach them to existing features.',
           content: annotationsContent,
@@ -1028,7 +968,7 @@
           id: 'activity',
           label: 'Activity',
           icon: 'M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm14.5 5.5h-13v1h13v-1zM2 4.5h12v1H2v-1zm0 4h8v1H2v-1z',
-          count: eventCount,
+          count: activityStore.eventCount,
           helpText:
             'A timeline of all changes to this map — imports, edits, annotations, and viewport saves. Useful for tracking who did what and when.',
           content: activityContent,

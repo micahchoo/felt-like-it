@@ -146,7 +146,11 @@ function createSaveFlow(deps: {
       });
 
       // Notify parent
-      await deps.onfeaturedrawn?.(activeLayer.id, { geometry, properties, id: upsertedIds[0] });
+      await deps.onfeaturedrawn?.(activeLayer.id, {
+        geometry,
+        properties,
+        ...(upsertedIds[0] !== undefined ? { id: upsertedIds[0] } : {}),
+      });
     } catch (err) {
       // Mirrors the catch block — attempts to remove the drawn feature twice
       // (defensive: first removal may fail if feature already removed)

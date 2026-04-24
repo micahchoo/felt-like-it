@@ -145,7 +145,7 @@
 														aria-label="Copy key prefix"
 														onclick={async () => {
 															await navigator.clipboard.writeText(key.prefix);
-															toastStore.add('Key prefix copied to clipboard', 'success');
+															toastStore.success('Key prefix copied to clipboard');
 														}}
 													>
 														<Copy size={12} />

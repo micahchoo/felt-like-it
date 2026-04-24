@@ -7,6 +7,14 @@ COMPOSE_FILE="docker/docker-compose.yml"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# ── Teardown on exit ─────────────────────────────────────────────────────────
+teardown() {
+  echo ""
+  echo "Stopping services..."
+  docker compose -f "$COMPOSE_FILE" stop postgres redis
+}
+trap teardown EXIT
+
 # ── 1. Start Postgres + Redis (idempotent — no-ops if already running) ───────
 echo "Starting services..."
 docker compose -f "$COMPOSE_FILE" up -d postgres redis
@@ -32,4 +40,4 @@ pnpm migrate
 
 # ── 4. Start dev server ─────────────────────────────────────────────────────
 echo "Starting dev server..."
-exec pnpm dev
+pnpm dev

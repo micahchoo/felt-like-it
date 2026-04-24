@@ -112,15 +112,15 @@ export class MapEditorState {
 
     // Atomic: also transition to featureSelected (was bridge effect ME:selectionToFeature)
     const geom = feature.geometry as Geometry | undefined;
-    const fid = resolveFeatureId(feature as any);
+    const fid = resolveFeatureId(feature);
     if (geom && fid && layerId) {
-      const currentType = this.#interactionState.type;
-      if (currentType === 'idle' || currentType === 'featureSelected') {
+      const state = this.#interactionState;
+      if (state.type === 'idle' || state.type === 'featureSelected') {
         this.#interactionState = {
           type: 'featureSelected',
           feature: { featureId: fid, layerId, geometry: geom },
         };
-      } else if (currentType === 'pickFeature' && !(this.#interactionState as any).picked) {
+      } else if (state.type === 'pickFeature' && !state.picked) {
         // Feature pick capture (was bridge effect ME:featurePickCapture)
         this.#interactionState = {
           type: 'pickFeature',

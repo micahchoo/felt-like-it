@@ -1,5 +1,22 @@
 import { fslFiltersToMapLibre } from '@felt-like-it/geo-engine';
-import type { FilterOperator, UIFilter } from './filters.svelte.js';
+
+export type FilterOperator = 'eq' | 'ne' | 'lt' | 'gt' | 'cn' | 'in' | 'ni';
+
+export const FILTER_OPERATOR_LABELS: Record<FilterOperator, string> = {
+  eq: '=',
+  ne: '≠',
+  lt: '<',
+  gt: '>',
+  cn: 'contains',
+  in: 'one of',
+  ni: 'not in',
+};
+
+export interface UIFilter {
+  field: string;
+  operator: FilterOperator;
+  value: string;
+}
 
 export type FieldType = 'string' | 'number' | 'boolean';
 

@@ -1,6 +1,3 @@
-import type { TRPCClientError } from '@trpc/client';
-import type { AppRouter } from '@repo/api';
-
 /**
  * Extracts a user-friendly error message from various error types.
  * Distinguishes between network errors, auth errors, and generic errors.
@@ -35,6 +32,18 @@ export function getUserMessage(
 
   // Fallback for unknown error types
   return 'An unexpected error occurred. Please try again.';
+}
+
+/**
+ * Extracts the tRPC error code from an unknown thrown value.
+ * Returns undefined when the value is not a tRPC error or has no code.
+ */
+export function getErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const data = (error as { data?: unknown }).data;
+  if (!data || typeof data !== 'object') return undefined;
+  const code = (data as { code?: unknown }).code;
+  return typeof code === 'string' ? code : undefined;
 }
 
 /**

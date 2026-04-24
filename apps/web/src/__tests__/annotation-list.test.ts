@@ -6,33 +6,43 @@ describe('AnnotationList', () => {
   const mockAnnotations = [
     {
       id: 'a1',
-      map_id: 'map-1',
+      mapId: 'map-1',
+      parentId: null,
       authorId: 'user-1',
       authorName: 'Alice',
       content: {
         kind: 'single' as const,
         body: { type: 'text' as const, text: 'First annotation' },
       },
-      anchor: { type: 'point' as const, coordinates: [0, 0] as [number, number] },
-      resolved: false,
-      created_at: '2024-01-01',
-      updated_at: '2024-01-01',
+      anchor: {
+        type: 'point' as const,
+        geometry: { type: 'Point' as const, coordinates: [0, 0] as [number, number] },
+      },
+      templateId: null,
+      ordinal: 0,
       version: 0,
+      createdAt: new Date('2024-01-01'),
+      updatedAt: new Date('2024-01-01'),
     },
     {
       id: 'a2',
-      map_id: 'map-1',
+      mapId: 'map-1',
+      parentId: null,
       authorId: 'user-1',
       authorName: 'Bob',
       content: {
         kind: 'single' as const,
         body: { type: 'text' as const, text: 'Second annotation' },
       },
-      anchor: { type: 'point' as const, coordinates: [1, 1] as [number, number] },
-      resolved: false,
-      created_at: '2024-01-02',
-      updated_at: '2024-01-02',
+      anchor: {
+        type: 'point' as const,
+        geometry: { type: 'Point' as const, coordinates: [1, 1] as [number, number] },
+      },
+      templateId: null,
+      ordinal: 1,
       version: 0,
+      createdAt: new Date('2024-01-02'),
+      updatedAt: new Date('2024-01-02'),
     },
   ];
 
@@ -104,7 +114,7 @@ describe('AnnotationList', () => {
       ondelete,
     });
     const deleteButtons = screen.getAllByText('Delete');
-    await deleteButtons[0].click();
+    await deleteButtons[0]!.click();
     expect(ondelete).toHaveBeenCalledWith('a1');
   });
 
@@ -115,7 +125,7 @@ describe('AnnotationList', () => {
       onexpand,
     });
     const replyButtons = screen.getAllByText('Replies');
-    await replyButtons[0].click();
+    await replyButtons[0]!.click();
     expect(onexpand).toHaveBeenCalledWith('a1');
   });
 
@@ -133,7 +143,7 @@ describe('AnnotationList', () => {
 
   it('shows viewport badge for viewport-anchored annotations', () => {
     const viewportAnnotation = {
-      ...mockAnnotations[0],
+      ...mockAnnotations[0]!,
       anchor: { type: 'viewport' as const },
     };
     render(AnnotationList, {
@@ -145,18 +155,18 @@ describe('AnnotationList', () => {
 
   it('shows region badge for region-anchored annotations', () => {
     const regionAnnotation = {
-      ...mockAnnotations[0],
+      ...mockAnnotations[0]!,
       anchor: {
         type: 'region' as const,
         geometry: {
-          type: 'Polygon',
+          type: 'Polygon' as const,
           coordinates: [
             [
-              [0, 0],
-              [1, 0],
-              [1, 1],
-              [0, 1],
-              [0, 0],
+              [0, 0] as [number, number],
+              [1, 0] as [number, number],
+              [1, 1] as [number, number],
+              [0, 1] as [number, number],
+              [0, 0] as [number, number],
             ],
           ],
         },

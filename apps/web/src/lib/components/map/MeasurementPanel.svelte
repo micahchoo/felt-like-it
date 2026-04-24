@@ -1,15 +1,18 @@
 <script lang="ts">
-  import type { MeasurementResult, DistanceUnit, AreaUnit } from '@felt-like-it/geo-engine';
+  import type { DistanceUnit, AreaUnit } from '@felt-like-it/geo-engine';
   import { DISTANCE_UNITS, AREA_UNITS, formatDistance, formatArea } from '@felt-like-it/geo-engine';
+  import type {
+    MeasurementResult,
+    MeasurementLineString,
+    MeasurementPolygon,
+  } from '$lib/stores/measurement-store.svelte.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
 
   interface SaveAsAnnotationPayload {
     type: 'pendingMeasurement';
     anchor: {
       type: 'measurement';
-      geometry:
-        | { type: 'LineString'; coordinates: [number, number][] }
-        | { type: 'Polygon'; coordinates: [number, number][][] };
+      geometry: MeasurementLineString | MeasurementPolygon;
     };
     content: {
       type: 'measurement';
@@ -156,7 +159,7 @@
                 type: 'pendingMeasurement',
                 anchor: {
                   type: 'measurement',
-                  geometry: { type: 'LineString', coordinates: mr.coordinates as [number, number][] },
+                  geometry: mr.geometry,
                 },
                 content: {
                   type: 'measurement',
@@ -171,7 +174,7 @@
                 type: 'pendingMeasurement',
                 anchor: {
                   type: 'measurement',
-                  geometry: { type: 'Polygon', coordinates: mr.coordinates as [number, number][][] },
+                  geometry: mr.geometry,
                 },
                 content: {
                   type: 'measurement',

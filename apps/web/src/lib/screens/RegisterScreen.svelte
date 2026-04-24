@@ -42,7 +42,6 @@
 					type="text"
 					placeholder="Your name"
 					bind:value={name}
-					autofocus
 					class="bg-surface-low border border-white/5 rounded-lg px-3 py-2.5 text-sm text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary w-full"
 				/>
 			</div>

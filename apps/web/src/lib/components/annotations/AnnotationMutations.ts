@@ -25,7 +25,8 @@ export function createAnnotationMutationOptions(
 ): MutationOptions<
   Awaited<ReturnType<typeof trpc.annotations.create.mutate>>,
   Error,
-  CreateAnnotationInput
+  CreateAnnotationInput,
+  { previous: AnnotationObject[] | undefined; optimisticId: string }
 > {
   return {
     mutationFn: (input: CreateAnnotationInput) => trpc.annotations.create.mutate(input),
@@ -39,25 +40,29 @@ export function createAnnotationMutationOptions(
       const optimisticId = `temp-${Date.now()}`;
       const optimisticAnnotation: AnnotationObject = {
         id: optimisticId,
-        map_id: deps.mapId,
+        mapId: deps.mapId,
+        parentId: null,
+        authorId: null,
+        authorName: '',
         anchor: variables.anchor,
         content: variables.content,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        templateId: null,
+        ordinal: 0,
         version: 0,
-        resolved: false,
-      } as AnnotationObject;
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
       deps.queryClient.setQueryData<AnnotationObject[]>(
         queryKeys.annotations.list({ mapId: deps.mapId }),
         (old) => [...(old ?? []), optimisticAnnotation]
       );
       return { previous, optimisticId };
     },
-    onError: (_err, _vars, context: { previous?: AnnotationObject[] } | undefined) => {
-      if (context?.previous) {
+    onError: (_err, _vars, onMutateResult) => {
+      if (onMutateResult?.previous) {
         deps.queryClient.setQueryData(
           queryKeys.annotations.list({ mapId: deps.mapId }),
-          context.previous
+          onMutateResult.previous
         );
       }
       toastStore.error('Failed to create annotation.');
@@ -72,7 +77,12 @@ export function createAnnotationMutationOptions(
 
 export function deleteAnnotationMutationOptions(
   deps: MutationDeps
-): MutationOptions<void, Error, { id: string }> {
+): MutationOptions<
+  Awaited<ReturnType<typeof trpc.annotations.delete.mutate>>,
+  Error,
+  { id: string },
+  { previous: AnnotationObject[] | undefined }
+> {
   return {
     mutationFn: (input: { id: string }) => trpc.annotations.delete.mutate(input),
     onMutate: async ({ id }: { id: string }) => {
@@ -86,17 +96,13 @@ export function deleteAnnotationMutationOptions(
         queryKeys.annotations.list({ mapId: deps.mapId }),
         (old) => old?.filter((a) => a.id !== id) ?? []
       );
-      return { previous } as { previous?: AnnotationObject[] };
+      return { previous };
     },
-    onError: (
-      _err: unknown,
-      _vars: { id: string },
-      context: { previous?: AnnotationObject[] } | undefined
-    ) => {
-      if (context?.previous) {
+    onError: (_err, _vars, onMutateResult) => {
+      if (onMutateResult?.previous) {
         deps.queryClient.setQueryData(
           queryKeys.annotations.list({ mapId: deps.mapId }),
-          context.previous
+          onMutateResult.previous
         );
       }
     },
@@ -116,14 +122,14 @@ export function updateAnnotationMutationOptions(
 ): MutationOptions<
   Awaited<ReturnType<typeof trpc.annotations.update.mutate>>,
   Error,
-  { id: string; content?: { kind: 'single'; body: AC }; anchor?: Anchor; version?: number }
+  { id: string; version: number; content?: { kind: 'single'; body: AC }; anchor?: Anchor }
 > {
   return {
     mutationFn: (input: {
       id: string;
+      version: number;
       content?: { kind: 'single'; body: AC };
       anchor?: Anchor;
-      version?: number;
     }) => trpc.annotations.update.mutate(input),
     onSuccess: () => {
       deps.queryClient.invalidateQueries({
@@ -211,7 +217,12 @@ export function createCommentMutationOptions(
 
 export function deleteCommentMutationOptions(
   deps: MutationDeps
-): MutationOptions<void, Error, { id: string }> {
+): MutationOptions<
+  Awaited<ReturnType<typeof trpc.comments.delete.mutate>>,
+  Error,
+  { id: string },
+  { previous: CommentEntry[] | undefined }
+> {
   return {
     mutationFn: (input: { id: string }) => trpc.comments.delete.mutate(input),
     onMutate: async ({ id }: { id: string }) => {
@@ -225,17 +236,13 @@ export function deleteCommentMutationOptions(
         queryKeys.comments.list({ mapId: deps.mapId }),
         (old) => old?.filter((c) => c.id !== id) ?? []
       );
-      return { previous } as { previous?: CommentEntry[] };
+      return { previous };
     },
-    onError: (
-      _err: unknown,
-      _vars: { id: string },
-      context: { previous?: CommentEntry[] } | undefined
-    ) => {
-      if (context?.previous) {
+    onError: (_err, _vars, onMutateResult) => {
+      if (onMutateResult?.previous) {
         deps.queryClient.setQueryData(
           queryKeys.comments.list({ mapId: deps.mapId }),
-          context.previous
+          onMutateResult.previous
         );
       }
     },
@@ -249,7 +256,12 @@ export function deleteCommentMutationOptions(
 
 export function resolveCommentMutationOptions(
   deps: MutationDeps
-): MutationOptions<void, Error, { id: string }> {
+): MutationOptions<
+  Awaited<ReturnType<typeof trpc.comments.resolve.mutate>>,
+  Error,
+  { id: string },
+  { previous: CommentEntry[] | undefined }
+> {
   return {
     mutationFn: (input: { id: string }) => trpc.comments.resolve.mutate(input),
     onMutate: async ({ id }: { id: string }) => {
@@ -263,17 +275,13 @@ export function resolveCommentMutationOptions(
         queryKeys.comments.list({ mapId: deps.mapId }),
         (old) => old?.map((c) => (c.id === id ? { ...c, resolved: !c.resolved } : c)) ?? []
       );
-      return { previous } as { previous?: CommentEntry[] };
+      return { previous };
     },
-    onError: (
-      _err: unknown,
-      _vars: { id: string },
-      context: { previous?: CommentEntry[] } | undefined
-    ) => {
-      if (context?.previous) {
+    onError: (_err, _vars, onMutateResult) => {
+      if (onMutateResult?.previous) {
         deps.queryClient.setQueryData(
           queryKeys.comments.list({ mapId: deps.mapId }),
-          context.previous
+          onMutateResult.previous
         );
       }
     },

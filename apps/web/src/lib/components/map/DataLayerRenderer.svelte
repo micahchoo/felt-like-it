@@ -2,7 +2,7 @@
   import { GeoJSONSource, VectorTileSource, FillLayer, LineLayer, CircleLayer, SymbolLayer } from 'svelte-maplibre-gl';
   import type { FillLayerSpecification, LineLayerSpecification, CircleLayerSpecification } from 'maplibre-gl';
   import type { Layer, GeoJSONFeature, LayerStyle } from '@felt-like-it/shared-types';
-  import type { MapMouseEvent } from 'maplibre-gl';
+  import type { MapMouseEvent, MapLayerMouseEvent } from 'maplibre-gl';
   import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
   import { PUBLIC_MARTIN_URL } from '$env/static/public';
 
@@ -55,22 +55,27 @@
     return `${PUBLIC_MARTIN_URL}/public.features/{z}/{x}/{y}`;
   }
 
+  // svelte-maplibre-gl layer components emit MapLayerMouseEvent — which carries
+  // MapLibre's MapGeoJSONFeature in `features`. We forward a narrower
+  // GeoJSONFeature shape to parent callbacks via a boundary cast.
+  type LayerMouseEvent = MapLayerMouseEvent;
+
   /** Unified click handler — replaces 6 duplicated inline handlers. */
-  function handleClick(e: any, lrc: LayerRenderCache, layerId: string) {
+  function handleClick(e: LayerMouseEvent, lrc: LayerRenderCache, layerId: string) {
     if (!lrc.clickable) return;
-    const f = e.features?.[0];
-    if (f) onfeatureclick?.(f as unknown as GeoJSONFeature, e, lrc.layerStyle ?? undefined, layerId);
+    const f = e.features?.[0] as unknown as GeoJSONFeature | undefined;
+    if (f) onfeatureclick?.(f, e, lrc.layerStyle ?? undefined, layerId);
   }
 
   /** Unified hover handler — adds cursor feedback + forwards to parent. */
-  function handleMouseEnter(e: any, layerId: string) {
+  function handleMouseEnter(e: LayerMouseEvent, layerId: string) {
     const canvas = e.target?.getCanvas?.();
     if (canvas) canvas.style.cursor = 'pointer';
-    const f = e.features?.[0];
-    if (f) onfeaturehover?.(f as unknown as GeoJSONFeature, e, layerId);
+    const f = e.features?.[0] as unknown as GeoJSONFeature | undefined;
+    if (f) onfeaturehover?.(f, e, layerId);
   }
 
-  function handleMouseLeave(e: any) {
+  function handleMouseLeave(e: LayerMouseEvent) {
     const canvas = e.target?.getCanvas?.();
     if (canvas) canvas.style.cursor = '';
     onfeatureleave?.();

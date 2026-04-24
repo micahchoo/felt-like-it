@@ -10,7 +10,7 @@ export type FeatureCollection = { type: 'FeatureCollection'; features: GeoJSONFe
 export interface LayerDataManagerDeps {
   getInitialLayers: () => Layer[];
   queryClient: QueryClient;
-  queryKeysFn: (layerId: string) => unknown[];
+  queryKeysFn: (layerId: string) => readonly unknown[];
   fetchLayerFn: (layerId: string) => Promise<unknown>;
   isLargeLayer: (layer: Layer) => boolean;
   getMapInstance: () => import('maplibre-gl').Map | undefined;

@@ -6,7 +6,7 @@
 
   interface Props {
     annotationId: string;
-    userId?: string;
+    userId?: string | undefined;
     ondelete: (id: string) => void;
   }
 

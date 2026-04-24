@@ -83,7 +83,9 @@
     'circle-radius': 8, 'circle-color': '#f59e0b',
     'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff',
   };
-  // TYPE_DEBT: MapLibre layout specs expect ExpressionSpecification but our literal arrays are compatible at runtime
+  // TYPE_DEBT: MapLibre layout/filter specs expect ExpressionSpecification but our literal
+  // arrays are compatible at runtime — applies to the `as any` casts on BADGE_LABEL_LAYOUT,
+  // MEASURE_LABEL_LAYOUT, LINESTRING_FILTER, and POLYGON_FILTER below.
   const BADGE_LABEL_LAYOUT = {
     'text-field': ['to-string', ['get', 'count']], 'text-size': 10, 'text-allow-overlap': true,
   } as any;

@@ -71,7 +71,7 @@ describe('MeasurementStore', () => {
         ],
       },
     });
-    const payload = store.saveAsAnnotation();
+    const payload = store.saveAsAnnotation()!;
     expect(payload.title).toBe('Distance: 1.50 km');
     expect(payload.content.toLowerCase()).toContain('measurement');
     expect(payload.geometry.type).toBe('LineString');
@@ -84,7 +84,9 @@ describe('MeasurementStore', () => {
       type: 'area',
       value: 5000000,
       vertexCount: 4,
+      areaM2: 5000000,
       areaKm2: 5.0,
+      perimeterKm: 4,
       geometry: {
         type: 'Polygon',
         coordinates: [
@@ -98,7 +100,7 @@ describe('MeasurementStore', () => {
         ],
       },
     });
-    const payload = store.saveAsAnnotation();
+    const payload = store.saveAsAnnotation()!;
     expect(payload.title).toBe('Area: 5.00 km²');
     expect(payload.content.toLowerCase()).toContain('measurement');
     expect(payload.geometry.type).toBe('Polygon');
@@ -147,7 +149,9 @@ describe('MeasurementStore', () => {
       type: 'area',
       value: 200,
       vertexCount: 4,
+      areaM2: 200,
       areaKm2: 0.2,
+      perimeterKm: 4,
       geometry: {
         type: 'Polygon',
         coordinates: [
@@ -162,7 +166,7 @@ describe('MeasurementStore', () => {
       },
     });
     expect(store.history).toHaveLength(2);
-    expect(store.history[0].type).toBe('distance');
-    expect(store.history[1].type).toBe('area');
+    expect(store.history[0]!.type).toBe('distance');
+    expect(store.history[1]!.type).toBe('area');
   });
 });

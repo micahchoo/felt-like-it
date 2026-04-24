@@ -12,6 +12,7 @@ function makeLayer(id: string, zIndex = 0, overrides: Partial<Layer> = {}): Laye
     visible: true,
     zIndex,
     sourceFileName: null,
+    version: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

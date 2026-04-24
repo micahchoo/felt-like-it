@@ -11,7 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality:
+  # ── Fast, parallel feedback jobs ────────────────────────────────────────────
+  # Each fails independently so the PR summary pinpoints the broken step.
+
+  format:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,12 +25,50 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm run format:check
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
       - run: pnpm run test
+
+  # typecheck is a hard gate: svelte-check must pass (source + tests).
+  # Backlog of 115 errors cleared; removing `continue-on-error` makes CI fail the job on regression.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
       - run: pnpm run check
 
+  # ── Gate for publish ────────────────────────────────────────────────────────
+  # Hard requirement: format + lint + test must all pass before any image ships.
+
   publish:
-    needs: quality
+    needs: [format, lint, test, typecheck]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     permissions:

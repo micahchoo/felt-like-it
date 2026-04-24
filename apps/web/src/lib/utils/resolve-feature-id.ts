@@ -7,7 +7,7 @@ import { toFeatureUUID, type FeatureUUID } from '@felt-like-it/shared-types';
  * Returns null if no valid UUID can be resolved.
  */
 export function resolveFeatureId(
-  feat: { id?: string | number; properties?: Record<string, unknown> | null }
+  feat: { id?: string | number | undefined; properties?: Record<string, unknown> | null | undefined }
 ): FeatureUUID | null {
   const props = feat.properties;
   return (

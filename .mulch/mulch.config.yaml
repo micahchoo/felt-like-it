@@ -21,6 +21,7 @@ domains:
   - rest-api
   - navigation
   - data-pipeline
+  - meta
 governance:
   max_entries: 100
   warn_entries: 150

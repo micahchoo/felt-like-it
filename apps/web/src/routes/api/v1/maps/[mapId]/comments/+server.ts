@@ -27,7 +27,17 @@ export const GET: RequestHandler = async ({ request, url, params, locals }) => {
     ? sql`AND (created_at, id) > (${cursor.createdAt}, ${cursor.id}::uuid)`
     : sql``;
 
-  const rows = await typedExecute<Record<string, unknown>>(sql`
+  type CommentRow = {
+    id: string;
+    map_id: string;
+    user_id: string | null;
+    author_name: string;
+    body: string;
+    resolved: boolean;
+    created_at: string | Date;
+    updated_at: string | Date;
+  };
+  const rows = await typedExecute<CommentRow>(sql`
     SELECT id, map_id, user_id, author_name, body, resolved, created_at, updated_at
     FROM comments
     WHERE map_id = ${mapId}::uuid ${cursorClause}

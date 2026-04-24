@@ -3,8 +3,8 @@
     FILTER_OPERATOR_LABELS,
     type FilterOperator,
     type UIFilter,
-  } from '$lib/stores/filters.svelte.js';
-  import type { FiltersStore } from '$lib/stores/filters-store.svelte.js';
+    type FiltersStore,
+  } from '$lib/stores/filters-store.svelte.js';
   import type { GeoJSONFeature } from '@felt-like-it/shared-types';
 
   interface Props {

@@ -84,13 +84,15 @@ export const PATCH: RequestHandler = async ({ request, url, params, locals }) =>
   }
 
   try {
+    // TYPE_DEBT: body is Record<string, unknown>; annotationService validates shape at runtime.
+    // Spread only the provided fields; server-side zod validation runs inside update().
     const updated = await annotationService.update({
       userId: auth.userId,
       userName: user?.name ?? 'Unknown',
       id,
       version: currentVersion,
-      ...(body.anchor !== undefined ? { anchor: body.anchor } : {}),
-      ...(body.content !== undefined ? { content: body.content } : {}),
+      ...(body.anchor !== undefined ? { anchor: body.anchor as never } : {}),
+      ...(body.content !== undefined ? { content: body.content as never } : {}),
     });
     return jsonResponse(envelope(toAnnotation(updated), {}, annotationLinks(mapId, id)));
   } catch {
