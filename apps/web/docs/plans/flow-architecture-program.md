@@ -1,80 +1,84 @@
-# Flow Architecture Program — F01-F16 + N01-N03
+# Flow Architecture Program — Remaining Work (post-audit 2026-04-24)
 
-> **Scoping document, not an executable plan.** Maps the dependency graph for the `audit-2026-03-30` flow audit (8 ready seeds + their blockers). Recommends a starting flow but defers per-flow plan-writing until that flow is picked up.
+> **Re-scoped after seed audit.** The original `audit-2026-03-30` cycle had 16 flow seeds; 11 of them were already shipped but never closed. This doc reflects the actual remaining 5 + the unification program.
 
-## Why this exists
+## What's actually open
 
-The 8 "ready" F/N flow seeds (F09, F10, F11, F13, F14, N01, N02, N03) are all blocked by upstream flows. Two distinct blocker clusters surface from the dependency graph:
+After bulk-closing 11 stale seeds (commit `d7421a2`), only the **rendering & sharing** sub-cluster of the flow audit remains:
 
-**Cluster 1 — Foundational user flows (blocks F09 Measurement, F10 Annotations, F11 Export):**
+| Seed | Title | Approach |
+|------|-------|----------|
+| `1c79` F13 | Sharing — no viewport context, heavy viewer | Hash-based viewport state (`#zoom/lat/lng`); deduplicate token resolution; lightweight read-only viewer (split bundle); link expiration. |
+| `d2d6` F14 | Embedding — scroll-jacks, ships bloat | Cooperative gestures; single `generateEmbedSnippet()`; code-split or dedicated embed component; configurable `frame-ancestors`. |
+| `319b` N01 | Cluster exploration | svelte-maplibre GeoJSON cluster + CircleLayer for clusters + expansion-on-click (>1000-feature datasets). |
+| `a38b` N02 | Rich marker | svelte-maplibre MarkerLayer with Svelte snippet children; HTML markers, hover, popup. |
+| `bb9f` N03 | Data join | Polygon layer + CSV upload; key matching UI; preview joined attributes; choropleth update; DataTable shows merged columns. |
 
-- `865d` F02 Data import — blind upload, dangerous buffering
-- `ebc0` F05 Drawing — feature vanishes, aggressive auto-dismiss
-- `946c` F06 Style editing — expensive rebuilds, no safety net
-- `565b` F07 Filtering — split-brain, ephemeral, incomplete
-- `ccff` F08 Geoprocessing — black box with no preview
-- `2eaa` F12 Panel navigation — three systems fighting
+All five are now **truly unblocked** at the code level (F03 layer rendering shipped `e5f406c`; F04 feature interaction shipped `1b5e40b`). Their seed graph still shows `Blocked by: 2b53, aab0` because the seed dependency edges weren't pruned when the blockers closed — fixable with `sd update` if seeds support graph mutation.
 
-**Cluster 2 — Map plumbing (blocks F13 Sharing, F14 Embedding, N01-N03 Cluster/Marker/Join):**
+## Coherent execution roadmap
 
-- `2b53` F03 Layer rendering — monolith blocks all map work
-- `aab0` F04 Feature interaction — silent map, no feedback loop
+Two parallel programs of value, each shippable independently:
 
-The user-listed "ready" 8 seeds are the leaves; the 8 blockers are the roots.
+### Program A — Unified annotations (baa4)
 
-## Dependency graph (compressed)
+The `unified-annotations.md` Phases 1+2 shipped. Phase 3 collapses the dual model. Per-wave detail in `unified-annotations-phase-3.md`. Status:
 
-```
-[F02 Import]      ──┐
-[F05 Drawing]     ──┤
-[F06 Style edit]  ──┼──► [F09 Measurement]
-[F07 Filter]      ──┼──► [F10 Annotations]
-[F08 Geoproc]     ──┼──► [F11 Export]
-[F12 Panel-nav]   ──┘
+- ✅ **Pre-flight gate 1** (path-anchor backfill audit) — 0 candidates.
+- ❓ **Pre-flight gate 2** (product confirmation) — user signal needed: "Phases 1+2 hold up in real use."
+- ❓ **Pre-flight gate 3** (DB snapshot) — user-only.
+- ➡ **Wave A** — TerraDraw commit → annotation_objects (1 session, single-line write-path flip).
+- ➡ **Wave B** — features-table application-write lock-down (1 session, grep + ESLint rule).
+- ⛔ **Wave C** — DELETED per discriminator audit (no clean migration path; existing 10K rows stay as imports).
+- ➡ **Wave D** — DataTable repurposes to read annotations grouped by layer (1 session).
+- ➡ **Wave E** — `/api/features` 90-day Sunset deprecation headers (1-2 hours).
+- ➡ **Wave F** — Cleanup after 90-day window (1 session).
 
-[F03 Layer render] ──┬──► [F13 Sharing]
-                     ├──► [F14 Embedding]
-[F04 Feat interact] ─┼──► [N01 Cluster]
-                     ├──► [N02 Marker]
-                     └──► [N03 Data join]
-```
+**Total active execution:** 4 sessions + 1 cleanup-after-90-days. Modest.
 
-The two clusters share no blockers. They CAN proceed independently in parallel cycles, IF the user wants two parallel programs of work. Realistically, pick one cluster per cycle.
+### Program B — Sharing & rendering leaves (F13/F14/N01/N02/N03)
 
-## What each cluster represents
+Each is its own ~1-2 session work item. No internal dependencies between them (post-F03/F04 ship). Recommend order:
 
-**Cluster 1 (foundations):** Shaping how the user *creates and manipulates* map content (drawing, importing, filtering, processing, editing). The leaves (F09/F10/F11) are downstream views of the same content (measurement is "analyze drawn geometry," annotations is "comment on drawn geometry," export is "ship drawn geometry"). Fixing the leaves before the foundations means re-doing them when the foundations change.
+1. **F13 Sharing** (`1c79`) — lowest risk, highest UX value. Hash-state viewport + dedupe token resolution. Heavy-viewer split is a follow-up (could pair with F14).
+2. **F14 Embedding** (`d2d6`) — cooperative-gestures + bundle-split. Pairs naturally with F13 (both produce read-only viewers).
+3. **N01 Cluster** (`319b`) — straightforward svelte-maplibre integration; valuable for any user with >1000 features.
+4. **N02 Rich marker** (`a38b`) — same, MarkerLayer integration.
+5. **N03 Data join** (`bb9f`) — most product surface (key-matching UI + choropleth update + DataTable merge). Save for last; benefits from being able to draw on N01/N02 patterns.
 
-**Cluster 2 (plumbing):** Shaping how the *map itself* renders and responds. F03 is the "MapCanvas monolith blocks all map work" item — per session-start mulch (mx-bdbefd) it's an 887-line monolith with 11 hot-flow findings. Until F03 is decomposed, anything that touches map rendering (sharing snapshots, embedding cooperative-gestures, clustering, custom markers, choropleth-from-join) is building on a bad seam.
+**Total:** 5-7 sessions across the program, each independent.
 
-## Recommended starting flow
+## Suggested interleave
 
-**F03 Layer rendering (`2b53`)** — the MapCanvas monolith decomposition.
+Both programs proceed in parallel cycles. A reasonable ordering of the next ~10 sessions:
 
-Why first:
-- Highest blast radius unblocked by going first: clears the runway for F04 + 5 N/F leaves.
-- Already has structural priors: mulch records mx-bdbefd (887-line monolith, 11 hot-flow findings) + mx-e13901 (FLI uses svelte-maplibre-gl declaratively but ignores its interaction model) + mx-9f2d7d (promoteId="id" required for FeatureState) + mx-edcd4e (hover-aware paint).
-- Per CLAUDE.md craft discipline: pick the load-bearing intervention. F03 is structural; downstream F-tasks become tractable once it's split.
-- Doesn't depend on Phase 3 unification (`baa4`) — they touch different files. Can run as a parallel program.
+1. **(decision)** baa4 product-confirmation + DB snapshot — user-only, blocks Wave A.
+2. baa4 Wave A — TerraDraw commit flip.
+3. F13 Sharing.
+4. baa4 Wave B — features write lock-down.
+5. F14 Embedding.
+6. baa4 Wave D — DataTable repurpose.
+7. baa4 Wave E — Sunset headers.
+8. N01 Cluster.
+9. N02 Rich marker.
+10. N03 Data join.
+… 90 days later …
+11. baa4 Wave F — drop `/api/features`.
 
-Risk: refactoring an 887-line monolith without breaking visual fidelity. Mitigation: characterization-testing first (snapshot tests of rendered output for representative datasets), then incremental extraction with each step verified.
+Interleave preserves attention diversity — refactor sessions and feature sessions alternate. Either program can stall without blocking the other.
 
 ## What this program does NOT do
 
-- It does NOT close any of the 17 flow seeds. Each remains open with its blocker chain.
-- It does NOT pre-decide architecture for any flow — those are per-flow plans, written when the flow is picked up (same pattern as `unified-annotations-phase-3.md`).
-- It does NOT estimate timelines. Each F-flow is its own ~1-3 session unit; a cluster is 6-9 sessions; both clusters complete is a multi-month effort.
-
-## How to pick this up
-
-1. **Confirm the starting choice.** F03 is recommended; user may prefer a leaf-first approach (e.g., F11 Export — it has only one blocker, F08 Geoproc, which is somewhat isolated).
-2. **Write a dedicated plan** for the chosen flow (template: `unified-annotations-phase-3.md`). Include flow context, files to touch, characterization tests if it's a refactor, acceptance criteria.
-3. **Claim the flow seed and its immediate blockers.** Do not bypass blockers — the blocker exists because the leaf depends on its outputs.
-4. **Per-flow execution.** Most F-flows are 1-3 sessions. After completion, re-run the audit script (`bash ~/.claude/scripts/post-implementation-audit.sh ...`) and close the seed.
+- Doesn't close `1c79` `d2d6` `319b` `a38b` `bb9f` — those need real implementation work.
+- Doesn't pre-decide architecture for F13-N03 — each gets its own dedicated plan when picked up (template: `unified-annotations-phase-3.md`).
+- Doesn't auto-execute baa4 Wave A — gates 2 and 3 are user-only.
 
 ## Out of scope
 
-- Real-time collaboration (`felt-like-it-660a`).
-- Phase 3 unified-annotations (`baa4`) — independent program with its own plan.
-- Anti-pattern policy decisions (`0524`, `8bfc`) — independent.
+- Anti-pattern policy decisions (`0524 fire-and-forget`, `8bfc catch-all`) — defer to a focused lint-policy session.
+- Real-time collaboration (`660a`) — explicitly blocked.
 - OpenAPI/SDK (`d40a`) — closed without plan this cycle.
+
+## Process meta
+
+This document was rewritten 2026-04-24 after discovering 11 of the 16 flow-audit seeds were stale (work shipped, seeds never closed). Same pattern surfaced for the security cycle (9 stale seeds) and 5 felt-parity items earlier in the same session — total **25 stale seeds closed in one cycle.** The seed pipeline needs a "verify-against-current-code" gate before issuing detection-driven seeds; otherwise future agents waste effort scoping plans against fictional backlogs.
