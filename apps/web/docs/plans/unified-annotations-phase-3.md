@@ -10,7 +10,7 @@
 | A — TerraDraw → annotations | **DONE** | Commits 62b37e4, e25099c, 56869b1, cfdaec0 |
 | B — features write lock-down | **DONE** | Commits 3b25ce6, fe4261e + `.claude/rules/features-table-write-boundary.md` |
 | C — Migrate existing features | **N/A** | Resolved as "skip migration"; existing rows stay in `features` as import-data |
-| D — DataTable repurpose | **BLOCKED on design** | Choose D-α / D-β / D-γ — see Wave D section below |
+| D — DataTable repurpose | **DONE (D-α path)** | Schema migration shipped (D.1-D.3). DataTable's small-layer view flipped to annotations-by-layer (D.4-A). Large-layer DataTable unchanged (still server-paginated features for tile-data inspection). |
 | E — features endpoint deprecation | **DEPENDS on D** | Likely cancelled if D-γ |
 | F — Cleanup | **NOT-PLANNED under current resolution** | Triggers only if product chooses D-α |
 

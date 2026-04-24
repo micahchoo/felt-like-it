@@ -14,6 +14,7 @@
   import BasemapPicker from './BasemapPicker.svelte';
   import type { Layer, LayerStyle } from '@felt-like-it/shared-types';
   import DataTable from '$lib/components/data/DataTable.svelte';
+  import { annotationsToLayerFeatureRows } from '$lib/components/data/annotation-row-mapper.js';
   import FilterPanel from '$lib/components/data/FilterPanel.svelte';
   import ImportDialog from '$lib/components/data/ImportDialog.svelte';
   import ExportDialog from '$lib/components/data/ExportDialog.svelte';
@@ -768,7 +769,6 @@
     {#if editorLayout.bottomPanel === 'table' && layersStore.active}
       {@const activeLayer = layersStore.active}
       {@const rawFeatures = layerData[activeLayer.id]?.features ?? []}
-      {@const filteredFeatures = filtersStore.applyToFeatures(rawFeatures)}
       <div
         class="border-t border-surface-high shrink-0 flex flex-col overflow-hidden"
         style="height: {editorLayout.filterPanelOpen && !isLargeLayer(activeLayer)
@@ -811,8 +811,20 @@
               onSelectFeature={(f) => editorState.selectFeature(f)}
             />
           {:else}
+            <!--
+              Phase 3 Wave D-α (D.4-A): small-layer DataTable shows ANNOTATIONS
+              for the active layer, not raw features. User-curated rows (drawn
+              shapes, labelled, styled) are the editing surface. Imported
+              feature data is still rendered on the map; the per-layer DataTable
+              just no longer surfaces it. Large layers continue to read features
+              via viewportStore (server-paginated tile data).
+            -->
+            {@const layerAnnotationRows = annotationsToLayerFeatureRows(
+              annotationPinsQuery.data ?? [],
+              activeLayer.id,
+            )}
             <DataTable
-              features={filteredFeatures}
+              features={layerAnnotationRows}
               style={activeLayer.style as LayerStyle}
               onSelectFeature={(f) => editorState.selectFeature(f)}
             />
