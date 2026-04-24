@@ -97,13 +97,29 @@ Add an ESLint rule (or a CI check) that bans `INSERT INTO features` outside `app
 - Rows on layers with `type IN ('drawing', 'sketch')` vs `type IN ('imported', 'csv', 'geojson')`.
 - Rows with no `import_id` linkage (assuming an `imports` table joins them).
 
-The user must confirm the discriminator before Wave C runs. Pre-flight audit:
+**Pre-flight audit run 2026-04-24 (felt-like-it-postgres-1):**
+
+```
+layer.type | feature_rows
+mixed      | 10019
+polygon    |    11
+```
+
+Only two `layer.type` values exist; neither distinguishes user-drew from imported. The `layer.type IN (drawing, sketch)` discriminator from the candidate list **does not work** — no such layers exist. **Wave C cannot proceed with the original discriminator.** Alternative paths to investigate at execution time:
+
+1. `features.properties` shape — grep a sample of rows; if importer pipelines stamp a recognizable key (e.g., `import_id`, `source_file`), use the absence of those as the user-origin signal.
+2. `features.created_at` clusters — imports tend to be batched (1000s of rows in a single second); user draws are singletons. Histogram of insertion-rate-per-minute may separate the populations.
+3. **Default if no clean discriminator emerges: skip migration entirely** — keep `features` as the imported layer's home and mark all 10K existing rows as "imports". Only new TerraDraw commits go into annotation_objects. Old TerraDraw drawings are accepted-loss (or migrated lazily on user touch).
+
+Audit query template (re-run before Wave C):
 
 ```sql
 SELECT l.type, COUNT(*) AS rows
 FROM features f JOIN layers l ON l.id = f.layer_id
 GROUP BY l.type
 ORDER BY rows DESC;
+-- Sample properties shape for discriminator hints
+SELECT properties FROM features TABLESAMPLE BERNOULLI (0.5) LIMIT 20;
 ```
 
 **Migration query template** (per geometry type):
