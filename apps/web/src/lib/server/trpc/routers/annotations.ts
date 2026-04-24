@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../init.js';
 import { annotationService } from '../../annotations/service.js';
+import {
+  convertAnnotationsToLayer,
+  convertLayerFeaturesToAnnotations,
+} from '../../annotations/convert.js';
 import { getChangelog, getChangelogMapId } from '../../annotations/changelog.js';
 import { requireMapAccess } from '../../geo/access.js';
 import {
@@ -105,6 +109,41 @@ export const annotationsRouter = router({
         userName: ctx.user.name,
         id: input.id,
         expectedVersion: input.version,
+      });
+    }),
+
+  convertAnnotationsToLayer: protectedProcedure
+    .input(
+      z.object({
+        mapId: z.string().uuid(),
+        annotationIds: z.array(z.string().uuid()).min(1).max(500),
+        layerName: z.string().min(1).max(200),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      return convertAnnotationsToLayer({
+        userId: ctx.user.id,
+        mapId: input.mapId,
+        annotationIds: input.annotationIds,
+        layerName: input.layerName,
+      });
+    }),
+
+  convertLayerFeaturesToAnnotations: protectedProcedure
+    .input(
+      z.object({
+        mapId: z.string().uuid(),
+        layerId: z.string().uuid(),
+        featureIds: z.array(z.string().uuid()).min(1).max(500),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      return convertLayerFeaturesToAnnotations({
+        userId: ctx.user.id,
+        userName: ctx.user.name,
+        mapId: input.mapId,
+        layerId: input.layerId,
+        featureIds: input.featureIds,
       });
     }),
 

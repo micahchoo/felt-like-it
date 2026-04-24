@@ -461,6 +461,90 @@ test.describe('Promise 15 — "First-class name and description" (Felt-parity Wa
   });
 });
 
+test.describe('Promise 16 — "Promote annotations to a data layer and back" (Felt-parity Wave 3)', () => {
+  test('converts multiple annotations to a layer and deletes the sources', async ({ alice }) => {
+    const a = await createPointAnnotation(alice, 'A');
+    const b = await createPointAnnotation(alice, 'B');
+
+    const convertRes = await alice.post(`/api/v1/maps/${FIXTURE_MAPS.aliceMap}/convert-annotations-to-layer`, {
+      data: { annotationIds: [a.id, b.id], layerName: 'Promoted points' },
+    });
+    expect(convertRes.status()).toBe(201);
+    const result = (await convertRes.json()).data;
+    expect(result.layerId).toBeTruthy();
+    expect(result.featureCount).toBe(2);
+    expect(result.skipped).toHaveLength(0);
+
+    // Source annotations are gone
+    expect((await alice.get(`${mapUrl}/${a.id}`)).status()).toBe(404);
+    expect((await alice.get(`${mapUrl}/${b.id}`)).status()).toBe(404);
+  });
+
+  test('viewport-anchored annotations are skipped with a reason, not deleted', async ({ alice }) => {
+    // Create one point + one viewport annotation
+    const pointRes = await alice.post(mapUrl, {
+      data: {
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [1, 2] } },
+        content: { kind: 'single', body: { type: 'text', text: 'convertible' } },
+      },
+    });
+    const pointId = (await pointRes.json()).data.id as string;
+    const vpRes = await alice.post(mapUrl, {
+      data: {
+        anchor: { type: 'viewport' },
+        content: { kind: 'single', body: { type: 'text', text: 'no geometry' } },
+      },
+    });
+    const vpId = (await vpRes.json()).data.id as string;
+
+    const convertRes = await alice.post(`/api/v1/maps/${FIXTURE_MAPS.aliceMap}/convert-annotations-to-layer`, {
+      data: { annotationIds: [pointId, vpId], layerName: 'Mixed' },
+    });
+    expect(convertRes.status()).toBe(201);
+    const result = (await convertRes.json()).data;
+    expect(result.featureCount).toBe(1);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0].id).toBe(vpId);
+    expect(result.skipped[0].reason).toMatch(/viewport/i);
+
+    // Point was consumed, viewport survived
+    expect((await alice.get(`${mapUrl}/${pointId}`)).status()).toBe(404);
+    expect((await alice.get(`${mapUrl}/${vpId}`)).status()).toBe(200);
+  });
+
+  test('rejects when all inputs are viewport-anchored (nothing to convert)', async ({ alice }) => {
+    const vpRes = await alice.post(mapUrl, {
+      data: {
+        anchor: { type: 'viewport' },
+        content: { kind: 'single', body: { type: 'text', text: 'x' } },
+      },
+    });
+    const vpId = (await vpRes.json()).data.id as string;
+
+    const res = await alice.post(`/api/v1/maps/${FIXTURE_MAPS.aliceMap}/convert-annotations-to-layer`, {
+      data: { annotationIds: [vpId], layerName: 'Empty' },
+    });
+    expect(res.status()).toBe(422);
+    // The source annotation must not have been deleted
+    expect((await alice.get(`${mapUrl}/${vpId}`)).status()).toBe(200);
+  });
+
+  test('rejects cross-tenant annotation ids', async ({ alice, bob }) => {
+    const bobAnn = await bob.post(`/api/v1/maps/${FIXTURE_MAPS.bobMap}/annotations`, {
+      data: {
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
+        content: { kind: 'single', body: { type: 'text', text: 'bob' } },
+      },
+    });
+    const bobId = (await bobAnn.json()).data.id as string;
+
+    const res = await alice.post(`/api/v1/maps/${FIXTURE_MAPS.aliceMap}/convert-annotations-to-layer`, {
+      data: { annotationIds: [bobId], layerName: 'Hijack' },
+    });
+    expect([404, 422]).toContain(res.status());
+  });
+});
+
 test.describe('Promise 14 — "Auth required"', () => {
   test('anonymous list → 401', async ({ anon }) => {
     const res = await anon.get(mapUrl);
