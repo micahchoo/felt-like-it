@@ -6,7 +6,18 @@ import { toAnnotation } from '$lib/server/api/serializers.js';
 import { annotationLinks } from '$lib/server/api/links.js';
 import { db, users } from '$lib/server/db/index.js';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import type { RequestHandler } from './$types.js';
+
+// M1: strict whitelist — PATCH accepts only `anchor` and `content`. Extra
+// fields (e.g. forged `id`, `userId`, `mapId`, `version`) must be rejected at
+// the API boundary rather than relying on service-layer validation.
+const AnnotationPatchSchema = z
+  .object({
+    anchor: z.unknown().optional(),
+    content: z.unknown().optional(),
+  })
+  .strict();
 
 export const GET: RequestHandler = async ({ request, url, params, locals, getClientAddress }) => {
   const auth = await resolveAuth({ request, url, locals, getClientAddress });
@@ -46,8 +57,14 @@ export const PATCH: RequestHandler = async ({ request, url, params, locals, getC
   const { mapId, id } = params;
   try { await requireMapAccess(auth.userId, mapId, 'commenter'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
 
-  let body: Record<string, unknown>;
-  try { body = stripNullBytes(await request.json()) as Record<string, unknown>; } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
+  let rawBody: unknown;
+  try { rawBody = stripNullBytes(await request.json()); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
+
+  const parsedBody = AnnotationPatchSchema.safeParse(rawBody);
+  if (!parsedBody.success) {
+    return toErrorResponse('VALIDATION_ERROR', parsedBody.error.issues[0]?.message ?? 'Invalid annotation patch payload');
+  }
+  const body = parsedBody.data;
 
   // Get user name for changelog
   const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, auth.userId));

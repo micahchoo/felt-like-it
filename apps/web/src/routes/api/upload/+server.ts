@@ -13,6 +13,8 @@ import { TRPCError } from '@trpc/server';
 
 const UPLOAD_DIR = env.UPLOAD_DIR ?? '/tmp/felt-uploads';
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+/** L3 — cap layer name at 120 chars to prevent unbounded text in downstream exports/filenames. */
+const MAX_LAYER_NAME_LENGTH = 120;
 
 export const POST: RequestHandler = async ({ request, locals }) => {
   if (!locals.user) {
@@ -26,6 +28,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   if (!file || !mapId) {
     error(400, 'Missing file or mapId');
+  }
+
+  // L3: reject oversized layer names (jsonb/text boundary) — 422 rather than
+  // 413 because it's a field-level schema violation, not a body-size issue.
+  if (layerName.length > MAX_LAYER_NAME_LENGTH) {
+    error(422, `layerName exceeds maximum length of ${MAX_LAYER_NAME_LENGTH} characters`);
   }
 
   // Verify map access — reuse the canonical access helper

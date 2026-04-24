@@ -8,7 +8,23 @@ import { parsePaginationParams, encodeCursor } from '$lib/server/api/pagination.
 import { CreateAnnotationObjectSchema } from '@felt-like-it/shared-types';
 import { db, users } from '$lib/server/db/index.js';
 import { eq } from 'drizzle-orm';
+import { depthLimit } from '$lib/server/validation/depth.js';
 import type { RequestHandler } from './$types.js';
+
+/**
+ * Cap nested JSON depth on the content field (M2) — annotation content is a
+ * jsonb column accepting arbitrary shapes; unbounded nesting is a DoS vector
+ * through recursive JSON parsers / serializers downstream. 20 levels is far
+ * beyond any legitimate rich-text / GeoJSON structure.
+ */
+const MAX_CONTENT_DEPTH = 20;
+const CreateAnnotationWithDepthLimit = CreateAnnotationObjectSchema.superRefine((value, ctx) => {
+  const check = depthLimit(MAX_CONTENT_DEPTH);
+  // Run the refinement on the content field specifically so the error path
+  // points at the offending field instead of the whole envelope.
+  const sub = { ...ctx, addIssue: (issue: Parameters<typeof ctx.addIssue>[0]) => ctx.addIssue({ ...issue, path: ['content', ...(issue.path ?? [])] }) };
+  check(value.content, sub as typeof ctx);
+});
 
 export const GET: RequestHandler = async ({ request, url, params, locals, getClientAddress }) => {
   const auth = await resolveAuth({ request, url, locals, getClientAddress });
@@ -65,7 +81,7 @@ export const POST: RequestHandler = async ({ request, url, params, locals, getCl
   try { body = stripNullBytes(await request.json()); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
 
   // TYPE_DEBT: body is validated by Zod immediately; cast needed to spread unknown
-  const parsed = CreateAnnotationObjectSchema.safeParse({ ...(body as Record<string, unknown>), mapId });
+  const parsed = CreateAnnotationWithDepthLimit.safeParse({ ...(body as Record<string, unknown>), mapId });
   if (!parsed.success) return toErrorResponse('VALIDATION_ERROR', parsed.error.issues[0]?.message);
 
   // Get user name for denormalized authorName

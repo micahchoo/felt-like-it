@@ -1,6 +1,10 @@
 import { sql, eq } from 'drizzle-orm';
+import { z } from 'zod';
 import { resolveAuth, envelope, jsonResponse, rateLimit, assertMapAccess, requireScope, stripNullBytes } from '../../../middleware.js';
 import { toErrorResponse } from '../../../errors.js';
+
+// H6: cap comment body at 5000 chars to prevent oversize-payload DoS.
+const CommentCreateSchema = z.object({ body: z.string().min(1).max(5000) }).strict();
 import { requireMapAccess } from '$lib/server/geo/access.js';
 import { db, comments, users } from '$lib/server/db/index.js';
 import { toComment } from '$lib/server/api/serializers.js';
@@ -77,11 +81,12 @@ export const POST: RequestHandler = async ({ request, url, params, locals, getCl
   const { mapId } = params;
   try { await requireMapAccess(auth.userId, mapId, 'commenter'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
 
-  let body: Record<string, unknown>;
-  try { body = stripNullBytes(await request.json()) as Record<string, unknown>; } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
+  let rawBody: unknown;
+  try { rawBody = stripNullBytes(await request.json()); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
 
-  if (!body.body || typeof body.body !== 'string') {
-    return toErrorResponse('VALIDATION_ERROR', 'body is required and must be a string');
+  const parsed = CommentCreateSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return toErrorResponse('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid comment payload');
   }
 
   const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, auth.userId));
@@ -92,7 +97,7 @@ export const POST: RequestHandler = async ({ request, url, params, locals, getCl
       mapId,
       userId: auth.userId,
       authorName: user?.name ?? 'Unknown',
-      body: body.body,
+      body: parsed.data.body,
     })
     .returning();
 

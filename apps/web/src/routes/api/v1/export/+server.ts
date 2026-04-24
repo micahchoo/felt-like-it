@@ -9,6 +9,8 @@ import { exportAsGeoPackage } from '$lib/server/export/geopackage.js';
 import { exportAsShapefile } from '$lib/server/export/shapefile.js';
 import { exportAsPdf } from '$lib/server/export/pdf.js';
 import type { ExportFormat } from '$lib/stores/export-store.svelte.js';
+import { resolveAuth, rateLimit } from '../middleware.js';
+import { toErrorResponse } from '../errors.js';
 
 interface ExportRequest {
   layerId?: string;
@@ -26,7 +28,18 @@ interface ExportRequest {
  * Creates an export job and returns jobId for SSE progress tracking.
  * For immediate exports (single layer, no annotations), may return directly.
  */
-export const POST: RequestHandler = async ({ request, locals, getClientAddress }) => {
+export const POST: RequestHandler = async ({ request, url, locals, getClientAddress }) => {
+  // H3: rate-limit BEFORE any work (JSON parse, ownership checks) so every
+  // attempt increments the counter — matches the pattern in /api/v1/maps,
+  // /api/v1/files, etc. resolveAuth yields the same userId hooks.server.ts
+  // populates into locals.user; we keep the locals.user check as a
+  // defense-in-depth fallback for cookie-session callers (embed flow).
+  const auth = await resolveAuth({ request, url, locals, getClientAddress });
+  if (!auth) return toErrorResponse('UNAUTHORIZED');
+
+  const rateLimited = rateLimit(auth);
+  if (rateLimited) return rateLimited;
+
   if (!locals.user) {
     throw error(401, 'Unauthorized');
   }

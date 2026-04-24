@@ -139,6 +139,11 @@ export const annotationsRouter = router({
       const navPlace = (manifest as Record<string, unknown>)['navPlace'];
       if (!navPlace || typeof navPlace !== 'object') return null;
 
+      // L4: re-validate externally-fetched navPlace against the same GeoJSON
+      // schema used for locally-authored content. A malformed manifest from
+      // an untrusted IIIF server must never reach the jsonb column. On
+      // validation failure we return null (skip-the-field policy) so the
+      // caller's annotation save proceeds without the navPlace.
       const navPlaceObj = navPlace as Record<string, unknown>;
       if (navPlaceObj['type'] === 'FeatureCollection') {
         const result = GeoJSONFeatureCollectionSchema.safeParse(navPlace);
