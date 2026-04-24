@@ -38,6 +38,8 @@
     pickedFeature?: { featureId: string; layerId: string } | undefined;
     onrequestregion?: () => void;
     onrequestfeaturepick?: () => void;
+    /** True while the create mutation is in flight — prevents double-submit. */
+    isSubmitting?: boolean;
   }
 
   let {
@@ -48,6 +50,7 @@
     pickedFeature = undefined,
     onrequestregion,
     onrequestfeaturepick,
+    isSubmitting = false,
   }: Props = $props();
 
   // Form state
@@ -474,12 +477,100 @@
     </div>
   {/if}
 
+  <!-- Anchor selection -->
+  <fieldset class="flex flex-col gap-1 mt-2 border-t border-white/5 pt-2">
+    <legend class="text-[10px] uppercase tracking-wider text-on-surface-variant/70">
+      Where should this annotation live?
+    </legend>
+    <div class="grid grid-cols-4 gap-1.5">
+      {#each [{ v: 'point', label: 'Point' }, { v: 'region', label: 'Region' }, { v: 'feature', label: 'Feature' }, { v: 'viewport', label: 'Viewport' }] as opt (opt.v)}
+        <button
+          type="button"
+          data-testid="anchor-type-{opt.v}"
+          onclick={() => {
+            formAnchorType = opt.v as typeof formAnchorType;
+          }}
+          class="px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wider transition-colors
+                 {formAnchorType === opt.v
+            ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+            : 'bg-surface-low text-on-surface-variant hover:bg-surface-high'}"
+        >
+          {opt.label}
+        </button>
+      {/each}
+    </div>
+
+    {#if formAnchorType === 'point'}
+      <div class="grid grid-cols-2 gap-1 mt-1">
+        <label class="flex flex-col text-[10px] text-on-surface-variant">
+          Longitude
+          <input
+            type="number"
+            step="any"
+            min={-180}
+            max={180}
+            bind:value={formLng}
+            class="rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </label>
+        <label class="flex flex-col text-[10px] text-on-surface-variant">
+          Latitude
+          <input
+            type="number"
+            step="any"
+            min={-90}
+            max={90}
+            bind:value={formLat}
+            class="rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </label>
+      </div>
+    {:else if formAnchorType === 'region'}
+      <div class="flex items-center gap-2 mt-1">
+        <button
+          type="button"
+          onclick={() => onrequestregion?.()}
+          class="px-2 py-1 rounded text-[10px] bg-surface-low text-on-surface-variant hover:bg-surface-high"
+        >
+          {regionGeometry ? 'Redraw region' : 'Draw region on map'}
+        </button>
+        {#if regionGeometry}
+          <span class="text-[10px] text-emerald-400">✓ region captured</span>
+        {:else}
+          <span class="text-[10px] text-on-surface-variant/70">no region yet</span>
+        {/if}
+      </div>
+    {:else if formAnchorType === 'feature'}
+      <div class="flex items-center gap-2 mt-1">
+        <button
+          type="button"
+          onclick={() => onrequestfeaturepick?.()}
+          class="px-2 py-1 rounded text-[10px] bg-surface-low text-on-surface-variant hover:bg-surface-high"
+        >
+          {pickedFeature ? 'Pick a different feature' : 'Pick a feature on the map'}
+        </button>
+        {#if pickedFeature}
+          <span class="text-[10px] text-emerald-400">✓ feature selected</span>
+        {:else}
+          <span class="text-[10px] text-on-surface-variant/70">no feature yet</span>
+        {/if}
+      </div>
+    {:else if formAnchorType === 'viewport'}
+      <p class="text-[10px] text-on-surface-variant/70 mt-1">
+        Attached to the current map view. Readers will see the note whenever this view is loaded.
+      </p>
+    {/if}
+  </fieldset>
+
+  <!-- Measurement data display -->
+
   <!-- Submit -->
   <button
     type="submit"
-    disabled={!canSubmit}
+    data-testid="annotation-save"
+    disabled={!canSubmit || isSubmitting}
     class="px-3 py-1.5 rounded bg-primary text-on-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
   >
-    Save
+    {isSubmitting ? 'Saving…' : 'Save'}
   </button>
 </form>

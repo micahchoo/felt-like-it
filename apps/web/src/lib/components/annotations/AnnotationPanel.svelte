@@ -156,26 +156,49 @@
     anchor: Anchor;
     content: { kind: 'single'; body: AC };
   }) {
+    // Idempotency guard — the mutation's `isPending` already drives the
+    // submit button's disabled state, but a direct programmatic call via
+    // keyboard shortcut or pending-measurement could still land while a
+    // prior request is in flight. Swallow the second call.
+    if (createAnnotation.isPending) return;
     try {
       await createAnnotation.mutateAsync(input);
       onannotationsaved('created');
     } catch {
-      toastStore.error('Failed to create annotation.');
+      // mutation.onError already surfaced a user-facing toast
     }
   }
 
   async function handleDelete(id: string) {
+    const target = annotations.find((a) => a.id === id);
+    if (!target) return;
+    if (deleteAnnotation.isPending) return;
     try {
-      await deleteAnnotation.mutateAsync({ id });
+      await deleteAnnotation.mutateAsync({ id, version: target.version });
       onannotationsaved('deleted');
     } catch {
-      toastStore.error('Failed to delete annotation.');
+      // mutation.onError already surfaced a user-facing toast (incl. CONFLICT)
+    }
+  }
+
+  async function handleUpdate(input: {
+    id: string;
+    version: number;
+    anchor?: Anchor;
+    content?: { kind: 'single'; body: AC };
+  }) {
+    if (updateAnnotation.isPending) return;
+    try {
+      await updateAnnotation.mutateAsync(input);
+    } catch {
+      // mutation.onError already surfaced a user-facing toast (incl. CONFLICT)
     }
   }
 
   async function handleReply(parentId: string) {
     const body = replyText.trim();
     if (!body || !userId) return;
+    if (replyAnnotation.isPending) return;
     try {
       await replyAnnotation.mutateAsync({
         mapId,
@@ -186,7 +209,7 @@
       replyText = '';
       replyingTo = null;
     } catch {
-      toastStore.error('Failed to reply.');
+      // mutation.onError already surfaced a user-facing toast
     }
   }
 
@@ -248,7 +271,7 @@
   // ── Comment state ───────────────────────────────────────────────────────────
 
   let commentBody = $state('');
-  let submittingComment = $state(false);
+  const submittingComment = $derived(createComment.isPending);
 
   // ── Blob cleanup ────────────────────────────────────────────────────────────
   // (AnnotationForm handles its own blob cleanup internally)
@@ -290,6 +313,7 @@
       {pickedFeature}
       {onrequestregion}
       {onrequestfeaturepick}
+      isSubmitting={createAnnotation.isPending}
     />
   </div>
 
@@ -315,6 +339,16 @@
       }}
       onreply={() => handleReply(replyingTo!)}
       ondelete={handleDelete}
+      onedit={(annotation, newText) => {
+        handleUpdate({
+          id: annotation.id,
+          version: annotation.version,
+          content: { kind: 'single', body: { type: 'text', text: newText } },
+        });
+      }}
+      isMutating={deleteAnnotation.isPending ||
+        updateAnnotation.isPending ||
+        replyAnnotation.isPending}
       onconverttopoint={handleConvertToPoint}
       onfetchnavplace={handleFetchNavPlace}
     />

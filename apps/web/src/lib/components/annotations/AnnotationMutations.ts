@@ -5,6 +5,25 @@ import { queryKeys } from '$lib/utils/query-keys.js';
 import type { AnnotationObject, Anchor, AnnotationContent as AC } from '@felt-like-it/shared-types';
 import { toastStore } from '$lib/components/ui/Toast.svelte';
 
+/**
+ * Translate a tRPC / server error into a user-facing message. Inspects the
+ * wrapped TRPC error code so the toast distinguishes a stale version edit from
+ * a permission failure from a plain network glitch.
+ */
+function describeError(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object') {
+    const e = err as { data?: { code?: string }; message?: string };
+    const code = e.data?.code;
+    if (code === 'CONFLICT') return 'Someone else edited this annotation — reload to see the latest version.';
+    if (code === 'UNAUTHORIZED') return 'Sign in to continue.';
+    if (code === 'FORBIDDEN') return 'You do not have permission to do that.';
+    if (code === 'NOT_FOUND') return 'Annotation not found — it may have been deleted.';
+    if (code === 'TOO_MANY_REQUESTS') return 'Too many requests — slow down and try again.';
+    if (code === 'PAYLOAD_TOO_LARGE') return 'Annotation content is too large.';
+  }
+  return fallback;
+}
+
 interface MutationDeps {
   queryClient: QueryClient;
   mapId: string;
@@ -58,14 +77,14 @@ export function createAnnotationMutationOptions(
       );
       return { previous, optimisticId };
     },
-    onError: (_err, _vars, onMutateResult) => {
+    onError: (err, _vars, onMutateResult) => {
       if (onMutateResult?.previous) {
         deps.queryClient.setQueryData(
           queryKeys.annotations.list({ mapId: deps.mapId }),
           onMutateResult.previous
         );
       }
-      toastStore.error('Failed to create annotation.');
+      toastStore.error(describeError(err, 'Failed to create annotation.'));
     },
     onSuccess: () => {
       deps.queryClient.invalidateQueries({
@@ -80,12 +99,12 @@ export function deleteAnnotationMutationOptions(
 ): MutationOptions<
   Awaited<ReturnType<typeof trpc.annotations.delete.mutate>>,
   Error,
-  { id: string },
+  { id: string; version: number },
   { previous: AnnotationObject[] | undefined }
 > {
   return {
-    mutationFn: (input: { id: string }) => trpc.annotations.delete.mutate(input),
-    onMutate: async ({ id }: { id: string }) => {
+    mutationFn: (input: { id: string; version: number }) => trpc.annotations.delete.mutate(input),
+    onMutate: async ({ id }: { id: string; version: number }) => {
       await deps.queryClient.cancelQueries({
         queryKey: queryKeys.annotations.list({ mapId: deps.mapId }),
       });
@@ -98,13 +117,14 @@ export function deleteAnnotationMutationOptions(
       );
       return { previous };
     },
-    onError: (_err, _vars, onMutateResult) => {
+    onError: (err, _vars, onMutateResult) => {
       if (onMutateResult?.previous) {
         deps.queryClient.setQueryData(
           queryKeys.annotations.list({ mapId: deps.mapId }),
           onMutateResult.previous
         );
       }
+      toastStore.error(describeError(err, 'Failed to delete annotation.'));
     },
     onSettled: () => {
       deps.queryClient.invalidateQueries({
@@ -136,6 +156,9 @@ export function updateAnnotationMutationOptions(
         queryKey: queryKeys.annotations.list({ mapId: deps.mapId }),
       });
     },
+    onError: (err) => {
+      toastStore.error(describeError(err, 'Failed to update annotation.'));
+    },
   };
 }
 
@@ -160,6 +183,9 @@ export function replyAnnotationMutationOptions(
       deps.queryClient.invalidateQueries({
         queryKey: queryKeys.annotations.thread({ annotationId: variables.parentId }),
       });
+    },
+    onError: (err) => {
+      toastStore.error(describeError(err, 'Failed to post reply.'));
     },
   };
 }

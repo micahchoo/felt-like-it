@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import { AnnotationContentSchema } from './annotation.js';
+import { AnnotationStyleSchema } from './annotation-style.js';
 
 // Re-export the original content union for convenience
 export { AnnotationContentSchema as AnnotationContentBodySchema };
@@ -110,6 +111,14 @@ export const AnnotationObjectSchema = z.object({
   anchor: AnchorSchema,
   content: AnnotationObjectContentSchema,
   templateId: z.string().uuid().nullable(),
+  /** Optional first-class label shown in list rows and transferred by convert (Felt-parity Wave 1). */
+  name: z.string().min(1).max(200).nullable().optional(),
+  /** Optional rich-text body beyond the structured content. Max 5000 chars. */
+  description: z.string().max(5000).nullable().optional(),
+  /** Assigned group/folder. NULL = ungrouped (root of the Sidebar List). */
+  groupId: z.string().uuid().nullable().optional(),
+  /** User-controlled visual style. Renderer falls back to defaults when NULL. */
+  style: AnnotationStyleSchema.nullable().optional(),
   ordinal: z.number().int(),
   version: z.number().int(),
   createdAt: z.date(),
@@ -126,6 +135,10 @@ export const CreateAnnotationObjectSchema = z.object({
   anchor: AnchorSchema,
   content: AnnotationObjectContentSchema,
   templateId: z.string().uuid().optional(),
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().max(5000).optional(),
+  groupId: z.string().uuid().optional(),
+  style: AnnotationStyleSchema.optional(),
 });
 
 export const UpdateAnnotationObjectSchema = z.object({
@@ -135,8 +148,15 @@ export const UpdateAnnotationObjectSchema = z.object({
   anchor: AnchorSchema.optional(),
   /** Client must send current version for optimistic concurrency. */
   version: z.number().int(),
+  /** Pass null to clear; omit to leave unchanged. */
+  name: z.string().min(1).max(200).nullable().optional(),
+  description: z.string().max(5000).nullable().optional(),
+  groupId: z.string().uuid().nullable().optional(),
+  style: AnnotationStyleSchema.nullable().optional(),
 });
 
 export const DeleteAnnotationObjectSchema = z.object({
   id: z.string().uuid(),
+  /** Current version observed by the client — enforces If-Match at the service layer. */
+  version: z.number().int(),
 });

@@ -84,7 +84,7 @@ describe('AnnotationMutations', () => {
     const { deleteAnnotationMutationOptions } =
       await import('$lib/components/annotations/AnnotationMutations.js');
     const options = deleteAnnotationMutationOptions({ queryClient, mapId: 'map-1' });
-    await options.mutationFn!({ id: 'ann-1' }, {} as any);
+    await options.mutationFn!({ id: 'ann-1', version: 0 }, {} as any);
     const { trpc } = await import('$lib/utils/trpc.js');
     expect(trpc.annotations.delete.mutate).toHaveBeenCalled();
   });
@@ -153,7 +153,7 @@ describe('AnnotationMutations', () => {
     );
 
     const options = deleteAnnotationMutationOptions({ queryClient, mapId: 'map-1' });
-    await options.onMutate!({ id: 'ann-1' }, {} as any);
+    await options.onMutate!({ id: 'ann-1', version: 0 }, {} as any);
 
     const cache = queryClient.getQueryData(['annotations', 'list', { mapId: 'map-1' }]) as Array<{
       id: string;

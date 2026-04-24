@@ -99,6 +99,7 @@ export const annotationsRouter = router({
         userId: ctx.user.id,
         userName: ctx.user.name,
         id: input.id,
+        expectedVersion: input.version,
       });
     }),
 

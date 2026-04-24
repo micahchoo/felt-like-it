@@ -24,11 +24,14 @@
     replyText: string;
     listLoading: boolean;
     listError: string | null;
+    /** True while any list-scoped mutation is in flight — disables action buttons. */
+    isMutating?: boolean;
     onexpand: (id: string | null) => void;
     onreplying: (id: string | null) => void;
     onreplytext: (text: string) => void;
     onreply: (annotationId: string) => void;
     ondelete: (id: string) => void;
+    onedit?: (annotation: AnnotationObject, newText: string) => void;
     onconverttopoint: (annotation: AnnotationObject) => void;
     onfetchnavplace: (annotation: AnnotationObject) => void;
   }
@@ -42,14 +45,19 @@
     replyText,
     listLoading,
     listError,
+    isMutating = false,
     onexpand,
     onreplying,
     onreplytext,
     onreply,
     ondelete,
+    onedit,
     onconverttopoint,
     onfetchnavplace,
   }: Props = $props();
+
+  let editingId = $state<string | null>(null);
+  let editText = $state('');
 </script>
 
 {#if listLoading}
@@ -142,8 +150,45 @@
             rows={2}
             class="flex-1 rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-on-surface placeholder-on-surface-variant/50 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
           ></textarea>
-          <Button size="sm" disabled={!replyText.trim()} onclick={() => onreply(annotation.id)}>
+          <Button
+            size="sm"
+            disabled={!replyText.trim() || isMutating}
+            onclick={() => onreply(annotation.id)}
+          >
             Send
+          </Button>
+        </div>
+      {/if}
+
+      <!-- Inline edit form (text content only — other content types are read-only from the list) -->
+      {#if editingId === annotation.id && annotation.content.kind === 'single' && annotation.content.body.type === 'text'}
+        <div class="mt-1 flex gap-1">
+          <textarea
+            bind:value={editText}
+            placeholder="Edit your note…"
+            rows={2}
+            class="flex-1 rounded bg-surface-low border border-white/5 px-2 py-1 text-xs text-on-surface placeholder-on-surface-variant/50 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+          ></textarea>
+          <Button
+            size="sm"
+            disabled={!editText.trim() || isMutating}
+            onclick={() => {
+              onedit?.(annotation, editText.trim());
+              editingId = null;
+              editText = '';
+            }}
+          >
+            Save
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onclick={() => {
+              editingId = null;
+              editText = '';
+            }}
+          >
+            Cancel
           </Button>
         </div>
       {/if}
@@ -154,6 +199,7 @@
           <button
             onclick={() => onconverttopoint(annotation)}
             class="text-xs text-amber-400 hover:text-amber-300 underline"
+            disabled={isMutating}
           >
             📍 Convert to map pin
           </button>
@@ -162,14 +208,36 @@
           <button
             onclick={() => onfetchnavplace(annotation)}
             class="text-xs text-amber-400 hover:text-amber-300 underline"
+            disabled={isMutating}
           >
             Fetch NavPlace
+          </button>
+        {/if}
+        {#if annotation.authorId === userId && annotation.content.kind === 'single' && annotation.content.body.type === 'text'}
+          <button
+            onclick={() => {
+              if (editingId === annotation.id) {
+                editingId = null;
+                editText = '';
+              } else {
+                editingId = annotation.id;
+                editText =
+                  annotation.content.kind === 'single' && annotation.content.body.type === 'text'
+                    ? annotation.content.body.text
+                    : '';
+              }
+            }}
+            class="text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-40"
+            disabled={isMutating}
+          >
+            {editingId === annotation.id ? 'Close editor' : 'Edit'}
           </button>
         {/if}
         {#if annotation.authorId === userId}
           <button
             onclick={() => ondelete(annotation.id)}
-            class="text-xs text-red-400 hover:text-red-300 ml-auto"
+            class="text-xs text-red-400 hover:text-red-300 ml-auto disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={isMutating}
           >
             Delete
           </button>

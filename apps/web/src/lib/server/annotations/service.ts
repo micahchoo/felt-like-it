@@ -165,8 +165,12 @@ export const annotationService = {
     if (params.userId) await requireMapAccess(params.userId, params.mapId, 'viewer');
 
     const rootFilter = params.rootsOnly === true ? sql`AND parent_id IS NULL` : sql``;
+    // Pagination keys on (created_at, id). The cursor carries created_at at JS
+    // `Date` precision (millisecond); Postgres stores microsecond. Truncate the
+    // column to ms on both filter and order so the strict `>` comparison is
+    // stable and the last row of page N does not reappear at page N+1.
     const cursorFilter = params.cursor
-      ? sql`AND (created_at, id) > (${params.cursor.createdAt}, ${params.cursor.id}::uuid)`
+      ? sql`AND (date_trunc('milliseconds', created_at), id) > (${params.cursor.createdAt}, ${params.cursor.id}::uuid)`
       : sql``;
     const limitClause = params.limit != null ? sql`LIMIT ${params.limit + 1}` : sql``;
 
@@ -175,7 +179,7 @@ export const annotationService = {
         SELECT ${OBJECT_COLS}
         FROM annotation_objects
         WHERE map_id = ${params.mapId}::uuid ${rootFilter} ${cursorFilter}
-        ORDER BY created_at ASC, id ASC
+        ORDER BY date_trunc('milliseconds', created_at) ASC, id ASC
         ${limitClause}
       `),
       typedExecute<{ cnt: string }>(sql`
