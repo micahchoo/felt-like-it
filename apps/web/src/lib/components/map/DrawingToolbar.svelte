@@ -210,6 +210,9 @@
         // surfacing TerraDraw's auto-properties (e.g. 'mode') as user-visible text.
         content: { kind: 'single', body: { type: 'text', text: '' } },
         ...(propertyName !== undefined ? { name: propertyName } : {}),
+        // Phase 3 Wave D-α — annotations created via the toolbar inherit the
+        // active layer so DataTable can filter the per-layer view.
+        layerId: activeLayer.id,
       });
 
       // Capture the live row identity so undo/redo target the current server state

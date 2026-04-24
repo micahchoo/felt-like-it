@@ -41,6 +41,8 @@ type CreateAnnotationInput = {
   name?: string;
   /** Felt-parity Wave 1 — rich-text body beyond structured content. */
   description?: string;
+  /** Phase 3 Wave D-α — drawn shapes pass the active layer's id so DataTable can filter. */
+  layerId?: string;
 };
 
 export function createAnnotationMutationOptions(
@@ -71,6 +73,7 @@ export function createAnnotationMutationOptions(
         content: variables.content,
         name: variables.name ?? null,
         description: variables.description ?? null,
+        layerId: variables.layerId ?? null,
         templateId: null,
         ordinal: 0,
         version: 0,

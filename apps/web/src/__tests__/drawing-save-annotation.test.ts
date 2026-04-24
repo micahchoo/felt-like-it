@@ -49,6 +49,8 @@ interface CreateAnnotationInput {
   anchor: Anchor;
   content: { kind: 'single'; body: { type: 'text'; text: string } };
   name?: string;
+  /** Phase 3 Wave D-α — active layer at draw time. */
+  layerId?: string;
 }
 
 interface CreatedAnnotation {
@@ -103,6 +105,7 @@ function createAnnotationSaveFlow(deps: {
         anchor,
         content: { kind: 'single', body: { type: 'text', text: '' } },
         ...(propertyName !== undefined ? { name: propertyName } : {}),
+        layerId: activeLayer.id,
       });
 
       const handle = { id: created.id, version: created.version };
@@ -237,6 +240,12 @@ describe('DrawingToolbar saveAsAnnotation mutation flow', () => {
       await flow.saveAsAnnotation(SAMPLE_POINT);
       const input = deps.createAnnotation.mock.calls[0]?.[0] as CreateAnnotationInput;
       expect(input.mapId).toBe('different-map');
+    });
+
+    it('Wave D-α: passes the active layer id so DataTable can filter by layer', async () => {
+      await flow.saveAsAnnotation(SAMPLE_POINT);
+      const input = deps.createAnnotation.mock.calls[0]?.[0] as CreateAnnotationInput;
+      expect(input.layerId).toBe(LAYER_ID);
     });
   });
 
