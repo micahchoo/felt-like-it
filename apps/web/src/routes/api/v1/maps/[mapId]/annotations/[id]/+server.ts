@@ -7,6 +7,7 @@ import { annotationLinks } from '$lib/server/api/links.js';
 import { db, users } from '$lib/server/db/index.js';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import type { RequestHandler } from './$types.js';
 
 // M1: strict whitelist — PATCH accepts only `anchor` and `content`. Extra
@@ -127,6 +128,15 @@ export const DELETE: RequestHandler = async ({ request, url, params, locals, get
   try { requireScope(auth, 'read-write'); } catch { return toErrorResponse('FORBIDDEN'); }
   if (!auth.userId) return toErrorResponse('FORBIDDEN');
 
+  // M6 — DELETE requires If-Match: "<version>" so callers must prove they
+  // observed the current state. No header → 428; unparseable → 428.
+  const ifMatchRaw = request.headers.get('if-match');
+  if (!ifMatchRaw) return toErrorResponse('PRECONDITION_REQUIRED', 'If-Match header required.');
+  const expectedVersion = parseIfMatchVersion(ifMatchRaw);
+  if (expectedVersion === null) {
+    return toErrorResponse('PRECONDITION_REQUIRED', 'If-Match must be an integer version (optionally quoted).');
+  }
+
   const { mapId, id } = params;
   // DELETE is destructive — require editor role, not just commenter
   try { await requireMapAccess(auth.userId, mapId, 'editor'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
@@ -143,9 +153,29 @@ export const DELETE: RequestHandler = async ({ request, url, params, locals, get
   const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, auth.userId));
 
   try {
-    await annotationService.delete({ userId: auth.userId, userName: user?.name ?? 'Unknown', id });
+    await annotationService.delete({
+      userId: auth.userId,
+      userName: user?.name ?? 'Unknown',
+      id,
+      expectedVersion,
+    });
     return new Response(null, { status: 204 });
-  } catch {
+  } catch (err) {
+    if (err instanceof TRPCError && err.code === 'CONFLICT') {
+      return toErrorResponse('PRECONDITION_FAILED', 'Version stale — re-read the annotation before retrying.');
+    }
     return toErrorResponse('ANNOTATION_NOT_FOUND');
   }
 };
+
+/**
+ * Parse an If-Match header value into a version integer.
+ * Accepts bare integers and quoted integers per RFC 9110 (`"3"` or `3`).
+ * Returns null on any parse failure.
+ */
+function parseIfMatchVersion(value: string): number | null {
+  const trimmed = value.trim().replace(/^"(.*)"$/, '$1');
+  if (!/^\d+$/.test(trimmed)) return null;
+  const n = parseInt(trimmed, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}

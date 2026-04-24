@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { typedExecute } from '../geo/queries.js';
+import { typedExecute, type SqlExecutor } from '../geo/queries.js';
 import type { AnnotationObject } from '@felt-like-it/shared-types';
 
 // ─── Patch types ─────────────────────────────────────────────────────────────
@@ -75,17 +75,20 @@ export function buildDelPatch(obj: AnnotationObject): { patch: DelPatch; inverse
 
 // ─── Insert changelog entry ──────────────────────────────────────────────────
 
-export async function insertChangelog(params: {
-  mapId: string;
-  objectId: string;
-  objectVersion: number;
-  authorId: string;
-  authorName: string;
-  operation: 'add' | 'mod' | 'del';
-  patch: Patch;
-  inverse: Inverse;
-}): Promise<string> {
-  const rows = await db.execute(sql`
+export async function insertChangelog(
+  params: {
+    mapId: string;
+    objectId: string;
+    objectVersion: number;
+    authorId: string;
+    authorName: string;
+    operation: 'add' | 'mod' | 'del';
+    patch: Patch;
+    inverse: Inverse;
+  },
+  executor: SqlExecutor = db,
+): Promise<string> {
+  const rows = await executor.execute(sql`
     INSERT INTO annotation_changelog (
       map_id, object_id, object_version, author_id, author_name,
       operation, patch, inverse

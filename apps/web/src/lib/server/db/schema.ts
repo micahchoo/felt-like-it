@@ -371,6 +371,36 @@ export const importJobs = pgTable(
   ]
 );
 
+// ─── Idempotency Keys ────────────────────────────────────────────────────────
+// H5: cache (status, body, content-type) by (user_id, key) to deduplicate
+// client retries on POST endpoints. Method+path captured so a key reused
+// against a different endpoint is rejected (422) rather than silently
+// serving a wrong cached payload.
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
+});
+
+export const idempotencyKeys = pgTable(
+  'idempotency_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    method: text('method').notNull(),
+    path: text('path').notNull(),
+    status: integer('status').notNull(),
+    responseBody: bytea('response_body').notNull(),
+    contentType: text('content_type').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('idempotency_keys_user_key_idx').on(t.userId, t.key),
+    index('idempotency_keys_created_at_idx').on(t.createdAt),
+  ],
+);
+
 // Type exports for use in queries
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -399,3 +429,5 @@ export type NewAnnotationObject = typeof annotationObjects.$inferInsert;
 export type AnnotationChangelogRow = typeof annotationChangelog.$inferSelect;
 export type UserUploadRow = typeof userUploads.$inferSelect;
 export type NewUserUpload = typeof userUploads.$inferInsert;
+export type IdempotencyKeyRow = typeof idempotencyKeys.$inferSelect;
+export type NewIdempotencyKey = typeof idempotencyKeys.$inferInsert;

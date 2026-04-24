@@ -11,6 +11,7 @@ import { exportAsPdf } from '$lib/server/export/pdf.js';
 import type { ExportFormat } from '$lib/stores/export-store.svelte.js';
 import { resolveAuth, rateLimit } from '../middleware.js';
 import { toErrorResponse } from '../errors.js';
+import { withIdempotency } from '$lib/server/idempotency.js';
 
 interface ExportRequest {
   layerId?: string;
@@ -28,7 +29,9 @@ interface ExportRequest {
  * Creates an export job and returns jobId for SSE progress tracking.
  * For immediate exports (single layer, no annotations), may return directly.
  */
-export const POST: RequestHandler = async ({ request, url, locals, getClientAddress }) => {
+export const POST: RequestHandler = async (event) => {
+  const { request, url, locals, getClientAddress } = event;
+  return withIdempotency(event, async () => {
   // H3: rate-limit BEFORE any work (JSON parse, ownership checks) so every
   // attempt increments the counter — matches the pattern in /api/v1/maps,
   // /api/v1/files, etc. resolveAuth yields the same userId hooks.server.ts
@@ -129,6 +132,7 @@ export const POST: RequestHandler = async ({ request, url, locals, getClientAddr
   return new Response(JSON.stringify({ jobId, status: 'pending' }), {
     status: 202,
     headers: { 'Content-Type': 'application/json' },
+  });
   });
 };
 

@@ -71,82 +71,88 @@ export const annotationService = {
     content: AnnotationObjectContent;
     templateId?: string;
   }): Promise<AnnotationObject> {
-    // 1. Access check
+    // 1. Access check (read-only, no mutation to wrap)
     await requireMapAccess(params.userId, params.mapId, 'commenter');
 
-    // 2. Enforce per-map limit
-    const countRows = await typedExecute<{ cnt: string }>(sql`
-      SELECT COUNT(*)::text AS cnt FROM annotation_objects
-      WHERE map_id = ${params.mapId}::uuid
-    `);
-    if (Number(countRows[0]?.cnt ?? 0) >= MAX_ANNOTATIONS_PER_MAP) {
-      throw new TRPCError({ code: 'PRECONDITION_FAILED', message: `Maximum ${MAX_ANNOTATIONS_PER_MAP} annotations per map.` });
-    }
-
-    // 3. If reply, validate parent is a root annotation
-    let ordinal = 0;
-    if (params.parentId) {
-      const [parent] = await db
-        .select({ parentId: annotationObjects.parentId })
-        .from(annotationObjects)
-        .where(eq(annotationObjects.id, params.parentId));
-
-      if (!parent) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Parent annotation not found.' });
-      }
-      if (parent.parentId !== null) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Replies can only target a root annotation.' });
+    // 2–5. Wrap the count check + parent validation + insert + changelog in a
+    // single transaction so a failure between annotation_objects and
+    // annotation_changelog rolls back both (M4). Drizzle re-throws on error —
+    // the router layer's try/catch handles the propagated error unchanged.
+    return await db.transaction(async (tx) => {
+      // 2. Enforce per-map limit
+      const countRows = await typedExecute<{ cnt: string }>(sql`
+        SELECT COUNT(*)::text AS cnt FROM annotation_objects
+        WHERE map_id = ${params.mapId}::uuid
+      `, tx);
+      if (Number(countRows[0]?.cnt ?? 0) >= MAX_ANNOTATIONS_PER_MAP) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: `Maximum ${MAX_ANNOTATIONS_PER_MAP} annotations per map.` });
       }
 
-      // Get next ordinal
-      const ordRows = await typedExecute<{ max_ord: number | null }>(sql`
-        SELECT MAX(ordinal) AS max_ord FROM annotation_objects
-        WHERE parent_id = ${params.parentId}::uuid
-      `);
-      ordinal = (ordRows[0]?.max_ord ?? -1) + 1;
-    }
+      // 3. If reply, validate parent is a root annotation
+      let ordinal = 0;
+      if (params.parentId) {
+        const [parent] = await tx
+          .select({ parentId: annotationObjects.parentId })
+          .from(annotationObjects)
+          .where(eq(annotationObjects.id, params.parentId));
 
-    // 4. Insert
-    const anchorJson = JSON.stringify(params.anchor);
-    const contentJson = JSON.stringify(params.content);
+        if (!parent) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Parent annotation not found.' });
+        }
+        if (parent.parentId !== null) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Replies can only target a root annotation.' });
+        }
 
-    const rows = await typedExecute<RawObjectRow>(sql`
-      INSERT INTO annotation_objects (
-        map_id, parent_id, author_id, author_name,
-        anchor, content, template_id, ordinal
-      )
-      VALUES (
-        ${params.mapId}::uuid,
-        ${params.parentId ?? null}::uuid,
-        ${params.userId}::uuid,
-        ${params.userName},
-        ${anchorJson}::jsonb,
-        ${contentJson}::jsonb,
-        ${params.templateId ?? null}::uuid,
-        ${ordinal}
-      )
-      RETURNING ${OBJECT_COLS}
-    `);
+        // Get next ordinal
+        const ordRows = await typedExecute<{ max_ord: number | null }>(sql`
+          SELECT MAX(ordinal) AS max_ord FROM annotation_objects
+          WHERE parent_id = ${params.parentId}::uuid
+        `, tx);
+        ordinal = (ordRows[0]?.max_ord ?? -1) + 1;
+      }
 
-    const row = rows[0];
-    if (!row) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Insert failed.' });
+      // 4. Insert
+      const anchorJson = JSON.stringify(params.anchor);
+      const contentJson = JSON.stringify(params.content);
 
-    const obj = rowToObject(row);
+      const rows = await typedExecute<RawObjectRow>(sql`
+        INSERT INTO annotation_objects (
+          map_id, parent_id, author_id, author_name,
+          anchor, content, template_id, ordinal
+        )
+        VALUES (
+          ${params.mapId}::uuid,
+          ${params.parentId ?? null}::uuid,
+          ${params.userId}::uuid,
+          ${params.userName},
+          ${anchorJson}::jsonb,
+          ${contentJson}::jsonb,
+          ${params.templateId ?? null}::uuid,
+          ${ordinal}
+        )
+        RETURNING ${OBJECT_COLS}
+      `, tx);
 
-    // 5. Changelog
-    const { patch, inverse } = buildAddPatch(obj);
-    await insertChangelog({
-      mapId: obj.mapId,
-      objectId: obj.id,
-      objectVersion: obj.version,
-      authorId: params.userId,
-      authorName: params.userName,
-      operation: 'add',
-      patch,
-      inverse,
+      const row = rows[0];
+      if (!row) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Insert failed.' });
+
+      const obj = rowToObject(row);
+
+      // 5. Changelog
+      const { patch, inverse } = buildAddPatch(obj);
+      await insertChangelog({
+        mapId: obj.mapId,
+        objectId: obj.id,
+        objectVersion: obj.version,
+        authorId: params.userId,
+        authorName: params.userName,
+        operation: 'add',
+        patch,
+        inverse,
+      }, tx);
+
+      return obj;
     });
-
-    return obj;
   },
 
   async list(params: {
@@ -226,115 +232,148 @@ export const annotationService = {
     anchor?: Anchor;
     version: number;
   }): Promise<AnnotationObject> {
-    // 1. Fetch current
-    const currentRows = await typedExecute<RawObjectRow>(sql`
-      SELECT ${OBJECT_COLS} FROM annotation_objects WHERE id = ${params.id}::uuid
-    `);
-    const current = currentRows[0];
-    if (!current) throw new TRPCError({ code: 'NOT_FOUND', message: 'Annotation not found.' });
+    // Wrap fetch-check-update-changelog in a single transaction (M4).
+    // Preserves the existing version-check logic at step 4 unchanged —
+    // W3.C's CAS refactor lands separately.
+    return await db.transaction(async (tx) => {
+      // 1. Fetch current
+      const currentRows = await typedExecute<RawObjectRow>(sql`
+        SELECT ${OBJECT_COLS} FROM annotation_objects WHERE id = ${params.id}::uuid
+      `, tx);
+      const current = currentRows[0];
+      if (!current) throw new TRPCError({ code: 'NOT_FOUND', message: 'Annotation not found.' });
 
-    // 2. Authorship
-    if (current.author_id !== params.userId) {
-      throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only edit your own annotations.' });
-    }
+      // 2. Authorship
+      if (current.author_id !== params.userId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only edit your own annotations.' });
+      }
 
-    // 3. Access check
-    await requireMapAccess(params.userId, current.map_id, 'commenter');
+      // 3. Access check
+      await requireMapAccess(params.userId, current.map_id, 'commenter');
 
-    // 4. Optimistic concurrency
-    if (current.version !== params.version) {
-      throw new TRPCError({ code: 'CONFLICT', message: 'Version conflict — annotation was modified by another user.' });
-    }
+      // 4. Optimistic concurrency
+      if (current.version !== params.version) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Version conflict — annotation was modified by another user.' });
+      }
 
-    // 5. Build SET clauses — content and/or anchor may be updated
-    const newVersion = current.version + 1;
-    const contentJson = params.content ? JSON.stringify(params.content) : null;
-    const anchorJson = params.anchor ? JSON.stringify(params.anchor) : null;
+      // 5. Build SET clauses — content and/or anchor may be updated
+      const newVersion = current.version + 1;
+      const contentJson = params.content ? JSON.stringify(params.content) : null;
+      const anchorJson = params.anchor ? JSON.stringify(params.anchor) : null;
 
-    const setClauses = [
-      sql`version = ${newVersion}`,
-      sql`updated_at = NOW()`,
-    ];
-    if (contentJson) setClauses.push(sql`content = ${contentJson}::jsonb`);
-    if (anchorJson) setClauses.push(sql`anchor = ${anchorJson}::jsonb`);
+      const setClauses = [
+        sql`version = ${newVersion}`,
+        sql`updated_at = NOW()`,
+      ];
+      if (contentJson) setClauses.push(sql`content = ${contentJson}::jsonb`);
+      if (anchorJson) setClauses.push(sql`anchor = ${anchorJson}::jsonb`);
 
-    const rows = await typedExecute<RawObjectRow>(sql`
-      UPDATE annotation_objects
-      SET ${sql.join(setClauses, sql`, `)}
-      WHERE id = ${params.id}::uuid AND version = ${params.version}
-      RETURNING ${OBJECT_COLS}
-    `);
+      const rows = await typedExecute<RawObjectRow>(sql`
+        UPDATE annotation_objects
+        SET ${sql.join(setClauses, sql`, `)}
+        WHERE id = ${params.id}::uuid AND version = ${params.version}
+        RETURNING ${OBJECT_COLS}
+      `, tx);
 
-    const row = rows[0];
-    if (!row) throw new TRPCError({ code: 'CONFLICT', message: 'Version conflict — annotation was modified concurrently.' });
+      const row = rows[0];
+      if (!row) throw new TRPCError({ code: 'CONFLICT', message: 'Version conflict — annotation was modified concurrently.' });
 
-    const obj = rowToObject(row);
+      const obj = rowToObject(row);
 
-    // 6. Changelog
-    const modFields: Record<string, unknown> = {};
-    const oldFields: Record<string, unknown> = {};
-    if (params.content) { modFields.content = params.content; oldFields.content = current.content; }
-    if (params.anchor) { modFields.anchor = params.anchor; oldFields.anchor = current.anchor; }
-    const { patch, inverse } = buildModPatch(modFields, oldFields);
-    await insertChangelog({
-      mapId: obj.mapId,
-      objectId: obj.id,
-      objectVersion: obj.version,
-      authorId: params.userId,
-      authorName: params.userName,
-      operation: 'mod',
-      patch,
-      inverse,
+      // 6. Changelog
+      const modFields: Record<string, unknown> = {};
+      const oldFields: Record<string, unknown> = {};
+      if (params.content) { modFields.content = params.content; oldFields.content = current.content; }
+      if (params.anchor) { modFields.anchor = params.anchor; oldFields.anchor = current.anchor; }
+      const { patch, inverse } = buildModPatch(modFields, oldFields);
+      await insertChangelog({
+        mapId: obj.mapId,
+        objectId: obj.id,
+        objectVersion: obj.version,
+        authorId: params.userId,
+        authorName: params.userName,
+        operation: 'mod',
+        patch,
+        inverse,
+      }, tx);
+
+      return obj;
     });
-
-    return obj;
   },
 
   async delete(params: {
     userId: string;
     userName: string;
     id: string;
+    /**
+     * Optional optimistic-concurrency guard (M6). When set, the DELETE is
+     * conditional on `version = expectedVersion`; a stale version throws
+     * CONFLICT. REST callers pass the value from the `If-Match` header;
+     * tRPC and unit tests omit it to keep legacy behaviour.
+     */
+    expectedVersion?: number;
   }): Promise<{ deleted: true }> {
-    // 1. Fetch current for snapshot
-    const currentRows = await typedExecute<RawObjectRow>(sql`
-      SELECT ${OBJECT_COLS} FROM annotation_objects WHERE id = ${params.id}::uuid
-    `);
-    const current = currentRows[0];
-    if (!current) throw new TRPCError({ code: 'NOT_FOUND', message: 'Annotation not found.' });
+    // Wrap fetch-changelog-delete in a single transaction (M4). If the DELETE
+    // step fails, the pre-written changelog row is rolled back too — no
+    // orphaned 'del' changelog entry referencing an object that still exists.
+    return await db.transaction(async (tx) => {
+      // 1. Fetch current for snapshot
+      const currentRows = await typedExecute<RawObjectRow>(sql`
+        SELECT ${OBJECT_COLS} FROM annotation_objects WHERE id = ${params.id}::uuid
+      `, tx);
+      const current = currentRows[0];
+      if (!current) throw new TRPCError({ code: 'NOT_FOUND', message: 'Annotation not found.' });
 
-    if (current.author_id !== params.userId) {
-      throw new TRPCError({ code: 'FORBIDDEN', message: 'Forbidden: you can only delete your own annotations.' });
-    }
+      if (current.author_id !== params.userId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Forbidden: you can only delete your own annotations.' });
+      }
 
-    await requireMapAccess(params.userId, current.map_id, 'commenter');
+      // M6: up-front version check on the fetched row. The WHERE clause in
+      // step 3 would catch a race, but this signals stale If-Match clearly
+      // (callers map to 412 PRECONDITION_FAILED) rather than the generic
+      // CONFLICT from concurrent-delete.
+      if (params.expectedVersion !== undefined && current.version !== params.expectedVersion) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Version conflict — annotation was modified.' });
+      }
 
-    const obj = rowToObject(current);
+      await requireMapAccess(params.userId, current.map_id, 'commenter');
 
-    // 2. Changelog BEFORE delete (so snapshot is preserved)
-    const { patch, inverse } = buildDelPatch(obj);
-    await insertChangelog({
-      mapId: obj.mapId,
-      objectId: obj.id,
-      objectVersion: obj.version,
-      authorId: params.userId,
-      authorName: params.userName,
-      operation: 'del',
-      patch,
-      inverse,
+      const obj = rowToObject(current);
+
+      // 2. Changelog BEFORE delete (so snapshot is preserved)
+      const { patch, inverse } = buildDelPatch(obj);
+      await insertChangelog({
+        mapId: obj.mapId,
+        objectId: obj.id,
+        objectVersion: obj.version,
+        authorId: params.userId,
+        authorName: params.userName,
+        operation: 'del',
+        patch,
+        inverse,
+      }, tx);
+
+      // 3. Atomic delete with authorship check + CAS when expectedVersion set.
+      const deleted = params.expectedVersion !== undefined
+        ? await typedExecute<{ id: string }>(sql`
+            DELETE FROM annotation_objects
+            WHERE id = ${params.id}::uuid
+              AND author_id = ${params.userId}::uuid
+              AND version = ${params.expectedVersion}
+            RETURNING id
+          `, tx)
+        : await typedExecute<{ id: string }>(sql`
+            DELETE FROM annotation_objects
+            WHERE id = ${params.id}::uuid AND author_id = ${params.userId}::uuid
+            RETURNING id
+          `, tx);
+
+      if (!deleted[0]) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Annotation was modified or deleted concurrently.' });
+      }
+
+      return { deleted: true };
     });
-
-    // 3. Atomic delete with authorship check (cascades to children via FK)
-    const deleted = await typedExecute<{ id: string }>(sql`
-      DELETE FROM annotation_objects
-      WHERE id = ${params.id}::uuid AND author_id = ${params.userId}::uuid
-      RETURNING id
-    `);
-
-    if (!deleted[0]) {
-      throw new TRPCError({ code: 'CONFLICT', message: 'Annotation was modified or deleted concurrently.' });
-    }
-
-    return { deleted: true };
   },
 
   /**

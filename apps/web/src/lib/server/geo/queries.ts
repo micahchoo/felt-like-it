@@ -5,13 +5,31 @@ import { db } from '../db/index.js';
 import { invalidateLayer } from '../api/geojson-cache.js';
 
 /**
+ * Minimal executor surface — both the top-level `db` handle and a drizzle
+ * transaction object (`tx` inside `db.transaction`) expose `execute(sql)`.
+ * Typing it this loosely lets callers opt into a transactional executor
+ * without re-threading concrete drizzle types through every call site.
+ */
+// TYPE_DEBT: drizzle's Transaction type is parametrized over dialect + schema; the
+// minimal shape we actually need is `execute()`, so we accept anything implementing it.
+export interface SqlExecutor {
+  execute: (query: SQL) => Promise<{ rows: unknown[] }>;
+}
+
+/**
  * Execute raw SQL and return typed rows.
  * Drizzle's db.execute() returns untyped rows for raw SQL.
  * This wrapper centralizes the single unavoidable cast.
+ *
+ * Pass `executor` (a transaction handle) to enlist the call in an ongoing
+ * transaction. Defaults to the top-level `db` pool.
  */
 // TYPE_DEBT: Drizzle's execute() returns { rows: unknown[] } for raw SQL — one cast here replaces many downstream
-export async function typedExecute<T>(query: SQL): Promise<T[]> {
-  const result = await db.execute(query);
+export async function typedExecute<T>(
+  query: SQL,
+  executor: SqlExecutor = db,
+): Promise<T[]> {
+  const result = await executor.execute(query);
   return result.rows as unknown as T[];
 }
 

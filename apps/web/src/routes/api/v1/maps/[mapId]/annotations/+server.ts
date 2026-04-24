@@ -9,6 +9,7 @@ import { CreateAnnotationObjectSchema } from '@felt-like-it/shared-types';
 import { db, users } from '$lib/server/db/index.js';
 import { eq } from 'drizzle-orm';
 import { depthLimit } from '$lib/server/validation/depth.js';
+import { withIdempotency } from '$lib/server/idempotency.js';
 import type { RequestHandler } from './$types.js';
 
 /**
@@ -64,62 +65,65 @@ export const GET: RequestHandler = async ({ request, url, params, locals, getCli
   ));
 };
 
-export const POST: RequestHandler = async ({ request, url, params, locals, getClientAddress }) => {
-  const auth = await resolveAuth({ request, url, locals, getClientAddress });
-  if (!auth) return toErrorResponse('UNAUTHORIZED');
+export const POST: RequestHandler = async (event) => {
+  const { request, url, params, locals, getClientAddress } = event;
+  return withIdempotency(event, async () => {
+    const auth = await resolveAuth({ request, url, locals, getClientAddress });
+    if (!auth) return toErrorResponse('UNAUTHORIZED');
 
-  const rateLimited = rateLimit(auth);
-  if (rateLimited) return rateLimited;
+    const rateLimited = rateLimit(auth);
+    if (rateLimited) return rateLimited;
 
-  try { requireScope(auth, 'read-write'); } catch { return toErrorResponse('FORBIDDEN'); }
-  if (!auth.userId) return toErrorResponse('FORBIDDEN');
+    try { requireScope(auth, 'read-write'); } catch { return toErrorResponse('FORBIDDEN'); }
+    if (!auth.userId) return toErrorResponse('FORBIDDEN');
 
-  const { mapId } = params;
-  try { await requireMapAccess(auth.userId, mapId, 'commenter'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
+    const { mapId } = params;
+    try { await requireMapAccess(auth.userId, mapId, 'commenter'); } catch { return toErrorResponse('MAP_NOT_FOUND'); }
 
-  let body: unknown;
-  try { body = stripNullBytes(await request.json()); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
+    let body: unknown;
+    try { body = stripNullBytes(await request.json()); } catch { return toErrorResponse('VALIDATION_ERROR', 'Invalid JSON body'); }
 
-  // TYPE_DEBT: body is validated by Zod immediately; cast needed to spread unknown
-  const parsed = CreateAnnotationWithDepthLimit.safeParse({ ...(body as Record<string, unknown>), mapId });
-  if (!parsed.success) return toErrorResponse('VALIDATION_ERROR', parsed.error.issues[0]?.message);
+    // TYPE_DEBT: body is validated by Zod immediately; cast needed to spread unknown
+    const parsed = CreateAnnotationWithDepthLimit.safeParse({ ...(body as Record<string, unknown>), mapId });
+    if (!parsed.success) return toErrorResponse('VALIDATION_ERROR', parsed.error.issues[0]?.message);
 
-  // Get user name for denormalized authorName
-  const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, auth.userId));
+    // Get user name for denormalized authorName
+    const [user] = await db.select({ name: users.name }).from(users).where(eq(users.id, auth.userId));
 
-  try {
-    const created = await annotationService.create({
-      userId: auth.userId,
-      userName: user?.name ?? 'Unknown',
-      mapId,
-      ...(parsed.data.parentId !== undefined ? { parentId: parsed.data.parentId } : {}),
-      anchor: parsed.data.anchor,
-      content: parsed.data.content,
-    });
+    try {
+      const created = await annotationService.create({
+        userId: auth.userId,
+        userName: user?.name ?? 'Unknown',
+        mapId,
+        ...(parsed.data.parentId !== undefined ? { parentId: parsed.data.parentId } : {}),
+        anchor: parsed.data.anchor,
+        content: parsed.data.content,
+      });
 
-    return jsonResponse(
-      envelope(toAnnotation(created), {}, annotationLinks(mapId, created.id)),
-      201,
-    );
-  } catch (e: unknown) {
-    if (e && typeof e === 'object' && 'code' in e) {
-      const code = (e as { code: string }).code;
-      const message = e instanceof Error ? e.message : '';
-      if (code === 'PRECONDITION_FAILED' || message.includes('Maximum')) {
-        return toErrorResponse('LIMIT_EXCEEDED', 'Annotation limit reached for this map');
+      return jsonResponse(
+        envelope(toAnnotation(created), {}, annotationLinks(mapId, created.id)),
+        201,
+      );
+    } catch (e: unknown) {
+      if (e && typeof e === 'object' && 'code' in e) {
+        const code = (e as { code: string }).code;
+        const message = e instanceof Error ? e.message : '';
+        if (code === 'PRECONDITION_FAILED' || message.includes('Maximum')) {
+          return toErrorResponse('LIMIT_EXCEEDED', 'Annotation limit reached for this map');
+        }
+        if (code === 'NOT_FOUND' || code === '23503' || message.includes('foreign key') || message.includes('not found') || message.includes('violates')) {
+          return toErrorResponse('VALIDATION_ERROR', 'Invalid parentId: referenced annotation does not exist');
+        }
       }
-      if (code === 'NOT_FOUND' || code === '23503' || message.includes('foreign key') || message.includes('not found') || message.includes('violates')) {
-        return toErrorResponse('VALIDATION_ERROR', 'Invalid parentId: referenced annotation does not exist');
+      if (e instanceof Error) {
+        if (e.message.includes('Maximum')) {
+          return toErrorResponse('LIMIT_EXCEEDED', 'Annotation limit reached for this map');
+        }
+        if (e.message.includes('foreign key') || e.message.includes('not found') || e.message.includes('violates')) {
+          return toErrorResponse('VALIDATION_ERROR', 'Invalid parentId: referenced annotation does not exist');
+        }
       }
+      throw e;
     }
-    if (e instanceof Error) {
-      if (e.message.includes('Maximum')) {
-        return toErrorResponse('LIMIT_EXCEEDED', 'Annotation limit reached for this map');
-      }
-      if (e.message.includes('foreign key') || e.message.includes('not found') || e.message.includes('violates')) {
-        return toErrorResponse('VALIDATION_ERROR', 'Invalid parentId: referenced annotation does not exist');
-      }
-    }
-    throw e;
-  }
+  });
 };
