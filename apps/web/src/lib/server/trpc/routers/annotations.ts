@@ -84,6 +84,7 @@ export const annotationsRouter = router({
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
+        ...(input.style !== undefined ? { style: input.style } : {}),
       });
     }),
 
@@ -100,6 +101,7 @@ export const annotationsRouter = router({
         ...(('name' in input) ? { name: input.name ?? null } : {}),
         ...(('description' in input) ? { description: input.description ?? null } : {}),
         ...(('groupId' in input) ? { groupId: input.groupId ?? null } : {}),
+        ...(('style' in input) ? { style: input.style ?? null } : {}),
         version: input.version,
       });
     }),

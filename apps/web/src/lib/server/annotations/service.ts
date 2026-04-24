@@ -28,6 +28,7 @@ interface RawObjectRow {
   name: string | null;
   description: string | null;
   group_id: string | null;
+  style: Record<string, unknown> | null;
   template_id: string | null;
   ordinal: number;
   version: number;
@@ -37,7 +38,7 @@ interface RawObjectRow {
 
 const OBJECT_COLS = sql.raw(`
   id, map_id, parent_id, author_id, author_name,
-  anchor, content, name, description, group_id, template_id, ordinal, version,
+  anchor, content, name, description, group_id, style, template_id, ordinal, version,
   created_at, updated_at
 `);
 
@@ -53,6 +54,7 @@ function rowToObject(row: RawObjectRow): AnnotationObject {
     name: row.name,
     description: row.description,
     groupId: row.group_id,
+    style: (row.style ?? null) as AnnotationObject['style'],
     templateId: row.template_id,
     ordinal: row.ordinal,
     version: row.version,
@@ -79,6 +81,7 @@ export const annotationService = {
     name?: string;
     description?: string;
     groupId?: string;
+    style?: Record<string, unknown>;
   }): Promise<AnnotationObject> {
     // 1. Access check (read-only, no mutation to wrap)
     await requireMapAccess(params.userId, params.mapId, 'commenter');
@@ -124,10 +127,11 @@ export const annotationService = {
       const anchorJson = JSON.stringify(params.anchor);
       const contentJson = JSON.stringify(params.content);
 
+      const styleJson = params.style ? JSON.stringify(params.style) : null;
       const rows = await typedExecute<RawObjectRow>(sql`
         INSERT INTO annotation_objects (
           map_id, parent_id, author_id, author_name,
-          anchor, content, name, description, group_id, template_id, ordinal
+          anchor, content, name, description, group_id, style, template_id, ordinal
         )
         VALUES (
           ${params.mapId}::uuid,
@@ -139,6 +143,7 @@ export const annotationService = {
           ${params.name ?? null},
           ${params.description ?? null},
           ${params.groupId ?? null}::uuid,
+          ${styleJson}::jsonb,
           ${params.templateId ?? null}::uuid,
           ${ordinal}
         )
@@ -251,6 +256,8 @@ export const annotationService = {
     description?: string | null;
     /** Omit → unchanged. Explicit null → clear (move to root). String → set. */
     groupId?: string | null;
+    /** Omit → unchanged. Explicit null → clear (renderer default). Object → set. */
+    style?: Record<string, unknown> | null;
     version: number;
   }): Promise<AnnotationObject> {
     // Wrap fetch-check-update-changelog in a single transaction (M4).
@@ -292,6 +299,10 @@ export const annotationService = {
       if ('name' in params) setClauses.push(sql`name = ${params.name}`);
       if ('description' in params) setClauses.push(sql`description = ${params.description}`);
       if ('groupId' in params) setClauses.push(sql`group_id = ${params.groupId ?? null}::uuid`);
+      if ('style' in params) {
+        const styleJson = params.style ? JSON.stringify(params.style) : null;
+        setClauses.push(sql`style = ${styleJson}::jsonb`);
+      }
 
       const rows = await typedExecute<RawObjectRow>(sql`
         UPDATE annotation_objects

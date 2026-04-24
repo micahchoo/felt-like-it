@@ -618,6 +618,45 @@ test.describe('Promise 17 — "Organize annotations into groups" (Felt-parity Wa
   });
 });
 
+test.describe('Promise 18 — "Style annotations individually" (Felt-parity Wave 2 Styling)', () => {
+  test('style payload round-trips on create and PATCH, null-clears on PATCH', async ({ alice }) => {
+    const style = {
+      strokeWidth: 3,
+      strokeStyle: 'dashed',
+      strokeColor: '#ff0000',
+      strokeOpacity: 0.7,
+      showLabel: true,
+    };
+    const createRes = await alice.post(mapUrl, {
+      data: {
+        anchor: { type: 'region', geometry: { type: 'Polygon', coordinates: [[[0,0],[1,0],[1,1],[0,1],[0,0]]] } },
+        content: { kind: 'single', body: { type: 'text', text: 'styled' } },
+        style,
+      },
+    });
+    expect(createRes.status()).toBe(201);
+    const created = (await createRes.json()).data;
+    expect(created.style).toMatchObject(style);
+
+    const readBack = await alice.get(`${mapUrl}/${created.id}`);
+    expect((await readBack.json()).data.style).toMatchObject(style);
+
+    const patchRes = await alice.patch(`${mapUrl}/${created.id}`, {
+      headers: { 'If-Match': String(created.version) },
+      data: { style: { strokeWidth: 5, strokeStyle: 'solid' } },
+    });
+    expect(patchRes.status()).toBe(200);
+    expect((await patchRes.json()).data.style).toMatchObject({ strokeWidth: 5, strokeStyle: 'solid' });
+
+    const clearRes = await alice.patch(`${mapUrl}/${created.id}`, {
+      headers: { 'If-Match': String((await (await alice.get(`${mapUrl}/${created.id}`)).json()).data.version) },
+      data: { style: null },
+    });
+    expect(clearRes.status()).toBe(200);
+    expect((await clearRes.json()).data.style).toBeNull();
+  });
+});
+
 test.describe('Promise 14 — "Auth required"', () => {
   test('anonymous list → 401', async ({ anon }) => {
     const res = await anon.get(mapUrl);

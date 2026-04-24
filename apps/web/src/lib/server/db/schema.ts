@@ -258,6 +258,8 @@ export const annotationObjects = pgTable(
     description: text('description'),
     /** Felt-parity group/folder assignment. NULL = ungrouped (root of Sidebar List). */
     groupId: uuid('group_id').references(() => annotationGroups.id, { onDelete: 'set null' }),
+    /** Felt-parity visual style payload (stroke, opacity, text variant, show-label, endcaps, etc.). NULL = renderer default. */
+    style: jsonb('style').$type<Record<string, unknown>>(),
     templateId: uuid('template_id'),
     ordinal: integer('ordinal').notNull().default(0),
     version: integer('version').notNull().default(1),
