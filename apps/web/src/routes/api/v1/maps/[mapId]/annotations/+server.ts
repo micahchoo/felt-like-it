@@ -10,8 +10,8 @@ import { db, users } from '$lib/server/db/index.js';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types.js';
 
-export const GET: RequestHandler = async ({ request, url, params, locals }) => {
-  const auth = await resolveAuth({ request, url, locals });
+export const GET: RequestHandler = async ({ request, url, params, locals, getClientAddress }) => {
+  const auth = await resolveAuth({ request, url, locals, getClientAddress });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);
@@ -48,8 +48,8 @@ export const GET: RequestHandler = async ({ request, url, params, locals }) => {
   ));
 };
 
-export const POST: RequestHandler = async ({ request, url, params, locals }) => {
-  const auth = await resolveAuth({ request, url, locals });
+export const POST: RequestHandler = async ({ request, url, params, locals, getClientAddress }) => {
+  const auth = await resolveAuth({ request, url, locals, getClientAddress });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);

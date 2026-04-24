@@ -8,8 +8,8 @@ import { parsePaginationParams, encodeCursor } from '$lib/server/api/pagination.
 import { typedExecute } from '$lib/server/geo/queries.js';
 import type { RequestHandler } from './$types.js';
 
-export const GET: RequestHandler = async ({ request, url, params, locals }) => {
-  const auth = await resolveAuth({ request, url, locals });
+export const GET: RequestHandler = async ({ request, url, params, locals, getClientAddress }) => {
+  const auth = await resolveAuth({ request, url, locals, getClientAddress });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);

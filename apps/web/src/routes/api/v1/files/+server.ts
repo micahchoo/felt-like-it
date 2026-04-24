@@ -11,8 +11,8 @@ import type { RequestHandler } from './$types.js';
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_USER_QUOTA = 500 * 1024 * 1024; // 500MB total per user
 
-export const POST: RequestHandler = async ({ request, url, locals }) => {
-  const auth = await resolveAuth({ request, url, locals });
+export const POST: RequestHandler = async ({ request, url, locals, getClientAddress }) => {
+  const auth = await resolveAuth({ request, url, locals, getClientAddress });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);

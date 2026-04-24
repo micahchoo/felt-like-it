@@ -65,6 +65,18 @@ Everything else assumes the auth layer is sound. Three parallel tracks; one seri
 
 **Wave 1 exit:** all four probes red pre-fix, green post-fix. Run full smoke + new probes before starting Wave 2.
 
+### Wave 1 close-out (2026-04-24)
+
+Delivered:
+- **W1.A (H1)** — `lib/server/auth/api-key.ts` extracts the Bearer lookup: fetch by public `prefix`, compare with `crypto.timingSafeEqual`. Both callers (`hooks.server.ts`, `api/v1/middleware.ts`) switched. Probe: `e2e/api/h1-timing-apikey.spec.ts` (6 cases: valid, prefix+wrong-suffix, random, too-short, too-long, wrong-scheme).
+- **W1.B (H2, L1)** — `lib/server/auth/share-token.ts` exports `SHARE_TOKEN_REGEX` + Redis-backed `shareTokenLimiter` (10/60 s per IP). Wired into `api/v1/middleware.ts:resolveAuth` and `/share/[token]/+page.server.ts`. Fixture token lengthened to 41 chars. Probe: `e2e/api/h2-share-token.spec.ts` (5 cases including valid grant + scope-confinement to bobMap). Required a bulk sed across 18 `/api/v1/*` handlers to add `getClientAddress` to the destructure since `resolveAuth` now needs it.
+- **W1.C (M7, M10)** — **no-ops after analysis.** `/api/v1/*` authenticates via Bearer or share-token, NOT cookies — SameSite=Lax already blocks the CSRF vector the M7 finding described, and adding an Origin check would break legitimate cross-origin Bearer clients (e.g. research-narratives). For M10, Lucia hard-codes `httpOnly:true` and `path:/` — only `secure` and `sameSite` are exposed via `SessionCookieAttributesOptions`, and both are set. Rationale recorded inline in `lib/server/auth/index.ts`.
+- **W1.D-M8** — `/auth/signup/+page.server.ts` now returns `GENERIC_SIGNUP_FAIL` for both "email exists" and "insert fail" paths. The pre-SELECT was removed so both branches incur exactly one argon2 hash + one INSERT; timing is equalised.
+
+Deferred to follow-up (new seeds issue):
+- **W1.D-M9 (account-level login lockout)** — requires `0018_add_login_lockout.sql` migration adding `users.failed_login_count` + `users.locked_until`, plus login-path logic. The existing IP-based `checkRateLimit` (10 attempts / 60 s / IP) already provides meaningful protection, and the account-lockout variant has its own DoS-by-attacker surface (attacker locks victim out). Scoped as a separate hardening ticket rather than lumped into W1.
+- **L2 (login dummy-hash tightening)** — marginal timing diff, low value, defer to cleanup.
+
 ---
 
 ## Wave 2 — Input validation + DoS coverage (3 parallel tracks)

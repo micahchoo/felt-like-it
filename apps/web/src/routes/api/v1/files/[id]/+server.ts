@@ -15,8 +15,8 @@ const MIME_MAP: Record<string, string> = {
   gif: 'image/gif',
 };
 
-export const GET: RequestHandler = async ({ request, url, params, locals }) => {
-  const auth = await resolveAuth({ request, url, locals });
+export const GET: RequestHandler = async ({ request, url, params, locals, getClientAddress }) => {
+  const auth = await resolveAuth({ request, url, locals, getClientAddress });
   if (!auth) return toErrorResponse('UNAUTHORIZED');
 
   const rateLimited = rateLimit(auth);

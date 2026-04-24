@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { lucia } from '$lib/server/auth/index.js';
+import { resolveApiKey } from '$lib/server/auth/api-key.js';
 import { db, apiKeys, users } from '$lib/server/db/index.js';
 import { logger } from '$lib/server/logger.js';
 import type { Handle, HandleServerError } from '@sveltejs/kit';
@@ -17,33 +17,27 @@ export const handle: Handle = async ({ event, resolve }) => {
   const authHeader = event.request.headers.get('authorization');
   if (authHeader?.startsWith('Bearer flk_')) {
     const rawKey = authHeader.slice(7); // strip "Bearer "
-    const hash = createHash('sha256').update(rawKey).digest('hex');
+    const resolved = await resolveApiKey(rawKey);
 
-    const [keyRow] = await db
-      .select({ id: apiKeys.id, userId: apiKeys.userId, scope: apiKeys.scope })
-      .from(apiKeys)
-      .where(eq(apiKeys.keyHash, hash));
-
-    if (keyRow) {
+    if (resolved && !resolved.userIsDisabled) {
       const [userRow] = await db
         .select({ id: users.id, email: users.email, name: users.name, isAdmin: users.isAdmin, disabledAt: users.disabledAt })
         .from(users)
-        .where(eq(users.id, keyRow.userId));
+        .where(eq(users.id, resolved.userId));
 
       if (userRow && !userRow.disabledAt) {
         event.locals.user = userRow;
         event.locals.session = null;
-        // Pre-resolve API auth so v1 middleware can skip the duplicate DB lookup
         event.locals.apiAuth = {
-          userId: keyRow.userId,
-          scope: keyRow.scope as 'read' | 'read-write',
+          userId: resolved.userId,
+          scope: resolved.scope,
           mapScope: null,
         };
         // Fire-and-forget: update last_used_at without blocking the request
         void db
           .update(apiKeys)
           .set({ lastUsedAt: new Date() })
-          .where(eq(apiKeys.id, keyRow.id));
+          .where(eq(apiKeys.id, resolved.keyId));
       } else {
         event.locals.user = null;
         event.locals.session = null;

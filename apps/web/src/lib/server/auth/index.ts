@@ -12,6 +12,12 @@ const secureCookies = (env.ORIGIN ?? '').startsWith('https://');
 
 export const lucia = new Lucia(adapter, {
   sessionCookie: {
+    // Only `secure` and `sameSite` are accept by Lucia's typed options.
+    // `httpOnly` is always true and `path` is always `/` — those are hard-coded
+    // inside Lucia (see @lucia-auth/adapter-drizzle and lucia's createSessionCookie).
+    // M10 audit item: verified the defaults are safe; the CSRF hole that
+    // `sameSite: 'strict'` would close is covered by the Origin check in
+    // apps/web/src/routes/api/v1/middleware.ts (M7).
     attributes: {
       secure: secureCookies,
       sameSite: 'lax',

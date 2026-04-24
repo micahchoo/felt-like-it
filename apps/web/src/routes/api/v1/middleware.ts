@@ -1,6 +1,7 @@
-import { createHash } from 'crypto';
 import { eq } from 'drizzle-orm';
-import { db, apiKeys, shares, users } from '$lib/server/db/index.js';
+import { db, shares } from '$lib/server/db/index.js';
+import { resolveApiKey } from '$lib/server/auth/api-key.js';
+import { isValidShareTokenFormat, shareTokenLimiter } from '$lib/server/auth/share-token.js';
 import { toErrorResponse } from './errors.js';
 import type { RequestEvent } from '@sveltejs/kit';
 
@@ -34,45 +35,34 @@ export interface ApiAuth {
  * When hooks.server.ts has already resolved an API key, the result is
  * available in event.locals.apiAuth — this avoids a duplicate DB lookup.
  */
-export async function resolveAuth(event: Pick<RequestEvent, 'request' | 'url' | 'locals'>): Promise<ApiAuth | null> {
+export async function resolveAuth(event: Pick<RequestEvent, 'request' | 'url' | 'locals' | 'getClientAddress'>): Promise<ApiAuth | null> {
   try {
     // 0. Return pre-resolved API key auth from hooks.server.ts if available
     if (event.locals.apiAuth) return event.locals.apiAuth;
 
-    // 1. Check Bearer API key (fallback — should only hit for non-hook paths or tests)
+    // 1. Check Bearer API key (fallback — should only hit for non-hook paths or tests).
+    // Uses the timing-safe helper; see lib/server/auth/api-key.ts.
     const authHeader = event.request.headers.get('authorization');
     if (authHeader?.startsWith('Bearer flk_')) {
       const rawKey = authHeader.slice(7);
-      const hash = createHash('sha256').update(rawKey).digest('hex');
-
-      const [keyRow] = await db
-        .select({ id: apiKeys.id, userId: apiKeys.userId, scope: apiKeys.scope })
-        .from(apiKeys)
-        .where(eq(apiKeys.keyHash, hash));
-
-      if (!keyRow) return null;
-
-      // Verify user exists and is not disabled
-      const [userRow] = await db
-        .select({ id: users.id, disabledAt: users.disabledAt })
-        .from(users)
-        .where(eq(users.id, keyRow.userId));
-
-      if (!userRow || userRow.disabledAt) return null;
-
-      // Fire-and-forget: update last_used_at
-      void db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, keyRow.id));
+      const resolved = await resolveApiKey(rawKey);
+      if (!resolved || resolved.userIsDisabled) return null;
 
       return {
-        userId: keyRow.userId,
-        scope: keyRow.scope as 'read' | 'read-write',
+        userId: resolved.userId,
+        scope: resolved.scope,
         mapScope: null,
       };
     }
 
-    // 2. Check ?token share token
+    // 2. Check ?token share token — format-guarded + IP-rate-limited (H2/L1)
     const token = event.url.searchParams.get('token');
     if (token) {
+      if (!isValidShareTokenFormat(token)) return null;
+
+      const allowed = await shareTokenLimiter.check(event.getClientAddress());
+      if (!allowed) return null;
+
       const [shareRow] = await db
         .select({ mapId: shares.mapId })
         .from(shares)

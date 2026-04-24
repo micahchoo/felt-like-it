@@ -3,8 +3,15 @@ import type { Actions, PageServerLoad } from './$types';
 import { lucia } from '$lib/server/auth/index.js';
 import { hashPassword } from '$lib/server/auth/password.js';
 import { db, users } from '$lib/server/db/index.js';
-import { eq } from 'drizzle-orm';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
+
+/**
+ * M8 — generic signup-failure message. Distinguishing "email already exists"
+ * from "signup unavailable" lets an attacker enumerate registered addresses.
+ * One constant error closes that oracle; legitimate users hit the login form.
+ */
+const GENERIC_SIGNUP_FAIL =
+  'Unable to create account. If you already have an account, please sign in.';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (locals.user) redirect(302, '/dashboard');
@@ -36,12 +43,11 @@ export const actions: Actions = {
       return fail(400, { field: 'password', message: 'Password is too long.' });
     }
 
-    // Check for duplicate email
-    const [existing] = await db.select().from(users).where(eq(users.email, email));
-    if (existing) {
-      return fail(400, { field: 'email', message: 'An account with this email already exists.' });
-    }
-
+    // M8: no pre-SELECT for email existence — lets the DB uniqueness
+    // constraint produce a single error code (23505) that we map to a
+    // generic message. Timing between "email new" and "email exists" is
+    // equalised because both paths incur exactly one argon2 hash + one
+    // INSERT attempt.
     const hashedPassword = await hashPassword(password);
 
     let user;
@@ -52,13 +58,13 @@ export const actions: Actions = {
         .returning({ id: users.id });
     } catch (err: unknown) {
       if (err instanceof Error && 'code' in err && (err as { code: string }).code === '23505') {
-        return fail(400, { field: 'email', message: 'An account with this email already exists.' });
+        return fail(400, { field: '', message: GENERIC_SIGNUP_FAIL });
       }
       throw err;
     }
 
     if (!user) {
-      return fail(500, { field: '', message: 'Failed to create account. Please try again.' });
+      return fail(500, { field: '', message: GENERIC_SIGNUP_FAIL });
     }
 
     const session = await lucia.createSession(user.id, {});

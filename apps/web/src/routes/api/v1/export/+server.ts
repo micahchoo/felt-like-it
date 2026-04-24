@@ -26,7 +26,7 @@ interface ExportRequest {
  * Creates an export job and returns jobId for SSE progress tracking.
  * For immediate exports (single layer, no annotations), may return directly.
  */
-export const POST: RequestHandler = async ({ request, locals }) => {
+export const POST: RequestHandler = async ({ request, locals, getClientAddress }) => {
   if (!locals.user) {
     throw error(401, 'Unauthorized');
   }

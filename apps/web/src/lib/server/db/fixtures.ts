@@ -33,8 +33,12 @@ export const FIXTURE_LAYERS = {
   bobLayer: '66666666-bbbb-4bbb-bbbb-666666666666',
 } as const;
 
-/** Read-only share token on bobMap. Probes use this to hit share-scoped endpoints. */
-export const FIXTURE_SHARE_TOKEN_BOB = 'fixture-share-bob-unlisted-01';
+/**
+ * Read-only share token on bobMap. Probes use this to hit share-scoped
+ * endpoints. Length 32+ to satisfy the share-token format regex (see
+ * `lib/server/auth/share-token.ts`).
+ */
+export const FIXTURE_SHARE_TOKEN_BOB = 'fixture-share-bob-unlisted-abcdef01234567';
 
 /**
  * Plaintext API keys — the `/api/v1/*` surface authenticates via

@@ -1,9 +1,20 @@
 import type { PageServerLoad } from './$types';
 import { db, shares, maps, layers } from '$lib/server/db/index.js';
 import { eq } from 'drizzle-orm';
+import { isValidShareTokenFormat, shareTokenLimiter } from '$lib/server/auth/share-token.js';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, getClientAddress }) => {
   const { token } = params;
+
+  // H2/L1: reject malformed tokens without touching the DB, and rate-limit
+  // brute-force attempts per IP.
+  if (!isValidShareTokenFormat(token)) {
+    return { error: 'not_found' as const };
+  }
+  const allowed = await shareTokenLimiter.check(getClientAddress());
+  if (!allowed) {
+    return { error: 'not_found' as const };
+  }
 
   const [share] = await db.select().from(shares).where(eq(shares.token, token));
 
