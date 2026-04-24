@@ -76,6 +76,8 @@ export const annotationsRouter = router({
         anchor: input.anchor,
         content: input.content,
         ...(input.templateId !== undefined ? { templateId: input.templateId } : {}),
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
       });
     }),
 
@@ -88,6 +90,9 @@ export const annotationsRouter = router({
         id: input.id,
         ...(input.content !== undefined ? { content: input.content } : {}),
         ...(input.anchor !== undefined ? { anchor: input.anchor } : {}),
+        // Omit vs null distinction: only spread if the input contained the key.
+        ...(('name' in input) ? { name: input.name ?? null } : {}),
+        ...(('description' in input) ? { description: input.description ?? null } : {}),
         version: input.version,
       });
     }),

@@ -51,6 +51,8 @@ export function toAnnotation(row: Row) {
     authorName: row['authorName'] ?? row['author_name'],
     anchor: row['anchor'],
     content: row['content'],
+    name: row['name'] ?? null,
+    description: row['description'] ?? null,
     parentId: row['parentId'] ?? row['parent_id'],
     templateId: row['templateId'] ?? row['template_id'],
     version: row['version'],

@@ -230,6 +230,10 @@ export const annotationObjects = pgTable(
     authorName: text('author_name').notNull(),
     anchor: jsonb('anchor').$type<Anchor>().notNull(),
     content: jsonb('content').$type<AnnotationObjectContent>().notNull(),
+    /** Felt-parity first-class label. Nullable; UI falls back to content preview. */
+    name: text('name'),
+    /** Felt-parity rich-text body. Nullable. Length bounded by a CHECK constraint. */
+    description: text('description'),
     templateId: uuid('template_id'),
     ordinal: integer('ordinal').notNull().default(0),
     version: integer('version').notNull().default(1),

@@ -392,6 +392,75 @@ test.describe('Promise 13 — "Private by default — your workspace is yours"',
   });
 });
 
+test.describe('Promise 15 — "First-class name and description" (Felt-parity Wave 1)', () => {
+  test('name and description round-trip on create → read', async ({ alice }) => {
+    const res = await alice.post(mapUrl, {
+      data: {
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
+        content: { kind: 'single', body: { type: 'text', text: 'body text' } },
+        name: 'Field site A',
+        description: 'Primary study area; accessed via north trail.',
+      },
+    });
+    expect(res.status()).toBe(201);
+    const created = (await res.json()).data;
+    expect(created.name).toBe('Field site A');
+    expect(created.description).toBe('Primary study area; accessed via north trail.');
+
+    const readBack = await alice.get(`${mapUrl}/${created.id}`);
+    const fetched = (await readBack.json()).data;
+    expect(fetched.name).toBe('Field site A');
+    expect(fetched.description).toBe('Primary study area; accessed via north trail.');
+  });
+
+  test('creates without name/description stay legal (backward compat)', async ({ alice }) => {
+    const res = await alice.post(mapUrl, {
+      data: {
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [1, 1] } },
+        content: { kind: 'single', body: { type: 'text', text: 'no-name' } },
+      },
+    });
+    expect(res.status()).toBe(201);
+    const created = (await res.json()).data;
+    expect(created.name ?? null).toBeNull();
+    expect(created.description ?? null).toBeNull();
+  });
+
+  test('PATCH can update name and clear description by passing null', async ({ alice }) => {
+    const { id, version } = await createPointAnnotation(alice, 'seed');
+    // Set fields
+    const patch1 = await alice.patch(`${mapUrl}/${id}`, {
+      headers: { 'If-Match': String(version) },
+      data: { name: 'Renamed', description: 'First description' },
+    });
+    expect(patch1.status()).toBe(200);
+    const after1 = (await patch1.json()).data;
+    expect(after1.name).toBe('Renamed');
+    expect(after1.description).toBe('First description');
+
+    // Clear description explicitly via null
+    const patch2 = await alice.patch(`${mapUrl}/${id}`, {
+      headers: { 'If-Match': String(after1.version) },
+      data: { description: null },
+    });
+    expect(patch2.status()).toBe(200);
+    const after2 = (await patch2.json()).data;
+    expect(after2.name).toBe('Renamed');
+    expect(after2.description).toBeNull();
+  });
+
+  test('rejects name longer than 200 chars', async ({ alice }) => {
+    const res = await alice.post(mapUrl, {
+      data: {
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
+        content: { kind: 'single', body: { type: 'text', text: 'x' } },
+        name: 'a'.repeat(201),
+      },
+    });
+    expect(res.status()).toBe(422);
+  });
+});
+
 test.describe('Promise 14 — "Auth required"', () => {
   test('anonymous list → 401', async ({ anon }) => {
     const res = await anon.get(mapUrl);

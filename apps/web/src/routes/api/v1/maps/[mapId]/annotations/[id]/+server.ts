@@ -10,13 +10,17 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import type { RequestHandler } from './$types.js';
 
-// M1: strict whitelist — PATCH accepts only `anchor` and `content`. Extra
-// fields (e.g. forged `id`, `userId`, `mapId`, `version`) must be rejected at
-// the API boundary rather than relying on service-layer validation.
+// M1: strict whitelist — PATCH accepts only fields the client is allowed to
+// mutate. Extra fields (e.g. forged `id`, `userId`, `mapId`, `version`) must
+// be rejected at the API boundary rather than relying on service-layer
+// validation. Felt-parity Wave 1 adds `name` and `description` to the
+// whitelist; explicit `null` clears the field.
 const AnnotationPatchSchema = z
   .object({
     anchor: z.unknown().optional(),
     content: z.unknown().optional(),
+    name: z.string().min(1).max(200).nullable().optional(),
+    description: z.string().max(5000).nullable().optional(),
   })
   .strict();
 
@@ -111,6 +115,9 @@ export const PATCH: RequestHandler = async ({ request, url, params, locals, getC
       version: currentVersion,
       ...(body.anchor !== undefined ? { anchor: body.anchor as never } : {}),
       ...(body.content !== undefined ? { content: body.content as never } : {}),
+      // `in` preserves the omit-vs-null distinction the service relies on
+      ...('name' in body ? { name: body.name ?? null } : {}),
+      ...('description' in body ? { description: body.description ?? null } : {}),
     });
     return jsonResponse(envelope(toAnnotation(updated), {}, annotationLinks(mapId, id)));
   } catch {

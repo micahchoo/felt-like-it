@@ -98,6 +98,8 @@ export const POST: RequestHandler = async (event) => {
         ...(parsed.data.parentId !== undefined ? { parentId: parsed.data.parentId } : {}),
         anchor: parsed.data.anchor,
         content: parsed.data.content,
+        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+        ...(parsed.data.description !== undefined ? { description: parsed.data.description } : {}),
       });
 
       return jsonResponse(
