@@ -2,13 +2,13 @@
 
 ## Goal
 
-Resumed prior `2250bc0` handoff (Wave A pre-flight done, scope of Wave A revised to 4 sub-tasks). User-driven workflow: `/check-handoff and executer` → "continue as per plan" repeated three times → "this product has no users, no retrofitting necessary" → user picked **D-α** (schema migration) when Wave D resolution required product input.
+Resumed prior `2250bc0` handoff (Wave A pre-flight done, scope of Wave A revised to 4 sub-tasks). User-driven workflow: `/check-handoff and executer` → "continue as per plan" (×4) → "this product has no users, no retrofitting necessary" → user picked **D-α** (schema migration) when Wave D resolution required product input → on the fourth "continue per plan", picked D.4-A (annotations replace features in DataTable) as the cleanest break aligned with the no-users / no-retrofit caveat.
 
-This session shipped Wave A (full TerraDraw → annotations dispatch), Wave B (features-table write lock-down), and Wave D-α infrastructure (D.1+D.2+D.3: schema migration + service plumbing + DrawingToolbar populates layer_id). Stopped at D.4 (DataTable repurpose) on advisor's recommendation: D.4 is a UX shape decision the user should make cold without me pre-recommending.
+**Phase 3 epic baa4 is now code-complete under the D-α resolution.** Waves A → D shipped this session; Waves E (deprecation headers) and F (table-drop) are NOT-PLANNED under the resolved path (the features table is permanent, just write-locked outside the documented boundary). Only the smoke test remains as a user task.
 
 ## Progress
 
-### Commits this session (10 total — A: 4, B: 2, D-α: 2, plan: 1, mulch sync: 1)
+### Commits this session (12 total — A: 4, B: 2, plan: 1, D-α: 3, handoff: 1, mulch sync: 1)
 
 **Wave A — TerraDraw → annotations dispatch flip:**
 - 🔼 `62b37e4` — A.1 saveAsAnnotation parallel function in DrawingToolbar (+~75 LOC, additive only)
@@ -23,16 +23,22 @@ This session shipped Wave A (full TerraDraw → annotations dispatch), Wave B (f
 **Plan amendment:**
 - 🔼 `50ce980` — surfaced Wave D blockers (annotation_objects has no layerId — required design decision) + rescoped Wave E/F under different D-resolution paths.
 
-**Wave D-α — schema migration + service plumbing (D.1-D.3 of 4):**
+**Wave D-α — full path (D.1-D.4):**
 - 🔼 `31640eb` — D.1+D.2 atomic: migration `0019_add_layer_id_to_annotations.sql` (ADD layer_id UUID NULL REFERENCES layers ON DELETE SET NULL + composite index) + drizzle schema + shared-types `AnnotationObjectSchema` / `CreateAnnotationObjectSchema` + `annotationService.list({layerId})` filter + `annotationService.create({layerId})` insert + tRPC list/create + REST GET layerId param + REST POST + `toAnnotation` serializer.
 - 🔼 `9abdc13` — D.3 wire DrawingToolbar.saveAsAnnotation to pass `layerId: activeLayer.id`. Updated test harness (21/21 pass).
+- 🔼 `8ef0ee5` — D.4-A: `annotation-row-mapper.ts` (project AnnotationObject → GeoJSONFeature for DataTable) + 15-test characterization spec. Wired into MapEditor: small-layer DataTable consumes annotations (from existing `annotationPinsQuery` cache, filtered by `activeLayer.id`); large-layer DataTable still reads features via viewportStore.
 
-### Smoke test (still pending — user task)
+### Smoke test (still pending — user task, NOW the only Phase 3 gate)
 
-Open MapEditor in dev browser, draw a Point/Line/Polygon. Verify:
-1. Row appears in annotation panel within ~1s
-2. `psql` shows row in `annotation_objects` (NOT `features`); `layer_id` column populated with the active layer's UUID
-3. No visual flash on commit (TerraDraw clears overlay → annotation source paint replaces it without gap)
+Run migration first: `DATABASE_URL=... pnpm --dir apps/web exec drizzle-kit migrate` (or whatever the project's migrate script is).
+
+Then open MapEditor in dev browser, draw a Point/Line/Polygon. Verify:
+1. Row appears in **annotation panel** within ~1s.
+2. Row appears in the **DataTable** for that layer (the new D.4-A surface — should show name/description/anchor_type/body columns instead of feature properties).
+3. `psql` shows row in `annotation_objects` (NOT `features`); `layer_id` column populated with the active layer's UUID.
+4. No visual flash on commit (TerraDraw clears overlay → annotation source paint replaces it without gap).
+5. **Per-layer filter:** switch active layers; DataTable shows annotations associated with the *new* active layer only. Annotations drawn on a different layer should not appear.
+6. Imported small layers (CSV/GeoJSON without annotations): DataTable empty (expected under D.4-A — imports stay rendered on map but aren't surfaced in DataTable).
 
 ## What Worked
 
@@ -86,23 +92,21 @@ No infrastructure changes this session. No plugin updates, no hooks, no skills, 
 
 ## Next Steps
 
-**The one thing blocking everything else: D.4 UX shape decision.** Three options, give the user one-line picks (no pre-recommendation):
+Phase 3 baa4 is code-complete. Two tracks open:
 
-1. **D.4-A: Annotations replace Features in DataTable** for small layers. Imports remain visible on the map but vanish from DataTable's per-layer view. Cleanest break; matches the Phase 3 spirit; loses one inspection surface for raw import data.
-2. **D.4-B: Toggle between Features and Annotations** above DataTable. Adds a control, preserves both surfaces. Maximum flexibility, more UI to maintain.
-3. **D.4-C: Combined view — Features + Annotations as one rowset, mixed columns.** Worst of both; columns won't share schema; left here for completeness.
+**Phase 3 close-out (small):**
+- Run migration `0019_add_layer_id_to_annotations.sql` against dev DB.
+- Smoke-test the full A→D flow per the checklist above.
+- Decide on `e5fb` (orphan-flag wiring): trigger / hooks / retire.
+- Revisit `convertAnnotationsToLayer` survival (open question in the plan).
+- Optional refinement: D.4-B (toggle between Annotations and Features views in DataTable) is a small additive change if you decide D.4-A's clean break loses too much. ~30 LOC on top of what's shipped.
 
-After D.4 resolves:
-- Wire DataTable to consume the chosen source(s) — straightforward once the shape is picked.
-- Smoke test the full Phase 3 flow in dev browser.
-- Address `e5fb` (orphan-flag wiring decision).
-- Revisit `convertAnnotationsToLayer` survival per the open question in the plan.
+**Next epic (per `flow-architecture-program.md`):**
+- **F13 Sharing** (`felt-like-it-1c79`, ~1-2 sessions): hash-state viewport URL (`#zoom/lat/lng`), dedupe token resolution, lightweight read-only viewer. Independent of Phase 3.
+- **F14 Embedding** (`felt-like-it-d2d6`, ~1-2 sessions): scroll-jack-free embed, lazy-load ships only what's needed. Alternates with F13.
+- **N01 Cluster, N02 Marker, N03 Data join** — new-flow seeds, separate discovery cycle.
 
-**Alternate / parallel work** (independent of D.4):
-- **F13 Sharing** (`1c79`, ~1-2 sessions): hash-state viewport URL + dedupe token resolution + read-only viewer. Fully independent.
-- **Smoke test Wave A-through-D.3** in dev browser. Doesn't need code; user task.
-
-⚠ unverified: I have NOT smoke-tested the full Wave A-through-D.3 flow in a real browser — only typecheck + vitest. The visual-flash race that an earlier plan-version worried about should be mitigated by `createAnnotationMutationOptions.onMutate`'s optimistic `setQueryData`, but the only proof is real drawing.
+⚠ unverified: I have NOT smoke-tested the full Phase 3 flow in a real browser — only typecheck + vitest. The visual-flash mitigation (optimistic `setQueryData` in `createAnnotationMutationOptions.onMutate`) is unproven outside of unit tests. **Smoke test before starting F13** — building on top of unverified Phase 3 risks compounding failures.
 
 ## Context Files
 
