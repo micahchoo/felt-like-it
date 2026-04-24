@@ -15,6 +15,11 @@
   import { queryKeys } from '$lib/utils/query-keys.js';
   import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
   import type { GeoJSONStoreFeatures } from 'terra-draw';
+  import {
+    createAnnotationMutationOptions,
+    deleteAnnotationMutationOptions,
+  } from '$lib/components/annotations/AnnotationMutations.js';
+  import type { Anchor } from '@felt-like-it/shared-types';
 
   // TYPE_DEBT: terra-draw's GeoJSONStoreFeatures treats `id` as an optional property
   // and `properties` as an opaque record. Shape SnapshotFeature structurally compatible
@@ -81,6 +86,19 @@
       toastStore.error('Failed to delete feature. Please try again.');
     },
   }));
+
+  // Phase 3 Wave A.1 (2026-04-25) — parallel annotation-create path.
+  // Reachable only via saveAsAnnotation(); dispatch flip happens in Wave A.2.
+  // mapId is read off layersStore.active at options-build time; the factory pattern in
+  // svelte-query re-evaluates options reactively, so a layer change picks up the new mapId.
+  const createAnnotationMutation = createMutation(() => {
+    const mapId = layersStore.active?.mapId ?? '';
+    return createAnnotationMutationOptions({ queryClient, mapId });
+  });
+  const deleteAnnotationMutation = createMutation(() => {
+    const mapId = layersStore.active?.mapId ?? '';
+    return deleteAnnotationMutationOptions({ queryClient, mapId });
+  });
 
   $effect(() => {
     effectEnter('DT:initTerraDraw', { hasMap: !!map });
@@ -240,6 +258,93 @@
       hotOverlay.removeHotFeature(activeLayer.id, tempId);
       console.error('[DrawingToolbar] saveFeature failed:', err);
       toastStore.error('Failed to save drawn feature.');
+    }
+  }
+
+  /**
+   * Phase 3 Wave A.1 — parallel annotation-create path. NOT yet wired into
+   * draw.on('finish'); reachable only when Wave A.2 flips the dispatch.
+   *
+   * Differs from saveFeature in three ways:
+   *  1. Persists to `annotation_objects` (mapId-scoped) instead of `features`
+   *     (layer-scoped). The active layer is still required as a UX gate, but
+   *     the annotation row itself does not carry layerId.
+   *  2. Optimism is owned by the tanstack query cache (createAnnotationMutationOptions
+   *     already does cancelQueries + setQueryData + rollback on error). No hotOverlay.
+   *  3. No parent callback yet — Wave A.4 introduces `onannotationdrawn` to replace
+   *     `onfeaturedrawn`'s post-draw selection + activity-log responsibilities. Until
+   *     then, annotation cache invalidation handles parent re-render of the panel.
+   */
+  function deriveAnchor(geometry: GeoJSONStoreFeatures['geometry']): Anchor | null {
+    // Anchor is a discriminated union over { type, geometry }. Terra Draw GeoJSON
+    // shapes are structurally compatible with the matching geometry schemas
+    // (Point/LineString/Polygon) — the cast below crosses the typing-only gap
+    // between terra-draw's GeoJSONStoreFeatures and shared-types geometry schemas.
+    if (geometry.type === 'Point') {
+      return { type: 'point', geometry: geometry as Extract<Anchor, { type: 'point' }>['geometry'] };
+    }
+    if (geometry.type === 'LineString') {
+      return { type: 'path', geometry: geometry as Extract<Anchor, { type: 'path' }>['geometry'] };
+    }
+    if (geometry.type === 'Polygon') {
+      return { type: 'region', geometry: geometry as Extract<Anchor, { type: 'region' }>['geometry'] };
+    }
+    return null;
+  }
+
+  async function saveAsAnnotation(f: GeoJSONStoreFeatures) {
+    const activeLayer = layersStore.active;
+    if (!activeLayer) {
+      toastStore.error('No active layer. Please create or select a layer first.');
+      return;
+    }
+
+    const anchor = deriveAnchor(f.geometry);
+    if (!anchor) {
+      // TerraDraw config should not surface tools that emit MultiPoint / GeometryCollection,
+      // but defend the boundary anyway — schema validation server-side would reject.
+      console.warn('[DrawingToolbar] saveAsAnnotation: unsupported geometry type', f.geometry.type);
+      toastStore.error('Unsupported shape type for annotation.');
+      return;
+    }
+
+    const properties = (f.properties ?? {}) as Record<string, unknown>;
+    const propertyName = typeof properties['name'] === 'string' ? (properties['name'] as string) : undefined;
+    const mapId = activeLayer.mapId;
+
+    try {
+      const created = await createAnnotationMutation.mutateAsync({
+        mapId,
+        anchor,
+        // Empty body is intentional — the user labels the annotation post-create
+        // via the panel's name/description fields. Keeping body.text empty avoids
+        // surfacing TerraDraw's auto-properties (e.g. 'mode') as user-visible text.
+        content: { kind: 'single', body: { type: 'text', text: '' } },
+        ...(propertyName !== undefined ? { name: propertyName } : {}),
+      });
+
+      // Capture the live row identity so undo/redo target the current server state
+      // even after a redo recreates the annotation with a fresh id/version.
+      const handle = { id: created.id, version: created.version };
+      undoStore.push({
+        description: `Draw ${f.geometry.type}`,
+        undo: async () => {
+          await deleteAnnotationMutation.mutateAsync({ id: handle.id, version: handle.version });
+        },
+        redo: async () => {
+          const recreated = await createAnnotationMutation.mutateAsync({
+            mapId,
+            anchor,
+            content: { kind: 'single', body: { type: 'text', text: '' } },
+            ...(propertyName !== undefined ? { name: propertyName } : {}),
+          });
+          handle.id = recreated.id;
+          handle.version = recreated.version;
+        },
+      });
+    } catch (err) {
+      // createAnnotationMutationOptions.onError already rolled back the cache + toasted.
+      console.error('[DrawingToolbar] saveAsAnnotation failed:', err);
     }
   }
 
