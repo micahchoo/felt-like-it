@@ -1,6 +1,31 @@
 # Cycle 02 — Security Hardening + Felt-parity Tail
 
-**Thesis.** Felt-parity Cycle 01 closed (audit 22/22, unified-annotations Phase 1+2 shipped). The freshest unblocked queue is the **adversarial-2026-04-24** sweep — 7 P1 bugs with concrete file:line locations and a remediation doc already in tree (`docs/testing/adversarial-findings.md`, `docs/testing/adversarial-remediation-plan.md`). This cycle ships those, batches the remaining adversarial follow-ups, and tails Felt-parity. The eight `audit-2026-03-30` flow tasks (F09-F14, N01-N03) stay deferred — they're flow-architecture work that needs a dedicated discovery cycle, not a hardening cycle.
+> **⚠ OBSOLETE — DO NOT EXECUTE BUCKET A.**
+>
+> Discovered 2026-04-24 (commit-time audit): all 7 H-bugs and 8 of 10 MEDIUMs from
+> the `adversarial-2026-04-24` sweep were already shipped in commits `70a7058` (W1),
+> `719a119` (W2), `f6f5bb9` (W3), `1dd1735` (W4 close-out). The seeds carrying these
+> findings (`a721`, `a9ad`, `4971`, `f6b0`, `aec9`, `2b9b`, `b5dc`, `5102`, `05dd`)
+> were never closed when the work landed — Bucket A here was authored against stale
+> seed bodies, not against the source-of-truth `docs/testing/adversarial-remediation-plan.md`.
+>
+> **Canonical security state lives in `docs/testing/adversarial-remediation-plan.md`.**
+>
+> What remains real from this doc:
+> - Bucket B Wave 4 — only `135c` (M9 account-lockout decision) and the 5 anti-pattern
+>   seeds (`0524 fire-and-forget`, `8bfc catch-all`, `3e35 console-only-error`,
+>   `a052 untested-churn`, `3f7f impact-scope`, `f645 silent-catch`).
+> - Bucket C — `c07b` drag-to-move docs/decision, `2b5c` dash limit doc, `baa4` Phase 3 epic.
+> - Bucket D — `d40a` OpenAPI + SDK.
+>
+> **Lesson recorded:** before composing a multi-wave plan from a seeds queue, verify
+> each seed's claim against the code (commit log + grep for the cited file:line). A
+> stale needs-triage queue can encode "found and unfixed" or "found, fixed, never
+> closed" — only the source code distinguishes them.
+>
+> Body below preserved for history. Skip to the bottom for the corrected scope.
+
+**Original thesis (now stale).** Felt-parity Cycle 01 closed (audit 22/22, unified-annotations Phase 1+2 shipped). The freshest unblocked queue is the **adversarial-2026-04-24** sweep — 7 P1 bugs with concrete file:line locations and a remediation doc already in tree (`docs/testing/adversarial-findings.md`, `docs/testing/adversarial-remediation-plan.md`). This cycle ships those, batches the remaining adversarial follow-ups, and tails Felt-parity. The eight `audit-2026-03-30` flow tasks (F09-F14, N01-N03) stay deferred — they're flow-architecture work that needs a dedicated discovery cycle, not a hardening cycle.
 
 **Status entry-point:** `master` @ `3199d29` (post-triage, queue clean, 23 ready).
 
@@ -147,3 +172,40 @@ files:
 1. **Idempotency cache backing store.** Postgres table is simplest (already in stack); Redis is faster but adds a dependency surface. Default Postgres unless H5 perf surfaces problems.
 2. **Per-user export queue cap (H3).** What's "too many"? 5 in-flight feels right but no data — start there, instrument, tune.
 3. **M9 lockout (135c).** Real risk vs. attacker-DoS-by-lockout. Recommend: **defer to outcome:rework** after weighing — the IP-based rate limit already gives 90% of the protection.
+
+---
+
+## CORRECTED SCOPE — what's actually unblocked (post-2026-04-24 audit)
+
+After closing 9 stale security seeds, the genuinely-open queue is small enough that a multi-wave plan is overkill. Three independent units of work, pickable in any order:
+
+### Unit 1 — Anti-pattern policy decisions (6 seeds)
+| ID | Anti-pattern | Findings | Likely action |
+|----|--------------|----------|----------------|
+| `0524` | fire-and-forget | 401 | Lint rule (project-wide) — false-positive heavy, decide policy first |
+| `8bfc` | catch-all | 136 | Lint rule + audit each catch — likely some intentional |
+| `3e35` | console-only-error | 11 | Replace with logger.error — small, mechanical |
+| `a052` | untested-churn | 16 | Coverage report — informational, not necessarily fixable |
+| `3f7f` | impact-scope | 2 | Read each — likely accept or refactor |
+| `f645` | silent-catch | 1 | Read it, decide — single occurrence |
+
+**Recommendation:** **`3e35` first** (mechanical, real bug). Then `f645` and `3f7f` (low-volume reads). Then policy session for the high-volume ones (`0524`, `8bfc`, `a052`) — those want a CLAUDE.md decision, not per-finding fixes.
+
+### Unit 2 — Felt-parity tail (3 seeds)
+| ID | Title | Approach |
+|----|-------|----------|
+| `c07b` | Drag-to-move architectural gap | Default: doc-only — update `docs/guides/maps-and-layers.md` to remove implied drag-to-move on imported features. Build (b) only if user signals it matters. |
+| `2b5c` | Per-annotation dash limitation | Default: document as v1 limit in `unified-annotations.md` and the styling section of `felt-parity-annotations.md`. |
+| `135c` | M9 account-level lockout decision | Default: close as `outcome:rework` with rationale "IP-based limiter sufficient; account lockout adds attacker-DoS surface" per the W1.D close-out reasoning. |
+
+**Recommendation:** all three are doc/decision work. Batch into one short session.
+
+### Unit 3 — Strategic (1 seed, 1 epic)
+| ID | Title | Notes |
+|----|-------|-------|
+| `d40a` | OpenAPI spec + TypeScript SDK | Cycle 03. Real strategic surface — needs its own plan. Now genuinely unblocked since the API IS hardened. |
+| `baa4` | Unified annotations Phase 3 | Fresh-session epic per HANDOFF. Write own plan first; re-run path backfill audit at start. |
+
+**Recommendation:** `d40a` next strategic cycle. `baa4` whenever the user signals appetite for the dual-model collapse.
+
+**Deferred (still blocked):** F09-F14, N01-N03 flow-audit tasks.
