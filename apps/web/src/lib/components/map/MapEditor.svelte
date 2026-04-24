@@ -45,7 +45,6 @@
   import { useViewportSave } from './useViewportSave.svelte.js';
   import { ActivityStore } from '$lib/stores/activity-store.svelte.js';
   import { getErrorCode } from '$lib/utils/handle-error.js';
-  import type { Geometry } from 'geojson';
   import { PUBLIC_MARTIN_URL } from '$env/static/public';
   import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -259,41 +258,10 @@
     return viewportStore.bindMap(map);
   });
 
-  async function handleFeatureDrawn(
-    layerId: string,
-    _feature: Record<string, unknown> & { id?: string | undefined }
-  ) {
-    const drawnLayer = layersStore.all.find((l) => l.id === layerId);
-    if (!drawnLayer || !isLargeLayer(drawnLayer)) {
-      // loadLayerData now fetches via the TanStack Query cache (fetchQuery).
-      // DrawingToolbar's onSuccess already invalidated the cache entry, so
-      // fetchQuery will see it as stale and re-fetch fresh data from the server.
-      // No explicit invalidateQueries needed here — cache invalidation is the
-      // sole responsibility of the mutating component (DrawingToolbar).
-      await loadLayerData(layerId);
-    }
-
-    const geom = _feature['geometry'] as Geometry | undefined;
-    const fid = _feature['id'] ?? '';
-    if (geom && fid) {
-      transitionTo({
-        type: 'featureSelected',
-        feature: { featureId: String(fid), layerId, geometry: geom },
-      });
-    }
-
-    activityStore.log('feature.drawn', {
-      layerId,
-      layerName: drawnLayer?.name ?? '',
-      geometryType: geom?.type ?? '',
-    });
-  }
-
-  // Wave A.4 — TerraDraw commits now persist annotations (Wave A.2 dispatch
-  // flip). The post-draw selection-feedback that handleFeatureDrawn provides
-  // is a feature-popup-model concept; annotations follow a panel-model where
-  // the new row is surfaced via cache invalidation. So this handler does the
-  // single cross-cutting thing the cache can't: fire the activity event.
+  // TerraDraw commits flow into annotation_objects (Phase 3 unified model).
+  // Re-render is owned by createAnnotationMutationOptions cache invalidation;
+  // this handler covers the single cross-cutting concern the cache can't:
+  // logging the user action.
   function handleAnnotationDrawn(annotation: { id: string; anchorType: string }) {
     activityStore.log('annotation.drawn', {
       annotationId: annotation.id,
@@ -645,7 +613,6 @@
         readonly={effectiveReadonly}
         {layerData}
         {filtersStore}
-        onfeaturedrawn={handleFeatureDrawn}
         onannotationdrawn={handleAnnotationDrawn}
         annotationPins={annotationGeo.pins}
         annotationRegions={annotationGeo.regions}

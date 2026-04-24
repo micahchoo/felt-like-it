@@ -5,15 +5,12 @@
   import { getMapEditorState, type DrawTool } from '$lib/stores/map-editor-state.svelte.js';
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { undoStore } from '$lib/stores/undo.svelte.js';
-  import { trpc } from '$lib/utils/trpc.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { MousePointer2, Circle, Spline, Pentagon } from 'lucide-svelte';
   import { measureLine, measurePolygon } from '@felt-like-it/geo-engine';
   import type { DistanceMeasurement, AreaMeasurement } from '@felt-like-it/geo-engine';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-  import { queryKeys } from '$lib/utils/query-keys.js';
-  import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
   import type { GeoJSONStoreFeatures } from 'terra-draw';
   import {
     createAnnotationMutationOptions,
@@ -33,19 +30,10 @@
   interface Props {
     map: MapLibreMap;
     /**
-     * Wave A.2 legacy — fires after saveFeature persists to the features table.
-     * saveFeature is unreachable from the live dispatch (Wave A.2 routed
-     * through saveAsAnnotation). Both saveFeature and this callback are
-     * scheduled for removal in Wave B.
-     */
-    onfeaturedrawn?: ((_layerId: string, _feature: Record<string, unknown> & { id?: string | undefined }) => void) | undefined;
-    /**
-     * Wave A.4 — fires after saveAsAnnotation creates an annotation row.
-     * Carries the persisted id + anchor type so the parent can drive
-     * cross-cutting concerns (activity logging today; future panel-scroll /
-     * focus-management would also flow through here). Deliberately NOT a
-     * full annotation row — keeping the surface narrow makes the contract
-     * easier to keep stable.
+     * Fires after a TerraDraw commit creates an annotation row. Carries the
+     * persisted id + anchor type. Used by the parent for cross-cutting
+     * concerns (activity logging; future panel-scroll/focus). Narrow on
+     * purpose — the panel + cache invalidation own re-render.
      */
     onannotationdrawn?: ((_annotation: { id: string; anchorType: Anchor['type'] }) => void) | undefined;
     /**
@@ -62,48 +50,11 @@
     onregiondrawn?: ((_geometry: { type: 'Polygon'; coordinates: number[][][] }) => void) | undefined;
   }
 
-  let { map, onfeaturedrawn, onannotationdrawn, onmeasured, onregiondrawn }: Props = $props();
+  let { map, onannotationdrawn, onmeasured, onregiondrawn }: Props = $props();
 
   const editorState = getMapEditorState();
   const queryClient = useQueryClient();
 
-  type FeatureUpsertInput = {
-    layerId: string;
-    features: { geometry: Record<string, unknown>; properties: Record<string, unknown> }[];
-  };
-  type FeatureDeleteInput = { layerId: string; ids: string[] };
-
-  const featureUpsertMutation = createMutation<
-    { upsertedIds: string[] },
-    Error,
-    FeatureUpsertInput,
-    unknown
-  >(() => ({
-    mutationFn: (input) =>
-      trpc.features.upsert.mutate(input) as Promise<{ upsertedIds: string[] }>,
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
-    },
-    onError: (_err, variables) => {
-      hotOverlay.clearHotFeatures(variables.layerId);
-      toastStore.error('Failed to save feature. Please try again.');
-    },
-  }));
-
-  const featureDeleteMutation = createMutation<unknown, Error, FeatureDeleteInput, unknown>(() => ({
-    mutationFn: (input) => trpc.features.delete.mutate(input) as Promise<unknown>,
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
-    },
-    onError: () => {
-      // The feature was NOT deleted — it still exists in the DB.
-      // No hotOverlay cleanup needed; notify the user so they can retry.
-      toastStore.error('Failed to delete feature. Please try again.');
-    },
-  }));
-
-  // Phase 3 Wave A.1 (2026-04-25) — parallel annotation-create path.
-  // Reachable only via saveAsAnnotation(); dispatch flip happens in Wave A.2.
   // mapId is read off layersStore.active at options-build time; the factory pattern in
   // svelte-query re-evaluates options reactively, so a layer change picks up the new mapId.
   const createAnnotationMutation = createMutation(() => {
@@ -142,9 +93,6 @@
               // Measurement mode — compute result and notify parent; do NOT persist to DB
               measureFeature(f);
             } else {
-              // Wave A.2 (2026-04-25) — TerraDraw commits flow to annotation_objects.
-              // saveFeature() is unreachable from this dispatch; kept until Wave B
-              // for revertability and so its tests + helper still type-check.
               await saveAsAnnotation(f);
             }
           }
@@ -203,101 +151,18 @@
     // Point geometry has no length/area — silently ignore
   }
 
-  // Wave A.2 (2026-04-25) — saveFeature + featureUpsertMutation +
-  // featureDeleteMutation are unreachable from the dispatch above (which now
-  // routes to saveAsAnnotation). They are kept compiled until Wave B
-  // (features table application-write lock-down) so the dispatch flip stays
-  // independently revertable. The void-references at the bottom of this
-  // function keep svelte-check 6133 quiet without disabling the rule.
-  async function saveFeature(f: GeoJSONStoreFeatures) {
-    const activeLayer = layersStore.active;
-    if (!activeLayer) {
-      toastStore.error('No active layer. Please create or select a layer first.');
-      return;
-    }
-
-    // Serialize typed GeoJSON geometry/properties to plain records for the tRPC boundary
-    // TYPE_DEBT: GeoJSON geometry interfaces lack index signatures, requiring cast to Record for tRPC schema
-    const geometry = f.geometry as unknown as Record<string, unknown>;
-    const properties = (f.properties ?? {}) as Record<string, unknown>;
-
-    // Optimistic UI: add to hotOverlay immediately so the feature stays visible
-    // while the server round-trip completes (Terra Draw removes it from its own
-    // overlay when it fires 'finish'). We use a temp ID that gets replaced with
-    // the real server-assigned ID once the mutation succeeds.
-    const tempId = `temp-${Date.now()}`;
-    hotOverlay.addHotFeature(activeLayer.id, {
-      type: 'Feature',
-      id: tempId,
-      geometry: geometry as unknown as GeoJSON.Geometry,
-      properties: properties as GeoJSON.GeoJsonProperties,
-    });
-
-    try {
-      const { upsertedIds } = await featureUpsertMutation.mutateAsync({
-        layerId: activeLayer.id,
-        features: [{ geometry, properties }],
-      });
-
-      // Replace temp entry with the real server-assigned ID
-      hotOverlay.removeHotFeature(activeLayer.id, tempId);
-      if (upsertedIds[0]) {
-        hotOverlay.addHotFeature(activeLayer.id, {
-          type: 'Feature',
-          id: upsertedIds[0],
-          geometry: geometry as unknown as GeoJSON.Geometry,
-          properties: properties as GeoJSON.GeoJsonProperties,
-        });
-      }
-
-      undoStore.push({
-        description: `Draw ${f.geometry.type}`,
-        undo: async () => {
-          if (upsertedIds[0]) {
-            await featureDeleteMutation.mutateAsync({ layerId: activeLayer.id, ids: [upsertedIds[0]] });
-            hotOverlay.removeHotFeature(activeLayer.id, upsertedIds[0]);
-          }
-        },
-        redo: async () => {
-          const result = await featureUpsertMutation.mutateAsync({
-            layerId: activeLayer.id,
-            features: [{ geometry, properties }],
-          });
-          if (result.upsertedIds[0]) {
-            hotOverlay.addHotFeature(activeLayer.id, {
-              type: 'Feature',
-              id: result.upsertedIds[0],
-              geometry: geometry as unknown as GeoJSON.Geometry,
-              properties: properties as GeoJSON.GeoJsonProperties,
-            });
-          }
-        },
-      });
-
-      // Await the data reload so the GeoJSON source is updated BEFORE
-      // removeFeatures() clears the Terra Draw overlay — no visual gap.
-      await onfeaturedrawn?.(activeLayer.id, { geometry, properties, id: upsertedIds[0] });
-    } catch (err) {
-      // Roll back the optimistic hotOverlay entry — save failed, nothing on server
-      hotOverlay.removeHotFeature(activeLayer.id, tempId);
-      console.error('[DrawingToolbar] saveFeature failed:', err);
-      toastStore.error('Failed to save drawn feature.');
-    }
-  }
-
   /**
-   * Phase 3 Wave A.1 — parallel annotation-create path. NOT yet wired into
-   * draw.on('finish'); reachable only when Wave A.2 flips the dispatch.
+   * TerraDraw commit handler. Persists drawn shapes as `annotation_objects`
+   * rows (Phase 3 unified-annotations model). Imports + computed layers
+   * still write to `features`; user-drawn shapes do not.
    *
-   * Differs from saveFeature in three ways:
-   *  1. Persists to `annotation_objects` (mapId-scoped) instead of `features`
-   *     (layer-scoped). The active layer is still required as a UX gate, but
-   *     the annotation row itself does not carry layerId.
-   *  2. Optimism is owned by the tanstack query cache (createAnnotationMutationOptions
-   *     already does cancelQueries + setQueryData + rollback on error). No hotOverlay.
-   *  3. No parent callback yet — Wave A.4 introduces `onannotationdrawn` to replace
-   *     `onfeaturedrawn`'s post-draw selection + activity-log responsibilities. Until
-   *     then, annotation cache invalidation handles parent re-render of the panel.
+   * Optimism: owned by createAnnotationMutationOptions.onMutate (cancelQueries
+   * + setQueryData), so AnnotationRenderer re-renders the new shape before
+   * TerraDraw clears its overlay.
+   *
+   * Parent notification: narrow `onannotationdrawn(id, anchorType)` callback —
+   * the panel re-render is owned by cache invalidation, the parent only
+   * receives signal for cross-cutting concerns (activity log).
    */
   function deriveAnchor(geometry: GeoJSONStoreFeatures['geometry']): Anchor | null {
     // Anchor is a discriminated union over { type, geometry }. Terra Draw GeoJSON
@@ -496,10 +361,6 @@
     { id: 'line', label: 'Line', helpText: 'Click to add vertices, double-click to finish the line', icon: Spline, group: 'draw' },
     { id: 'polygon', label: 'Polygon', helpText: 'Click to add vertices, double-click to close the shape', icon: Pentagon, group: 'draw' },
   ];
-
-  // Wave A.2 (2026-04-25) — saveFeature is dead code pending Wave B removal.
-  // Reference it explicitly so svelte-check 6133 doesn't churn until then.
-  void saveFeature;
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
