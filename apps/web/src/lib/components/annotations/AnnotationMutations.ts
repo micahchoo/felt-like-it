@@ -37,6 +37,10 @@ type CreateAnnotationInput = {
   mapId: string;
   anchor: Anchor;
   content: { kind: 'single'; body: AC };
+  /** Felt-parity Wave 1 — first-class row label; optional. */
+  name?: string;
+  /** Felt-parity Wave 1 — rich-text body beyond structured content. */
+  description?: string;
 };
 
 export function createAnnotationMutationOptions(
@@ -65,6 +69,8 @@ export function createAnnotationMutationOptions(
         authorName: '',
         anchor: variables.anchor,
         content: variables.content,
+        name: variables.name ?? null,
+        description: variables.description ?? null,
         templateId: null,
         ordinal: 0,
         version: 0,
@@ -142,7 +148,14 @@ export function updateAnnotationMutationOptions(
 ): MutationOptions<
   Awaited<ReturnType<typeof trpc.annotations.update.mutate>>,
   Error,
-  { id: string; version: number; content?: { kind: 'single'; body: AC }; anchor?: Anchor }
+  {
+    id: string;
+    version: number;
+    content?: { kind: 'single'; body: AC };
+    anchor?: Anchor;
+    name?: string | null;
+    description?: string | null;
+  }
 > {
   return {
     mutationFn: (input: {
@@ -150,6 +163,8 @@ export function updateAnnotationMutationOptions(
       version: number;
       content?: { kind: 'single'; body: AC };
       anchor?: Anchor;
+      name?: string | null;
+      description?: string | null;
     }) => trpc.annotations.update.mutate(input),
     onSuccess: () => {
       deps.queryClient.invalidateQueries({

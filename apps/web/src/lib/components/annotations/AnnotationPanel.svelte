@@ -155,6 +155,8 @@
     mapId: string;
     anchor: Anchor;
     content: { kind: 'single'; body: AC };
+    name?: string;
+    description?: string;
   }) {
     // Idempotency guard — the mutation's `isPending` already drives the
     // submit button's disabled state, but a direct programmatic call via

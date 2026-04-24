@@ -32,6 +32,8 @@
       mapId: string;
       anchor: Anchor;
       content: { kind: 'single'; body: AC };
+      name?: string;
+      description?: string;
     }) => void;
     pendingMeasurementData: SaveAsAnnotationPayload | null;
     regionGeometry?: { type: 'Polygon'; coordinates: number[][][] } | undefined;
@@ -54,6 +56,8 @@
   }: Props = $props();
 
   // Form state
+  let formName = $state('');
+  let formDescription = $state('');
   let formType = $state<ContentType>('text');
   let formText = $state('');
   let formEmoji = $state('');
@@ -232,7 +236,13 @@
           uploading = false;
         }
       }
-      oncreate({ mapId, anchor: buildAnchor(), content: { kind: 'single', body: buildContent() } });
+      oncreate({
+        mapId,
+        anchor: buildAnchor(),
+        content: { kind: 'single', body: buildContent() },
+        ...(formName.trim() ? { name: formName.trim() } : {}),
+        ...(formDescription.trim() ? { description: formDescription.trim() } : {}),
+      });
       resetForm();
     } catch {
       toastStore.error('Failed to create annotation.');
@@ -240,6 +250,8 @@
   }
 
   function resetForm() {
+    formName = '';
+    formDescription = '';
     formType = 'text';
     formText = '';
     formEmoji = '';
@@ -268,6 +280,20 @@
 </script>
 
 <form onsubmit={handleSubmit} class="flex flex-col gap-2 p-3">
+  <!-- Name (Felt-parity first-class label; optional) -->
+  <div class="flex flex-col gap-1">
+    <label class="text-xs text-on-surface-variant" for="ann-name">Name</label>
+    <input
+      id="ann-name"
+      type="text"
+      data-testid="annotation-name"
+      bind:value={formName}
+      maxlength={200}
+      placeholder="e.g. Field site A (optional)"
+      class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary"
+    />
+  </div>
+
   <!-- Content type grid -->
   <div class="grid grid-cols-3 gap-1.5">
     {#each CONTENT_TYPES as t (t)}
@@ -476,6 +502,20 @@
       {pendingMeasurementData.title}
     </div>
   {/if}
+
+  <!-- Description (optional rich body; Felt-parity) -->
+  <div class="flex flex-col gap-1">
+    <label class="text-xs text-on-surface-variant" for="ann-description">Description</label>
+    <textarea
+      id="ann-description"
+      data-testid="annotation-description"
+      bind:value={formDescription}
+      rows={2}
+      maxlength={5000}
+      placeholder="Longer notes that show when readers open the annotation (optional)"
+      class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface placeholder-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+    ></textarea>
+  </div>
 
   <!-- Anchor selection -->
   <fieldset class="flex flex-col gap-1 mt-2 border-t border-white/5 pt-2">

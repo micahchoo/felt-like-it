@@ -83,6 +83,16 @@
 {:else}
   {#each annotations as annotation (annotation.id)}
     <div id="annotation-{annotation.id}" class="px-3 py-3 border-b border-white/5 space-y-2">
+      {#if annotation.name}
+        <h4 class="text-sm font-semibold text-on-surface truncate" title={annotation.name}>
+          {annotation.name}
+        </h4>
+      {/if}
+      {#if annotation.description}
+        <p class="text-xs text-on-surface-variant/90 whitespace-pre-wrap">
+          {annotation.description}
+        </p>
+      {/if}
       <AnnotationContent
         content={annotation.content}
         authorName={annotation.authorName}
