@@ -76,83 +76,8 @@ describe('features.list', () => {
   });
 });
 
-describe('features.upsert', () => {
-  beforeEach(() => vi.resetAllMocks());
-
-  const POINT_GEOM = { type: 'Point', coordinates: [0, 0] };
-
-  it('inserts a new feature when no id is provided', async () => {
-    vi.mocked(db.select)
-      .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))   // layer lookup
-      .mockReturnValueOnce(drizzleChain([MOCK_MAP]));    // requireMapAccess: map
-    vi.mocked(db.execute).mockResolvedValueOnce({ rows: [{ id: FEATURE_ID }] } as never);
-
-    const result = await makeCaller().upsert({
-      layerId: LAYER_ID,
-      features: [{ geometry: POINT_GEOM, properties: {} }],
-    });
-    expect(result.upsertedIds).toHaveLength(1);
-    expect(result.upsertedIds[0]).toBe(FEATURE_ID);
-  });
-
-  it('updates an existing feature when id is provided', async () => {
-    vi.mocked(db.select)
-      .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))   // layer lookup
-      .mockReturnValueOnce(drizzleChain([MOCK_MAP]));    // requireMapAccess: map
-    vi.mocked(db.execute).mockResolvedValueOnce({ rows: [] } as never); // UPDATE returns no rows
-
-    const result = await makeCaller().upsert({
-      layerId: LAYER_ID,
-      features: [{ id: FEATURE_ID, geometry: POINT_GEOM, properties: {} }],
-    });
-    // The router pushes feature.id directly for updates (no RETURNING clause)
-    expect(result.upsertedIds).toHaveLength(1);
-    expect(result.upsertedIds[0]).toBe(FEATURE_ID);
-    // Verify the UPDATE SQL was actually executed (not silently skipped)
-    expect(db.execute).toHaveBeenCalledOnce();
-  });
-
-  it('throws NOT_FOUND when layer does not exist', async () => {
-    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([]));
-
-    await expect(
-      makeCaller().upsert({ layerId: LAYER_ID, features: [{ geometry: POINT_GEOM }] })
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
-  });
-
-  it('throws FORBIDDEN when caller is a viewer on a map requiring editor access', async () => {
-    const otherMap = { id: MAP_ID, userId: 'other-user' };
-    vi.mocked(db.select)
-      .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))              // layer found
-      .mockReturnValueOnce(drizzleChain([otherMap]))                // requireMapAccess: map (not owner)
-      .mockReturnValueOnce(drizzleChain([{ role: 'viewer' }]));    // collab: viewer < editor
-
-    await expect(
-      makeCaller().upsert({ layerId: LAYER_ID, features: [{ geometry: POINT_GEOM }] })
-    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
-  });
-});
-
-describe('features.delete', () => {
-  beforeEach(() => vi.resetAllMocks());
-
-  it('deletes features and returns count', async () => {
-    vi.mocked(db.select)
-      .mockReturnValueOnce(drizzleChain([MOCK_LAYER]))   // layer lookup
-      .mockReturnValueOnce(drizzleChain([MOCK_MAP]));    // requireMapAccess: map
-    vi.mocked(db.delete).mockReturnValue(drizzleChain(undefined));
-    vi.mocked(db.execute).mockResolvedValueOnce(mockExecuteResult([])); // flagOrphanedAnnotations
-
-    const result = await makeCaller().delete({ layerId: LAYER_ID, ids: [FEATURE_ID] });
-    expect(result).toEqual({ deleted: 1 });
-    expect(db.delete).toHaveBeenCalledOnce();
-  });
-
-  it('throws NOT_FOUND when layer does not exist', async () => {
-    vi.mocked(db.select).mockReturnValueOnce(drizzleChain([]));
-
-    await expect(
-      makeCaller().delete({ layerId: LAYER_ID, ids: [FEATURE_ID] })
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
-  });
-});
+// features.upsert + features.delete tests removed in baa4 Wave B.3 — the
+// procedures themselves were removed once the unified-annotations migration
+// (Phase 3) made them application-write-locked. New TerraDraw commits flow
+// to annotation_objects via DrawingToolbar.saveAsAnnotation; see
+// drawing-save-annotation.test.ts.
