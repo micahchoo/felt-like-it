@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../init.js';
 import { annotationService } from '../../annotations/service.js';
+import { annotationGroupsService } from '../../annotations/groups.js';
 import {
   convertAnnotationsToLayer,
   convertLayerFeaturesToAnnotations,
@@ -82,6 +83,7 @@ export const annotationsRouter = router({
         ...(input.templateId !== undefined ? { templateId: input.templateId } : {}),
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
       });
     }),
 
@@ -97,6 +99,7 @@ export const annotationsRouter = router({
         // Omit vs null distinction: only spread if the input contained the key.
         ...(('name' in input) ? { name: input.name ?? null } : {}),
         ...(('description' in input) ? { description: input.description ?? null } : {}),
+        ...(('groupId' in input) ? { groupId: input.groupId ?? null } : {}),
         version: input.version,
       });
     }),
@@ -110,6 +113,59 @@ export const annotationsRouter = router({
         id: input.id,
         expectedVersion: input.version,
       });
+    }),
+
+  listGroups: protectedProcedure
+    .input(z.object({ mapId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      return annotationGroupsService.list({ userId: ctx.user.id, mapId: input.mapId });
+    }),
+
+  createGroup: protectedProcedure
+    .input(
+      z.object({
+        mapId: z.string().uuid(),
+        name: z.string().min(1).max(200),
+        parentGroupId: z.string().uuid().nullable().optional(),
+        visible: z.boolean().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return annotationGroupsService.create({
+        userId: ctx.user.id,
+        mapId: input.mapId,
+        name: input.name,
+        ...(input.parentGroupId !== undefined ? { parentGroupId: input.parentGroupId } : {}),
+        ...(input.visible !== undefined ? { visible: input.visible } : {}),
+      });
+    }),
+
+  updateGroup: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1).max(200).optional(),
+        parentGroupId: z.string().uuid().nullable().optional(),
+        ordinal: z.number().int().optional(),
+        visible: z.boolean().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return annotationGroupsService.update({
+        userId: ctx.user.id,
+        id: input.id,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(('parentGroupId' in input) ? { parentGroupId: input.parentGroupId ?? null } : {}),
+        ...(input.ordinal !== undefined ? { ordinal: input.ordinal } : {}),
+        ...(input.visible !== undefined ? { visible: input.visible } : {}),
+      });
+    }),
+
+  deleteGroup: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await annotationGroupsService.delete({ userId: ctx.user.id, id: input.id });
+      return { ok: true };
     }),
 
   convertAnnotationsToLayer: protectedProcedure

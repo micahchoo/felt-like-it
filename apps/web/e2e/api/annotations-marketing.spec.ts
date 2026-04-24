@@ -545,6 +545,79 @@ test.describe('Promise 16 — "Promote annotations to a data layer and back" (Fe
   });
 });
 
+test.describe('Promise 17 — "Organize annotations into groups" (Felt-parity Wave 2 Groups)', () => {
+  const groupsUrl = `/api/v1/maps/${FIXTURE_MAPS.aliceMap}/annotation-groups`;
+
+  test('create group and list it back', async ({ alice }) => {
+    const res = await alice.post(groupsUrl, { data: { name: 'Field Sites' } });
+    expect(res.status()).toBe(201);
+    const created = (await res.json()).data;
+    expect(created.name).toBe('Field Sites');
+    expect(created.visible).toBe(true);
+    expect(created.parentGroupId).toBeNull();
+
+    const listRes = await alice.get(groupsUrl);
+    expect(listRes.status()).toBe(200);
+    const list = (await listRes.json()).data;
+    expect(list.some((g: { id: string }) => g.id === created.id)).toBe(true);
+  });
+
+  test('assign an annotation to a group via POST then change it via PATCH', async ({ alice }) => {
+    const g1 = (await (await alice.post(groupsUrl, { data: { name: 'G1' } })).json()).data.id as string;
+    const g2 = (await (await alice.post(groupsUrl, { data: { name: 'G2' } })).json()).data.id as string;
+
+    const createRes = await alice.post(mapUrl, {
+      data: {
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
+        content: { kind: 'single', body: { type: 'text', text: 'grouped' } },
+        groupId: g1,
+      },
+    });
+    expect(createRes.status()).toBe(201);
+    const ann = (await createRes.json()).data;
+    expect(ann.groupId).toBe(g1);
+
+    const patchRes = await alice.patch(`${mapUrl}/${ann.id}`, {
+      headers: { 'If-Match': String(ann.version) },
+      data: { groupId: g2 },
+    });
+    expect(patchRes.status()).toBe(200);
+    const patched = (await patchRes.json()).data;
+    expect(patched.groupId).toBe(g2);
+
+    // Null-clear moves it to root
+    const clearRes = await alice.patch(`${mapUrl}/${ann.id}`, {
+      headers: { 'If-Match': String(patched.version) },
+      data: { groupId: null },
+    });
+    expect(clearRes.status()).toBe(200);
+    expect((await clearRes.json()).data.groupId).toBeNull();
+  });
+
+  test('deleting a group sets contained annotations to ungrouped', async ({ alice }) => {
+    const g = (await (await alice.post(groupsUrl, { data: { name: 'Doomed' } })).json()).data.id as string;
+    const ann = (await (await alice.post(mapUrl, {
+      data: {
+        anchor: { type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
+        content: { kind: 'single', body: { type: 'text', text: 'x' } },
+        groupId: g,
+      },
+    })).json()).data.id as string;
+
+    const del = await alice.delete(`${groupsUrl}/${g}`);
+    expect(del.status()).toBe(204);
+
+    const readBack = await alice.get(`${mapUrl}/${ann}`);
+    expect(readBack.status()).toBe(200);
+    expect((await readBack.json()).data.groupId).toBeNull();
+  });
+
+  test('rejects name longer than 200 chars on create', async ({ alice }) => {
+    const res = await alice.post(groupsUrl, { data: { name: 'x'.repeat(201) } });
+    expect(res.status()).toBe(422);
+  });
+});
+
 test.describe('Promise 14 — "Auth required"', () => {
   test('anonymous list → 401', async ({ anon }) => {
     const res = await anon.get(mapUrl);

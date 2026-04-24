@@ -216,6 +216,28 @@ export const mapEvents = pgTable(
 // ─── Annotation Objects ──────────────────────────────────────────────────────
 // Penpot-inspired flat object store (originally v2, now the sole annotations table).
 
+export const annotationGroups = pgTable(
+  'annotation_groups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    mapId: uuid('map_id')
+      .notNull()
+      .references(() => maps.id, { onDelete: 'cascade' }),
+    parentGroupId: uuid('parent_group_id').references((): AnyPgColumn => annotationGroups.id, {
+      onDelete: 'set null',
+    }),
+    name: text('name').notNull(),
+    ordinal: integer('ordinal').notNull().default(0),
+    visible: boolean('visible').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('annotation_groups_map_idx').on(t.mapId),
+    index('annotation_groups_parent_idx').on(t.parentGroupId),
+  ]
+);
+
 export const annotationObjects = pgTable(
   'annotation_objects',
   {
@@ -234,6 +256,8 @@ export const annotationObjects = pgTable(
     name: text('name'),
     /** Felt-parity rich-text body. Nullable. Length bounded by a CHECK constraint. */
     description: text('description'),
+    /** Felt-parity group/folder assignment. NULL = ungrouped (root of Sidebar List). */
+    groupId: uuid('group_id').references(() => annotationGroups.id, { onDelete: 'set null' }),
     templateId: uuid('template_id'),
     ordinal: integer('ordinal').notNull().default(0),
     version: integer('version').notNull().default(1),

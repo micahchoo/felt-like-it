@@ -21,6 +21,7 @@ const AnnotationPatchSchema = z
     content: z.unknown().optional(),
     name: z.string().min(1).max(200).nullable().optional(),
     description: z.string().max(5000).nullable().optional(),
+    groupId: z.string().uuid().nullable().optional(),
   })
   .strict();
 
@@ -118,6 +119,7 @@ export const PATCH: RequestHandler = async ({ request, url, params, locals, getC
       // `in` preserves the omit-vs-null distinction the service relies on
       ...('name' in body ? { name: body.name ?? null } : {}),
       ...('description' in body ? { description: body.description ?? null } : {}),
+      ...('groupId' in body ? { groupId: body.groupId ?? null } : {}),
     });
     return jsonResponse(envelope(toAnnotation(updated), {}, annotationLinks(mapId, id)));
   } catch {

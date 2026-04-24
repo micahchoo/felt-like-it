@@ -27,6 +27,7 @@ interface RawObjectRow {
   content: AnnotationObjectContent;
   name: string | null;
   description: string | null;
+  group_id: string | null;
   template_id: string | null;
   ordinal: number;
   version: number;
@@ -36,7 +37,7 @@ interface RawObjectRow {
 
 const OBJECT_COLS = sql.raw(`
   id, map_id, parent_id, author_id, author_name,
-  anchor, content, name, description, template_id, ordinal, version,
+  anchor, content, name, description, group_id, template_id, ordinal, version,
   created_at, updated_at
 `);
 
@@ -51,6 +52,7 @@ function rowToObject(row: RawObjectRow): AnnotationObject {
     content: row.content,
     name: row.name,
     description: row.description,
+    groupId: row.group_id,
     templateId: row.template_id,
     ordinal: row.ordinal,
     version: row.version,
@@ -76,6 +78,7 @@ export const annotationService = {
     templateId?: string;
     name?: string;
     description?: string;
+    groupId?: string;
   }): Promise<AnnotationObject> {
     // 1. Access check (read-only, no mutation to wrap)
     await requireMapAccess(params.userId, params.mapId, 'commenter');
@@ -124,7 +127,7 @@ export const annotationService = {
       const rows = await typedExecute<RawObjectRow>(sql`
         INSERT INTO annotation_objects (
           map_id, parent_id, author_id, author_name,
-          anchor, content, name, description, template_id, ordinal
+          anchor, content, name, description, group_id, template_id, ordinal
         )
         VALUES (
           ${params.mapId}::uuid,
@@ -135,6 +138,7 @@ export const annotationService = {
           ${contentJson}::jsonb,
           ${params.name ?? null},
           ${params.description ?? null},
+          ${params.groupId ?? null}::uuid,
           ${params.templateId ?? null}::uuid,
           ${ordinal}
         )
@@ -245,6 +249,8 @@ export const annotationService = {
     /** Omit → unchanged. Explicit null → clear. String → set. */
     name?: string | null;
     description?: string | null;
+    /** Omit → unchanged. Explicit null → clear (move to root). String → set. */
+    groupId?: string | null;
     version: number;
   }): Promise<AnnotationObject> {
     // Wrap fetch-check-update-changelog in a single transaction (M4).
@@ -285,6 +291,7 @@ export const annotationService = {
       // Distinguish "omit" (undefined) from "clear" (null) via `in` check.
       if ('name' in params) setClauses.push(sql`name = ${params.name}`);
       if ('description' in params) setClauses.push(sql`description = ${params.description}`);
+      if ('groupId' in params) setClauses.push(sql`group_id = ${params.groupId ?? null}::uuid`);
 
       const rows = await typedExecute<RawObjectRow>(sql`
         UPDATE annotation_objects

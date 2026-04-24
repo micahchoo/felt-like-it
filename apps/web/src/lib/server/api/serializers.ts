@@ -53,6 +53,7 @@ export function toAnnotation(row: Row) {
     content: row['content'],
     name: row['name'] ?? null,
     description: row['description'] ?? null,
+    groupId: row['groupId'] ?? row['group_id'] ?? null,
     parentId: row['parentId'] ?? row['parent_id'],
     templateId: row['templateId'] ?? row['template_id'],
     version: row['version'],

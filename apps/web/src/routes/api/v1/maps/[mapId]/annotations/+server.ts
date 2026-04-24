@@ -100,6 +100,7 @@ export const POST: RequestHandler = async (event) => {
         content: parsed.data.content,
         ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
         ...(parsed.data.description !== undefined ? { description: parsed.data.description } : {}),
+        ...(parsed.data.groupId !== undefined ? { groupId: parsed.data.groupId } : {}),
       });
 
       return jsonResponse(
