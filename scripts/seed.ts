@@ -13,9 +13,19 @@
  * Safe to re-run — exits early if demo user already exists.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { hash } from '@node-rs/argon2';
+import {
+  FIXTURE_USERS,
+  FIXTURE_MAPS,
+  FIXTURE_LAYERS,
+  FIXTURE_SHARE_TOKEN_BOB,
+  FIXTURE_API_KEY_ALICE_PLAINTEXT,
+  FIXTURE_API_KEY_ALICE_PREFIX,
+  FIXTURE_API_KEY_BOB_PLAINTEXT,
+  FIXTURE_API_KEY_BOB_PREFIX,
+} from '../apps/web/src/lib/server/db/fixtures.js';
 
 const DATABASE_URL =
   process.env['DATABASE_URL'] ?? 'postgresql://felt:felt@localhost:5432/felt';
@@ -167,11 +177,33 @@ async function seed(): Promise<void> {
       'SELECT id FROM users WHERE email = $1',
       ['demo@felt-like-it.local']
     );
-    if ((existing.rowCount ?? 0) > 0) {
-      console.log('Demo user already exists — seed already applied. Skipping.');
-      return;
+    const demoAlreadySeeded = (existing.rowCount ?? 0) > 0;
+    if (demoAlreadySeeded) {
+      console.log('Demo user already exists — skipping demo + template seed.');
+    }
+    if (!demoAlreadySeeded) {
+      await seedDemo(client);
     }
 
+    // Adversarial fixtures are gated separately; see seedAdversarialFixtures.
+    await seedAdversarialFixtures(client);
+
+    console.log('');
+    console.log('Seed complete!');
+    console.log('');
+    console.log('  URL:      http://localhost:3000');
+    console.log('  Email:    demo@felt-like-it.local');
+    console.log('  Password: demo');
+    console.log('');
+  } catch (err) {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  } finally {
+    await client.end();
+  }
+}
+
+async function seedDemo(client: pg.Client): Promise<void> {
     // ── Create demo user ──────────────────────────────────────────────────
     const hashedPassword = await hash('demo', {
       memoryCost: 19456,
@@ -271,19 +303,110 @@ async function seed(): Promise<void> {
       console.log(`✓ Template created: "${tpl.title}"`);
     }
 
-    console.log('');
-    console.log('Seed complete!');
-    console.log('');
-    console.log('  URL:      http://localhost:3000');
-    console.log('  Email:    demo@felt-like-it.local');
-    console.log('  Password: demo');
-    console.log('');
-  } catch (err) {
-    console.error('Seed failed:', err);
-    process.exit(1);
-  } finally {
-    await client.end();
+}
+
+/**
+ * Two-tenant fixture for adversarial API testing.
+ * Seeds alice + bob with one map / one layer / three features each, plus
+ * a share token on bobMap and a read-scoped API key for alice.
+ *
+ * Idempotent per-tenant — re-running is safe.
+ */
+async function seedAdversarialFixtures(client: pg.Client): Promise<void> {
+  // Security gate: fixture credentials are committed to the repo. Refuse to
+  // create them in production unless explicitly opted in.
+  const isProd = process.env['NODE_ENV'] === 'production';
+  const optIn = process.env['SEED_FIXTURES'] === '1';
+  if (isProd && !optIn) {
+    console.log('Skipping adversarial fixtures: NODE_ENV=production and SEED_FIXTURES≠1.');
+    return;
   }
+  if (!isProd && !optIn && process.env['SEED_FIXTURES'] !== undefined) {
+    // SEED_FIXTURES explicitly set to something other than "1" → opt out.
+    console.log('Skipping adversarial fixtures: SEED_FIXTURES opt-out.');
+    return;
+  }
+
+  const aliceExisting = await client.query<{ id: string }>(
+    'SELECT id FROM users WHERE id = $1',
+    [FIXTURE_USERS.alice.id]
+  );
+  if ((aliceExisting.rowCount ?? 0) > 0) {
+    console.log('Adversarial fixtures already present — skipping.');
+    return;
+  }
+
+  const argonOpts = { memoryCost: 19456, timeCost: 2, outputLen: 32, parallelism: 1 } as const;
+
+  for (const u of [FIXTURE_USERS.alice, FIXTURE_USERS.bob]) {
+    const pw = await hash(u.password, argonOpts);
+    await client.query(
+      'INSERT INTO users (id, email, hashed_password, name, is_admin) VALUES ($1, $2, $3, $4, false)',
+      [u.id, u.email, pw, u.name]
+    );
+  }
+  console.log('✓ Fixture users: alice, bob');
+
+  const viewport = JSON.stringify({ center: [0, 0], zoom: 2, bearing: 0, pitch: 0 });
+  const minimalStyle = {
+    paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.4 },
+    layout: {},
+    legend: [{ label: 'Test', color: '#3b82f6' }],
+  };
+
+  const tenants = [
+    { userId: FIXTURE_USERS.alice.id, mapId: FIXTURE_MAPS.aliceMap, layerId: FIXTURE_LAYERS.aliceLayer, title: "Alice's Map" },
+    { userId: FIXTURE_USERS.bob.id,   mapId: FIXTURE_MAPS.bobMap,   layerId: FIXTURE_LAYERS.bobLayer,   title: "Bob's Map" },
+  ];
+
+  for (const t of tenants) {
+    await client.query(
+      `INSERT INTO maps (id, user_id, title, description, viewport, basemap)
+       VALUES ($1, $2, $3, $4, $5::jsonb, 'osm')`,
+      [t.mapId, t.userId, t.title, 'Adversarial-testing fixture map.', viewport]
+    );
+    await client.query(
+      `INSERT INTO layers (id, map_id, name, type, style, z_index)
+       VALUES ($1, $2, $3, 'polygon', $4::jsonb, 0)`,
+      [t.layerId, t.mapId, 'Fixture Layer', JSON.stringify(minimalStyle)]
+    );
+    // Three deterministic point features so probes can assert collection sizes.
+    for (let i = 0; i < 3; i++) {
+      const geom = JSON.stringify({ type: 'Point', coordinates: [i * 0.1, i * 0.1] });
+      const props = JSON.stringify({ idx: i, tenant: t.title });
+      await client.query(
+        `INSERT INTO features (id, layer_id, geometry, properties)
+         VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4::jsonb)`,
+        [randomUUID(), t.layerId, geom, props]
+      );
+    }
+  }
+  console.log('✓ Fixture maps, layers, features (alice, bob)');
+
+  // Read-only share token on bobMap.
+  await client.query(
+    `INSERT INTO shares (map_id, token, access_level)
+     VALUES ($1, $2, 'unlisted')`,
+    [FIXTURE_MAPS.bobMap, FIXTURE_SHARE_TOKEN_BOB]
+  );
+  console.log('✓ Fixture share token on bobMap');
+
+  // Write-scoped API keys for alice and bob. The /api/v1/* surface only
+  // authenticates via Bearer flk_* (or ?token=<share>) — session cookies do
+  // not count. Both users need write scope so probes can exercise mutations.
+  const apiKeys: Array<[string, string, string, string]> = [
+    [FIXTURE_USERS.alice.id, 'fixture-alice-write', FIXTURE_API_KEY_ALICE_PLAINTEXT, FIXTURE_API_KEY_ALICE_PREFIX],
+    [FIXTURE_USERS.bob.id,   'fixture-bob-write',   FIXTURE_API_KEY_BOB_PLAINTEXT,   FIXTURE_API_KEY_BOB_PREFIX],
+  ];
+  for (const [userId, name, plaintext, prefix] of apiKeys) {
+    const keyHash = createHash('sha256').update(plaintext).digest('hex');
+    await client.query(
+      `INSERT INTO api_keys (user_id, name, key_hash, scope, prefix)
+       VALUES ($1, $2, $3, 'read-write', $4)`,
+      [userId, name, keyHash, prefix]
+    );
+  }
+  console.log('✓ Fixture API keys (alice, bob — scope=read-write)');
 }
 
 await seed();
