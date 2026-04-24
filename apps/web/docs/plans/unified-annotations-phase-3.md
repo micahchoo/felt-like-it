@@ -2,6 +2,20 @@
 
 > Dedicated plan for `felt-like-it-baa4` (epic, P3, 2+ sessions). Companion to `unified-annotations.md` Phases 1+2 (shipped). Read those first.
 
+## Status (2026-04-25)
+
+| Wave | State | Notes |
+|---|---|---|
+| Pre-flight | DONE | Path-anchor backfill audit + product confirmation + DB snapshot all green. |
+| A — TerraDraw → annotations | **DONE** | Commits 62b37e4, e25099c, 56869b1, cfdaec0 |
+| B — features write lock-down | **DONE** | Commits 3b25ce6, fe4261e + `.claude/rules/features-table-write-boundary.md` |
+| C — Migrate existing features | **N/A** | Resolved as "skip migration"; existing rows stay in `features` as import-data |
+| D — DataTable repurpose | **BLOCKED on design** | Choose D-α / D-β / D-γ — see Wave D section below |
+| E — features endpoint deprecation | **DEPENDS on D** | Likely cancelled if D-γ |
+| F — Cleanup | **NOT-PLANNED under current resolution** | Triggers only if product chooses D-α |
+
+**The post-Phase-3 invariant Phase 3 actually shipped:** user-drawn shapes live in `annotation_objects`; non-user data (imports + geoprocessing + cloned layers) lives in `features`. Both tables stay, both REST endpoints stay, the boundary is enforced by the Wave B.3 lint rule. The original "collapse into one table" thesis was softened by Wave C's "skip migration" resolution; Phase 3 redefines rather than unifies the dual model.
+
 ## Thesis
 
 Collapse the features/annotations dual model. After Phase 3:
@@ -226,60 +240,62 @@ Wrap in transaction; review counts; commit only if matches expectation. Do NOT d
 
 ---
 
-## Wave D — DataTable repurpose
+## Wave D — DataTable repurpose ⚠ BLOCKED ON DESIGN
 
-**Goal.** The DataTable component (currently reads `features`) reads `annotation_objects` filtered by layer.
+**Status (2026-04-25, post-Wave-B):** the original Wave D thesis ("DataTable reads annotation_objects filtered by layer") presupposed Wave C migrating existing features into annotations. Wave C was **resolved as "skip migration"** — imports + geoprocessing keep writing to `features`, only NEW user-draws go to annotations. The two tables now coexist permanently. This invalidates Wave D's stated goal and surfaces blockers below before any code is written.
 
-**Files:**
-- `apps/web/src/lib/components/data/DataTable.svelte` — query source flips to `annotationsService.list({ mapId, layerId })`.
-- `apps/web/src/routes/api/v1/maps/[mapId]/layers/[layerId]/features/+server.ts` — likely deprecated (`Wave E`); DataTable should call the annotations endpoint with a layer filter.
-- Annotations service: confirm `list()` supports `layerId` filter (may need add).
+**Open Questions (Wave D rescope):**
 
-**Acceptance:**
-- DataTable opens, displays annotations grouped by layer, columns reflect annotation fields (name, body, anchor type) instead of feature properties.
-- Data flow: API call to `/api/v1/maps/:mapId/annotations?layerId=...` returns the rows DataTable displays.
-- e2e: open data table on a layer with 5 annotations, assert 5 rows visible.
+1. **Annotations have no layerId.** `annotation_objects` is map-scoped (`mapId`, no `layer_id`). `annotationService.list({mapId})` cannot filter by layer. Three resolutions:
+   - **D-α: schema migration.** Add `layer_id uuid NULL REFERENCES layers(id) ON DELETE SET NULL` to `annotation_objects`. Then annotations CAN be layer-scoped (optionally), and DataTable's "view this layer's data" gesture transfers cleanly. Cost: migration + service-layer plumbing + decision about back-fill (existing rows get NULL).
+   - **D-β: dual-source DataTable.** DataTable shows TWO sections — Layer Features (still from `features`, unchanged) AND Annotations (from `annotation_objects`, map-scoped). The "this layer's data" semantics persist for features only; annotations are a sibling concern. Cost: 2x the rendering, more complex empty-state.
+   - **D-γ: redirect the DataTable's purpose.** DataTable becomes a layer-data viewer only (features). Annotations get their own surface in the AnnotationPanel (which they already have). DataTable doesn't need to know about annotations. Cost: zero — accept that DataTable and AnnotationPanel are separate views.
+   
+   **Recommendation: D-γ** (do nothing) is the minimum path, matches user's existing mental model (panel for annotations, DataTable for layer data), and avoids schema churn. D-α is the "right" long-term answer if annotations become heavily layer-organized in product. D-β is the worst of both — UI complexity without payoff.
 
-**Risk.** Existing UI users may have muscle memory for property-bag display. Annotations carry less freeform property data. Consider: surface `content.body.text` + `name` + anchor-type by default, hide internal fields.
+2. **What grouping does product want for annotations?** If annotations cluster, the natural axis is `annotation_groups` (already in schema), not layers. AnnotationPanel already supports group-by-group display (2026-04-24 commit). Pursuing layer-grouping would require D-α and reinvent what groups already do.
 
-**Size:** 1 session.
+3. **DataTable's role going forward.** Given that imports/geoprocessing/clones legitimately write to `features` indefinitely (per the resolved Wave C decision), `features` is not a "legacy table being phased out" — it's a permanent first-class table for non-user-drawn data. DataTable's purpose ("show this layer's data") remains coherent in the new model with no change. **The premise that DataTable needs repurposing dissolves once you accept Wave C's resolution.**
 
----
+**Decision required from product:** which of D-α / D-β / D-γ aligns with the eventual annotation UX? Until then, Wave D is on hold — no code change is the safest action.
 
-## Wave E — `/api/features` deprecation
-
-**Goal.** External clients (research-narratives etc.) are warned the features endpoints are deprecated; redirected to `/api/v1/maps/:mapId/annotations`.
-
-**Approach:**
-- Add `Sunset` header (RFC 8594) to features endpoints with date 90 days out.
-- Add `Deprecation: true` header.
-- Add `Link: </api/v1/maps/:mapId/annotations>; rel="successor-version"` header.
-- Update OpenAPI spec (when `felt-like-it-d40a` lands) to mark endpoints deprecated.
-- Email any known external API consumers.
-
-**Acceptance:**
-- Curl response on a features endpoint includes the three headers.
-- 90-day timer documented in close reason; future cleanup wave drops the endpoints.
-
-**Size:** small, 1-2 hours.
+**Size:** 1 session if D-α (schema + service + UI); 0 if D-γ (do-nothing); ~1 day if D-β (dual-source DataTable).
 
 ---
 
-## Wave F — Cleanup
+## Wave E — `/api/features` deprecation ⚠ DEPENDS ON WAVE D RESOLUTION
 
-After 90-day Sunset window:
+**Status (2026-04-25, post-Wave-B):** Wave C's "skip migration" resolution + Wave D's open status changes the deprecation story. The original draft assumed `/api/v1/maps/:mapId/annotations` was a successor for layer-scoped feature reads — it isn't (annotations are map-scoped, no layerId). And under D-γ ("DataTable does not change"), the features endpoints aren't deprecated at all — they remain the canonical read path for imports + geoprocessing + cloned-layer data.
 
-- Drop `/api/v1/maps/:mapId/layers/:layerId/features` endpoints.
-- Decide: drop `features` table or keep as import-staging.
-- Drop `featuresStore` and feature-only Svelte components (DataTable having migrated to annotations).
-- Drop `convertAnnotationsToLayer` / `convertLayerFeaturesToAnnotations` if both directions become identity transforms.
-- Migration `0020_drop_features_table.sql` (if dropping).
+**Outcome map:**
 
-**Acceptance:**
-- `grep -r 'features' apps/web/src` returns only import-staging matches (or zero, if dropping).
-- Tests still green.
+- If **D-γ** (no DataTable change): Wave E is **cancelled**. The features endpoints are not deprecated. Mention this in the close reason and move on.
+- If **D-α** (schema migration adds layer_id): Wave E proceeds with successor URL `/api/v1/maps/:mapId/annotations?layerId=...` once that filter is implemented in `annotationService.list`. Sunset window 90 days.
+- If **D-β** (dual-source DataTable): Wave E partially proceeds — only the WRITE endpoints would deprecate (already done — `features.upsert` / `features.delete` removed in Wave B.3). Read endpoints stay forever. No Sunset header needed.
 
-**Size:** 1 session.
+**No-regrets prep (safe to do regardless of D resolution):**
+- The internal-only writers `features.upsert` + `features.delete` are already gone (Wave B.3). No external API consumers existed for them — they were tRPC procs, not REST.
+- The /api/v1/maps/:mapId/layers/:layerId/features endpoint (REST) does NOT have a write path — only GET. So there is nothing to deprecate write-wise externally. Read deprecation is conditional on D-α landing.
+
+**Size:** depends on D resolution; 0 hours under D-γ.
+
+---
+
+## Wave F — Cleanup ⚠ DEPENDS ON WAVE D/E RESOLUTION
+
+**Status (2026-04-25, post-Wave-B):** Wave F's original list assumed full unification (DataTable migrated, features endpoints sunsetted). Under the resolved Wave C ("skip migration") + recommended Wave D-γ ("do nothing"), Wave F shrinks to:
+
+- ~~Drop `/api/v1/maps/:mapId/layers/:layerId/features` endpoints~~ — KEEP (still serves imports + geoprocessing + cloned-layer reads).
+- ~~Drop `features` table~~ — KEEP.
+- ~~Drop `featuresStore` and feature-only Svelte components~~ — KEEP (DataTable doesn't migrate under D-γ).
+- **Forward-convert (`convertAnnotationsToLayer`)** — open question. Live user-facing flow in AnnotationPanel; promotes annotations → new layer of features. Plan default of "drop in Wave B" deferred. If it stays, Wave F has nothing to drop here either.
+- ~~Migration to drop features table~~ — N/A.
+
+**Phase 3 redefines, not collapses, the dual model.** The post-Phase-3 invariant is "user-drawn shapes live in `annotation_objects`; non-user data lives in `features`" — both tables stay, both endpoints stay, the boundary between them is enforced by the Wave B.3 lint rule.
+
+If product ever decides to fully unify (D-α path), Wave F becomes meaningful again. Until then, Wave F is **NOT-PLANNED**.
+
+**Size:** 0 sessions under current resolution.
 
 ---
 
