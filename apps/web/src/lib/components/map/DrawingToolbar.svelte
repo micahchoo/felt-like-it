@@ -354,7 +354,7 @@
   }
 
   const tools: Array<{ id: DrawTool; label: string; helpText: string; icon: typeof MousePointer2; group: 'select' | 'draw' }> = [
-    { id: 'select', label: 'Select', helpText: 'Click features to view details or take actions', icon: MousePointer2, group: 'select' },
+    { id: 'select', label: 'Select', helpText: 'Click a feature to view details or annotate it', icon: MousePointer2, group: 'select' },
     { id: 'point', label: 'Point', helpText: 'Click to place a point marker on the map', icon: Circle, group: 'draw' },
     { id: 'line', label: 'Line', helpText: 'Click to add vertices, double-click to finish the line', icon: Spline, group: 'draw' },
     { id: 'polygon', label: 'Polygon', helpText: 'Click to add vertices, double-click to close the shape', icon: Pentagon, group: 'draw' },

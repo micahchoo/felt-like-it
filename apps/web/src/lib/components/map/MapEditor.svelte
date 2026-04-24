@@ -656,6 +656,19 @@
           editorLayout.rightSection = 'annotations';
           scrollToAnnotationFeatureId = featureId;
         }}
+        onfeatureannotate={({ featureId, layerId }) => {
+          // Feature popup's Annotate CTA — routes into the annotation panel.
+          // If the user has no annotation yet for this feature, the form
+          // pre-fills via `pickedFeature`. If one exists, we scroll to it
+          // via the shared scrollToAnnotationFeatureId signal (same channel
+          // the badge click uses, so behaviour stays consistent).
+          transitionTo({
+            type: 'pickFeature',
+            picked: { featureId, layerId },
+          });
+          editorLayout.rightSection = 'annotations';
+          scrollToAnnotationFeatureId = featureId;
+        }}
       />
 
       <!-- Measurement tooltip (floating overlay when measurement is active with result) -->

@@ -8,10 +8,16 @@
     /** Optional layer style — drives popup.titleAttribute, popup.keyAttributes, attributes displayName/format */
     style?: LayerStyle;
     onclose?: () => void;
-    oneditattributes?: () => void;
+    /**
+     * Fires when the user clicks the annotate CTA. Per unified-annotations.md rule 3,
+     * feature-click actions route into the annotation panel rather than a separate
+     * attribute editor. Caller decides whether to create a new annotation or expand
+     * the existing one for this feature.
+     */
+    onannotate?: () => void;
   }
 
-  let { feature, style, onclose, oneditattributes }: Props = $props();
+  let { feature, style, onclose, onannotate }: Props = $props();
 
   const geomType = $derived(feature.geometry.type);
 
@@ -119,13 +125,15 @@
     </div>
   {/if}
 
-  <!-- Edit Attributes button -->
-  <div class="bg-surface-container border-t border-white/5 px-4 py-3">
-    <button
-      onclick={oneditattributes}
-      class="w-full bg-primary text-on-primary font-bold font-display text-xs uppercase tracking-widest rounded-xl py-2.5 active:scale-95 transition-transform"
-    >
-      Edit Attributes
-    </button>
-  </div>
+  <!-- Annotate CTA — opens the annotation panel focused on this feature. -->
+  {#if onannotate}
+    <div class="bg-surface-container border-t border-white/5 px-4 py-3">
+      <button
+        onclick={onannotate}
+        class="w-full bg-primary text-on-primary font-bold font-display text-xs uppercase tracking-widest rounded-xl py-2.5 active:scale-95 transition-transform"
+      >
+        Annotate
+      </button>
+    </div>
+  {/if}
 </div>

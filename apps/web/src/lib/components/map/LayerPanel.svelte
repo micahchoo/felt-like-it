@@ -1,6 +1,7 @@
 <script lang="ts">
   import { layersStore } from '$lib/stores/layers.svelte.js';
   import { styleStore } from '$lib/stores/style.svelte.js';
+  import { getMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
   import { trpc } from '$lib/utils/trpc.js';
   import { getErrorCode } from '$lib/utils/handle-error.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
@@ -17,6 +18,56 @@
   let newLayerName = $state('');
   let loadErrors: Record<string, string> = $state({});
   const togglingIds = new Set<string>();
+  /** Per-layer busy flag for "convert features to annotations" — prevents double-click. */
+  let convertingIds = $state<Record<string, boolean>>({});
+
+  const editorState = getMapEditorState();
+
+  async function convertFeaturesToAnnotations(layerId: string, layerName: string) {
+    if (convertingIds[layerId]) return;
+    convertingIds = { ...convertingIds, [layerId]: true };
+    try {
+      // Selection-driven default (unified-annotations.md rule 2): if the user
+      // has features selected on this layer, only those convert. Falling back
+      // to "all features" would flood the annotation panel on any layer with
+      // >50 rows — the old default was a trap.
+      const selectedIds = editorState.selectedLayerId === layerId
+        ? Array.from(editorState.selectedFeatureIds)
+        : [];
+
+      let featureIds: string[];
+      let scopeLabel: string;
+      if (selectedIds.length > 0) {
+        featureIds = selectedIds;
+        scopeLabel = `${featureIds.length} selected`;
+      } else {
+        const fc = await trpc.features.list.query({ layerId });
+        const all = fc.features.map((f) => f.id).filter((id): id is string => !!id);
+        if (all.length === 0) {
+          toastStore.info(`Layer "${layerName}" has no features to convert.`);
+          return;
+        }
+        // Require an explicit yes when scope falls back to "all" — the large-N
+        // case is the expensive one, so we make the user say so.
+        if (!confirm(`No features selected. Convert ALL ${all.length} features in "${layerName}"? Tip: select features on the map or in the table to scope this.`)) return;
+        featureIds = all;
+        scopeLabel = `all ${featureIds.length}`;
+      }
+
+      if (featureIds.length > 500) {
+        toastStore.error(`${featureIds.length} features; convert-to-annotations caps at 500 per call.`);
+        return;
+      }
+
+      await trpc.annotations.convertLayerFeaturesToAnnotations.mutate({ mapId, layerId, featureIds });
+      onlayerchange?.();
+      toastStore.success(`${scopeLabel} annotations created from "${layerName}".`);
+    } catch {
+      toastStore.error('Failed to convert features to annotations.');
+    } finally {
+      convertingIds = { ...convertingIds, [layerId]: false };
+    }
+  }
 
   async function createLayer() {
     const name = newLayerName.trim() || 'New Layer';
@@ -203,6 +254,21 @@
             >
               <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm.176 4.823L9.75 4.81l-6.286 6.287a.25.25 0 00-.064.108l-.558 1.953 1.953-.558a.249.249 0 00.108-.064zm1.238-3.763a.25.25 0 00-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 000-.354z"/>
+              </svg>
+            </button>
+          </Tooltip>
+
+          <!-- Convert features to annotations (reverse direction of "Promote to layer") -->
+          <Tooltip content="Convert selected features to annotations (or all if none selected)" position="top">
+            <button
+              onclick={(e) => { e.stopPropagation(); convertFeaturesToAnnotations(layer.id, layer.name); }}
+              disabled={!!convertingIds[layer.id]}
+              class="h-6 w-6 rounded flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-high transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Convert features to annotations"
+            >
+              <!-- Speech-bubble icon to suggest "add notes" -->
+              <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M2.678 11.894a1 1 0 01.287.801 10.97 10.97 0 01-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 01.71-.074A8 8 0 008 14c3.996 0 7-2.807 7-6 0-3.192-3.004-6-7-6S1 4.808 1 8c0 1.468.617 2.83 1.678 3.894zm-.493 3.905a21.682 21.682 0 01-.713.129c-.2.032-.352-.176-.273-.362a9.68 9.68 0 00.244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9.06 9.06 0 01-2.347-.306c-.52.263-1.639.742-3.468 1.105z"/>
               </svg>
             </button>
           </Tooltip>

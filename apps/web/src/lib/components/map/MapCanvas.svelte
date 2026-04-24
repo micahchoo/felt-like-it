@@ -66,9 +66,15 @@
     measurementAnnotations?: { type: 'FeatureCollection'; features: { type: 'Feature'; geometry: unknown; properties: Record<string, unknown> }[] };
     /** Map-scoped filter store (owned by MapEditor). When omitted, no UI filters are applied. */
     filtersStore?: FiltersStore;
+    /**
+     * Called when the user clicks the "Annotate" CTA inside the FeaturePopup —
+     * per unified-annotations.md rule 3, the feature popup routes into the
+     * annotation panel instead of a dedicated attribute editor.
+     */
+    onfeatureannotate?: (_payload: { featureId: string; layerId: string }) => void;
   }
 
-  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions, annotatedFeatures, onbadgeclick, measurementAnnotations, filtersStore }: Props = $props();
+  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions, annotatedFeatures, onbadgeclick, measurementAnnotations, filtersStore, onfeatureannotate }: Props = $props();
 
   const editorState = getMapEditorState();
   let mapInstance = $state<MapLibreMap | undefined>(undefined);
@@ -352,7 +358,19 @@
         closeButton={true}
         onclose={() => { editorState.clearSelection(); selectedLayerStyle = undefined; }}
       >
-        <FeaturePopup feature={editorState.selectedFeature} {...(selectedLayerStyle !== undefined ? { style: selectedLayerStyle } : {})} />
+        <FeaturePopup
+          feature={editorState.selectedFeature}
+          {...(selectedLayerStyle !== undefined ? { style: selectedLayerStyle } : {})}
+          {...(onfeatureannotate && editorState.selectedLayerId && editorState.selectedFeature.id != null
+            ? {
+                onannotate: () => {
+                  const fid = String(editorState.selectedFeature!.id);
+                  const lid = editorState.selectedLayerId!;
+                  onfeatureannotate({ featureId: fid, layerId: lid });
+                },
+              }
+            : {})}
+        />
       </Popup>
     {/if}
 

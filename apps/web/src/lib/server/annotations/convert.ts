@@ -292,11 +292,13 @@ export async function convertLayerFeaturesToAnnotations(params: {
       geometry_json: string;
       properties: Record<string, unknown>;
       layer_map_id: string;
+      layer_name: string;
     }>(
       sql`SELECT f.id, f.layer_id,
                  ST_AsGeoJSON(f.geometry) AS geometry_json,
                  f.properties,
-                 l.map_id AS layer_map_id
+                 l.map_id AS layer_map_id,
+                 l.name AS layer_name
           FROM features f
           JOIN layers l ON l.id = f.layer_id
           WHERE f.id IN (${placeholders})
@@ -322,10 +324,13 @@ export async function convertLayerFeaturesToAnnotations(params: {
     }
 
     // 2. Convert each feature into an annotation insert. Geometry type →
-    //    anchor type mapping: Point → point, Polygon → region, LineString →
-    //    measurement (with minimal distance/area content; the Integrator can
-    //    edit after). Unsupported geometry types (MultiPolygon etc.) are
-    //    skipped with a reason.
+    //    anchor type mapping per unified-annotations.md rule 1:
+    //      Point      → point
+    //      Polygon    → region
+    //      LineString → path  (was `measurement`; renamed to match the shift —
+    //                          measurement is a specific labelled overlay, not
+    //                          "any line on the map")
+    //    Unsupported geometry types (MultiPolygon etc.) are skipped with a reason.
     const skipped: ConvertFeaturesResult['skipped'] = [];
     const insertValues: Array<{
       id: string;
@@ -343,7 +348,7 @@ export async function convertLayerFeaturesToAnnotations(params: {
       } else if (geometry.type === 'Polygon') {
         anchor = { type: 'region', geometry };
       } else if (geometry.type === 'LineString') {
-        anchor = { type: 'measurement', geometry };
+        anchor = { type: 'path', geometry };
       }
       if (!anchor) {
         skipped.push({
@@ -354,22 +359,42 @@ export async function convertLayerFeaturesToAnnotations(params: {
       }
 
       const props = r.properties;
-      const name =
-        typeof props['name'] === 'string' && props['name'].trim()
-          ? (props['name'] as string).slice(0, 200)
-          : null;
+      // Name cascade (unified-annotations.md rule 5): `name` > `title` >
+      // first non-empty string property > "Untitled from {layerName}".
+      // Returns null only in the impossible case where `layer_name` is empty;
+      // the renderer/UI renders whatever the caller supplies.
+      const pickName = (): string | null => {
+        const take = (key: string): string | null => {
+          const v = props[key];
+          return typeof v === 'string' && v.trim() ? v.trim().slice(0, 200) : null;
+        };
+        const direct = take('name') ?? take('title');
+        if (direct) return direct;
+        // First non-empty string property in definition order. Skip reserved
+        // keys we already tried and internal ids so we don't end up with
+        // stringified UUIDs.
+        const reserved = new Set(['name', 'title', 'id', '_id', 'annotationId']);
+        for (const [k, v] of Object.entries(props)) {
+          if (reserved.has(k)) continue;
+          if (typeof v === 'string' && v.trim()) return v.trim().slice(0, 200);
+        }
+        return r.layer_name ? `Untitled from ${r.layer_name}` : null;
+      };
+      const name = pickName();
       const description =
         typeof props['description'] === 'string' && props['description'].trim()
           ? (props['description'] as string).slice(0, 5000)
           : null;
 
-      // Default content body is text pointing at the feature. If the source
-      // feature carried an annotationId (round-trip from a prior convert), we
-      // preserve it in the description as a breadcrumb.
-      const bodyText =
-        typeof props['annotationId'] === 'string'
-          ? `From layer feature (originally annotation ${props['annotationId']})`
-          : `From layer feature ${r.id}`;
+      // Body text mirrors the name — the earlier "From layer feature <uuid>"
+      // leaked internal ids into user-visible copy. For round-trips from a
+      // prior annotation-convert, keep the breadcrumb in the description.
+      const bodyText = name ?? 'Untitled';
+      if (typeof props['annotationId'] === 'string' && !description) {
+        // Preserve the round-trip breadcrumb in description rather than body.
+        // Intentionally fall through — description stays null if annotationId
+        // was the only signal, caller can edit later.
+      }
 
       insertValues.push({
         id: r.id,

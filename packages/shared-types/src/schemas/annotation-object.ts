@@ -77,6 +77,13 @@ export const AnchorSchema = z.discriminatedUnion('type', [
     type: z.literal('measurement'),
     geometry: z.union([PointGeometrySchema, PolygonGeometrySchema, LineStringGeometrySchema]),
   }),
+  // `path` — a line geometry first-class on an annotation, semantically distinct
+  // from `measurement` (which was implicitly measurement-labelled). Added per
+  // unified-annotations.md rule 1: line features convert to `path` anchors.
+  z.object({
+    type: z.literal('path'),
+    geometry: LineStringGeometrySchema,
+  }),
 ]);
 
 export type Anchor = z.infer<typeof AnchorSchema>;
