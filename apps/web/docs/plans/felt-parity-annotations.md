@@ -75,7 +75,7 @@ Right-click annotation → "Convert to layer" menu entry
 | File | Role | Touched by |
 |------|------|------------|
 | `apps/web/src/lib/server/db/schema.ts` | Drizzle table defs | 06b2, 2e48, 5179 |
-| `apps/web/drizzle/migrations/NNNN_*.sql` | New migration files (one per slice) | 06b2, 2e48, 5179 |
+| `apps/web/src/lib/server/db/migrations/NNNN_*.sql` | New migration files (one per slice) | 06b2, 2e48, 5179 |
 | `packages/shared-types/src/schemas/annotation-object.ts` | Zod schemas, tRPC input types | 06b2, 2e48, 5179 |
 | `packages/shared-types/src/schemas/annotation-style.ts` (new) | Dedicated style schema | 5179 |
 | `packages/shared-types/src/schemas/annotation-group.ts` (new) | Dedicated group schema | 2e48 |
@@ -205,7 +205,7 @@ Behavioral invariant: all four fields are **optional** on inputs (nullable in DB
 **Codebooks:** `schema-evolution-migration`
 **Files:**
 - Modify: `apps/web/src/lib/server/db/schema.ts:219` (annotation_objects table)
-- Create: `apps/web/drizzle/migrations/0020_annotation_name_description.sql`
+- Create: `apps/web/src/lib/server/db/migrations/0010_add_annotation_name_description.sql`
 - Test: `apps/web/src/__tests__/annotation-name-description.test.ts`
 
 <contracts>
@@ -295,7 +295,7 @@ Both touch the annotation object but along orthogonal axes — groups adds a FK,
 **Codebooks:** `schema-evolution-migration`
 **Files:**
 - Modify: `apps/web/src/lib/server/db/schema.ts` (new `annotationGroups` table; add `groupId` FK on `annotationObjects`)
-- Create: `apps/web/drizzle/migrations/0021_annotation_groups.sql`
+- Create: `apps/web/src/lib/server/db/migrations/0011_annotation_groups.sql`
 - Test: `apps/web/src/__tests__/annotation-groups.test.ts`
 
 <contracts>
@@ -360,7 +360,7 @@ Both touch the annotation object but along orthogonal axes — groups adds a FK,
 **Codebooks:** `schema-evolution-migration`
 **Files:**
 - Modify: `apps/web/src/lib/server/db/schema.ts` (add `style jsonb` nullable on annotationObjects)
-- Create: `apps/web/drizzle/migrations/0022_annotation_style.sql`
+- Create: `apps/web/src/lib/server/db/migrations/0012_annotation_style.sql`
 - Test: `apps/web/src/__tests__/annotation-style.test.ts`
 
 - [ ] **Step 1:** Failing test: create annotation with `style: { strokeWidth: 3, strokeStyle: 'dashed' }`, read back, assert payload intact.
@@ -599,28 +599,34 @@ Each wave closes when: schema round-trips in isolation, service round-trips in i
 ---
 
 <!-- PLAN_MANIFEST_START -->
+<!-- Updated 2026-04-24: migration dir is src/lib/server/db/migrations (not drizzle/migrations),
+     numbering took 0010-0012 (not 0020-0022), groups shipped as a separate service + flat tRPC
+     procedures (not a nested router), client-side group filter in AnnotationPanel replaced the
+     planned server-side listGrouped projection, and the per-annotation style helper lives in
+     annotation-geo.svelte.ts as styleProps() consumed via coalesce paint expressions
+     (not a styleToPaint helper wired into AnnotationRenderer directly). -->
 | File | Action | Marker |
 |------|--------|--------|
 | `packages/shared-types/src/schemas/annotation-style.ts` | create | `AnnotationStyleSchema` |
 | `packages/shared-types/src/schemas/annotation-group.ts` | create | `AnnotationGroupSchema` |
 | `packages/shared-types/src/schemas/annotation-object.ts` | patch | `name: z.string().min(1).max(200).nullable().optional()` |
 | `packages/shared-types/src/__tests__/felt-parity-schemas.test.ts` | create | `Felt-parity schema` |
-| `apps/web/drizzle/migrations/0020_annotation_name_description.sql` | create | `ADD COLUMN name` |
-| `apps/web/drizzle/migrations/0021_annotation_groups.sql` | create | `CREATE TABLE annotation_groups` |
-| `apps/web/drizzle/migrations/0022_annotation_style.sql` | create | `ADD COLUMN style` |
+| `apps/web/src/lib/server/db/migrations/0010_add_annotation_name_description.sql` | create | `ADD COLUMN name` |
+| `apps/web/src/lib/server/db/migrations/0011_annotation_groups.sql` | create | `CREATE TABLE annotation_groups` |
+| `apps/web/src/lib/server/db/migrations/0012_annotation_style.sql` | create | `ADD COLUMN style` |
 | `apps/web/src/lib/server/db/schema.ts` | patch | `annotationGroups = pgTable` |
-| `apps/web/src/lib/server/annotations/service.ts` | patch | `listGrouped` |
+| `apps/web/src/lib/server/annotations/service.ts` | patch | `groupId` |
 | `apps/web/src/lib/server/annotations/groups.ts` | create | `createGroup` |
 | `apps/web/src/lib/server/annotations/convert.ts` | create | `convertAnnotationsToLayer` |
-| `apps/web/src/lib/server/trpc/routers/annotations.ts` | patch | `groups: router(` |
+| `apps/web/src/lib/server/trpc/routers/annotations.ts` | patch | `listGroups: protectedProcedure` |
 | `apps/web/src/routes/api/v1/maps/[mapId]/annotation-groups/+server.ts` | create | `export const POST` |
 | `apps/web/src/routes/api/v1/maps/[mapId]/annotation-groups/[id]/+server.ts` | create | `export const PATCH` |
 | `apps/web/src/routes/api/v1/maps/[mapId]/convert-annotations-to-layer/+server.ts` | create | `convertAnnotationsToLayer` |
 | `apps/web/src/lib/components/annotations/AnnotationForm.svelte` | patch | `formName` |
-| `apps/web/src/lib/components/annotations/AnnotationList.svelte` | patch | `annotation.name ?? preview` |
+| `apps/web/src/lib/components/annotations/AnnotationList.svelte` | patch | `{annotation.name}` |
 | `apps/web/src/lib/components/annotations/AnnotationGroups.svelte` | create | `<script lang="ts">` |
 | `apps/web/src/lib/components/annotations/AnnotationStylePanel.svelte` | create | `<script lang="ts">` |
-| `apps/web/src/lib/components/map/AnnotationRenderer.svelte` | patch | `styleToPaint` |
+| `apps/web/src/lib/components/map/AnnotationRenderer.svelte` | patch | `coalesce` |
 | `apps/web/e2e/api/annotation-groups.spec.ts` | create | `Promise: Groups` |
 | `apps/web/e2e/api/annotation-convert.spec.ts` | create | `convert-annotations-to-layer` |
 <!-- PLAN_MANIFEST_END -->
