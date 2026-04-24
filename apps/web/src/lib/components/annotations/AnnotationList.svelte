@@ -34,6 +34,7 @@
     onedit?: (annotation: AnnotationObject, newText: string) => void;
     onconverttopoint: (annotation: AnnotationObject) => void;
     onfetchnavplace: (annotation: AnnotationObject) => void;
+    onpromotetolayer?: (annotationId: string) => void;
   }
 
   let {
@@ -54,6 +55,7 @@
     onedit,
     onconverttopoint,
     onfetchnavplace,
+    onpromotetolayer,
   }: Props = $props();
 
   let editingId = $state<string | null>(null);
@@ -241,6 +243,16 @@
             disabled={isMutating}
           >
             {editingId === annotation.id ? 'Close editor' : 'Edit'}
+          </button>
+        {/if}
+        {#if annotation.authorId === userId && onpromotetolayer && annotation.anchor.type !== 'viewport' && annotation.anchor.type !== 'feature'}
+          <button
+            onclick={() => onpromotetolayer(annotation.id)}
+            class="text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-40"
+            disabled={isMutating}
+            title="Promote this annotation into a new data layer"
+          >
+            Promote to layer
           </button>
         {/if}
         {#if annotation.authorId === userId}

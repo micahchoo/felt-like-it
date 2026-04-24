@@ -19,6 +19,7 @@
     updateAnnotationMutationOptions,
     replyAnnotationMutationOptions,
     convertToPointMutationOptions,
+    convertAnnotationsToLayerMutationOptions,
     createCommentMutationOptions,
     deleteCommentMutationOptions,
     resolveCommentMutationOptions,
@@ -137,6 +138,9 @@
   const convertToPoint = createMutation(() =>
     convertToPointMutationOptions({ queryClient, mapId })
   );
+  const convertToLayer = createMutation(() =>
+    convertAnnotationsToLayerMutationOptions({ queryClient, mapId })
+  );
   const createComment = createMutation(() => createCommentMutationOptions({ queryClient, mapId }));
   const deleteComment = createMutation(() => deleteCommentMutationOptions({ queryClient, mapId }));
   const resolveComment = createMutation(() =>
@@ -210,6 +214,30 @@
       });
       replyText = '';
       replyingTo = null;
+    } catch {
+      // mutation.onError already surfaced a user-facing toast
+    }
+  }
+
+  async function handlePromoteToLayer(annotationId: string) {
+    if (convertToLayer.isPending) return;
+    const target = annotations.find((a) => a.id === annotationId);
+    if (!target) return;
+    const suggested = target.name ?? 'Promoted annotation';
+    const layerName = window.prompt('New layer name', suggested);
+    if (!layerName || !layerName.trim()) return;
+    try {
+      const result = await convertToLayer.mutateAsync({
+        mapId,
+        annotationIds: [annotationId],
+        layerName: layerName.trim(),
+      });
+      if (result.featureCount > 0) {
+        toastStore.success(`Promoted to layer (${result.featureCount} feature).`);
+        onannotationsaved('deleted');
+      } else if (result.skipped.length > 0) {
+        toastStore.error(result.skipped[0]?.reason ?? 'Nothing to convert.');
+      }
     } catch {
       // mutation.onError already surfaced a user-facing toast
     }
@@ -350,9 +378,11 @@
       }}
       isMutating={deleteAnnotation.isPending ||
         updateAnnotation.isPending ||
-        replyAnnotation.isPending}
+        replyAnnotation.isPending ||
+        convertToLayer.isPending}
       onconverttopoint={handleConvertToPoint}
       onfetchnavplace={handleFetchNavPlace}
+      onpromotetolayer={handlePromoteToLayer}
     />
   </div>
 

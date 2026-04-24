@@ -80,7 +80,9 @@
   let parsingExif = $state(false);
   let uploading = $state(false);
 
-  // Anchor state
+  // Anchor state. Measurement is authored via MeasurementPanel + pendingMeasurementData
+  // (see below) — a dedicated drawing flow, not a form-selectable type. Keeping it out
+  // of the selector avoids two competing authoring paths for the same anchor kind.
   let formAnchorType = $state<'point' | 'region' | 'viewport' | 'feature'>('point');
   let formLng = $state(0);
   let formLat = $state(0);

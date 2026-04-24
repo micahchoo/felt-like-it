@@ -205,6 +205,30 @@ export function replyAnnotationMutationOptions(
   };
 }
 
+export function convertAnnotationsToLayerMutationOptions(
+  deps: MutationDeps
+): MutationOptions<
+  Awaited<ReturnType<typeof trpc.annotations.convertAnnotationsToLayer.mutate>>,
+  Error,
+  { mapId: string; annotationIds: string[]; layerName: string }
+> {
+  return {
+    mutationFn: (input: { mapId: string; annotationIds: string[]; layerName: string }) =>
+      trpc.annotations.convertAnnotationsToLayer.mutate(input),
+    onSuccess: () => {
+      // The source annotations were deleted; the new layer needs its list
+      // refreshed so it appears in LayerPanel. Invalidate both.
+      deps.queryClient.invalidateQueries({
+        queryKey: queryKeys.annotations.list({ mapId: deps.mapId }),
+      });
+      deps.queryClient.invalidateQueries({ queryKey: ['layers', 'list'] });
+    },
+    onError: (err) => {
+      toastStore.error(describeError(err, 'Failed to convert annotation to layer.'));
+    },
+  };
+}
+
 export function convertToPointMutationOptions(
   deps: MutationDeps
 ): MutationOptions<
