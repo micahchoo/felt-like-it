@@ -111,7 +111,41 @@ Only two `layer.type` values exist; neither distinguishes user-drew from importe
 2. `features.created_at` clusters — imports tend to be batched (1000s of rows in a single second); user draws are singletons. Histogram of insertion-rate-per-minute may separate the populations.
 3. **Default if no clean discriminator emerges: skip migration entirely** — keep `features` as the imported layer's home and mark all 10K existing rows as "imports". Only new TerraDraw commits go into annotation_objects. Old TerraDraw drawings are accepted-loss (or migrated lazily on user touch).
 
-Audit query template (re-run before Wave C):
+**Discriminator investigation run 2026-04-24:**
+
+```
+-- Top property keys (10009 rows have 'name' / 'category' / 'value' shape)
+key      | count
+name     | 10009
+category | 10005
+value    | 10000
+mode     |    14
+idx      |     6
+tenant   |     6
+...
+
+-- created_at clustering (one giant batch + scattered singletons)
+2026-03-20 05:27:00 | 10000  ← single seed-script run (synthetic)
+2026-04-24 18:12:00 |     9
+2026-03-20 05:13:00 |     5
+(other minutes)     |     1-2
+
+-- Singletons vs batches summary
+minutes with 1 row: 14
+minutes with 2-9:    3
+minutes with ≥10:    1   (the 10K seed)
+```
+
+**Conclusion: no clean structural discriminator.** The 10K-row batch is identifiable as synthetic seed data via property shape (`{name: F-XXXX, category: A/B/C, value: num}`), but production imports of real CSV data would have unknown property shapes and would also be batched. Property-shape and clustering both work for THIS dev DB but don't generalize.
+
+**Going with Option 3** (no migration of existing rows). Migration semantics:
+
+- `annotation_objects` gets all NEW TerraDraw commits going forward (Wave A).
+- The 10K existing `features` rows stay in `features` and are treated as "imported" by the application — DataTable in Wave D reads them via the legacy features endpoint OR via a unified `/api/v1/maps/:mapId/things` endpoint that joins the two tables for read-only display.
+- Old TerraDraw drawings (if any exist in `features`) are accepted-loss — the user re-draws them if they want them as annotations.
+- The 10K-row seed-script batch is not user content — losing them is fine even if "loss" doesn't apply.
+
+Audit query template (re-run before Wave C if user wants to revisit migration):
 
 ```sql
 SELECT l.type, COUNT(*) AS rows
