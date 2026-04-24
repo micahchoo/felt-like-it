@@ -6,6 +6,7 @@
 	import GuestCommentPanel from '$lib/components/map/GuestCommentPanel.svelte';
 	import SkeletonLoader from '$lib/components/ui/SkeletonLoader.svelte';
 	import ErrorState from '$lib/components/ui/ErrorState.svelte';
+	import { startShareViewportHashSync } from '$lib/utils/use-share-viewport-hash.svelte.js';
 	import type { Layer } from '@felt-like-it/shared-types';
 
 	interface Props {
@@ -22,6 +23,15 @@
 	onMount(() => {
 		mapStore.loadViewport(data.map.viewport);
 		mapStore.setBasemap(data.map.basemap as Parameters<typeof mapStore.setBasemap>[0]);
+	});
+
+	// F13.1 — bidirectional sync between location.hash and the map viewport.
+	// Wires once the map instance becomes available (set by MapEditor on mount).
+	// If the share URL has #zoom/lat/lng, this overrides the owner-saved viewport.
+	$effect(() => {
+		const map = mapStore.mapInstance;
+		if (!map) return;
+		return startShareViewportHashSync(map, mapStore);
 	});
 
 	function copyEmbedCode() {
