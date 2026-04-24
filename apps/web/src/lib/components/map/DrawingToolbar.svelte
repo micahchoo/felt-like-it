@@ -47,29 +47,32 @@
   const editorState = getMapEditorState();
   const queryClient = useQueryClient();
 
-  // TYPE_DEBT: TanStack Query v5 + tRPC client don't unify the mutationFn return shape
-  // when used through createMutation(). Cast unblocks the factory; call sites below
-  // consume .mutateAsync() via the same cast.
   type FeatureUpsertInput = {
     layerId: string;
     features: { geometry: Record<string, unknown>; properties: Record<string, unknown> }[];
   };
-  const featureUpsertMutation = createMutation(() => ({
-    mutationFn: ((input: FeatureUpsertInput) =>
-      trpc.features.upsert.mutate(input)) as unknown as (input: FeatureUpsertInput) => Promise<{ upsertedIds: string[] }>,
-    onSuccess: (_data: { upsertedIds: string[] }, variables: FeatureUpsertInput) => {
+  type FeatureDeleteInput = { layerId: string; ids: string[] };
+
+  const featureUpsertMutation = createMutation<
+    { upsertedIds: string[] },
+    Error,
+    FeatureUpsertInput,
+    unknown
+  >(() => ({
+    mutationFn: (input) =>
+      trpc.features.upsert.mutate(input) as Promise<{ upsertedIds: string[] }>,
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
     },
-    onError: (_err: unknown, variables: FeatureUpsertInput) => {
+    onError: (_err, variables) => {
       hotOverlay.clearHotFeatures(variables.layerId);
       toastStore.error('Failed to save feature. Please try again.');
     },
   }));
 
-  const featureDeleteMutation = createMutation(() => ({
-    mutationFn: ((input: { layerId: string; ids: string[] }) =>
-      trpc.features.delete.mutate(input)) as unknown as (input: { layerId: string; ids: string[] }) => Promise<unknown>,
-    onSuccess: (_data: unknown, variables: { layerId: string; ids: string[] }) => {
+  const featureDeleteMutation = createMutation<unknown, Error, FeatureDeleteInput, unknown>(() => ({
+    mutationFn: (input) => trpc.features.delete.mutate(input) as Promise<unknown>,
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.features.list({ layerId: variables.layerId }) });
     },
     onError: () => {

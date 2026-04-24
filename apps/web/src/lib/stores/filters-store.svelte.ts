@@ -30,10 +30,11 @@ export interface FilterCondition extends UIFilter {}
 export class FiltersStore {
   conditions = $state<FilterCondition[]>([]);
   fieldTypes = $state<Record<string, FieldType>>({});
-  readonly mapId: string;
+  readonly #getMapId: () => string;
+  get mapId(): string { return this.#getMapId(); }
 
-  constructor(mapId: string) {
-    this.mapId = mapId;
+  constructor(getMapId: () => string) {
+    this.#getMapId = getMapId;
     // Initialize from URL if present
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);

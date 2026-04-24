@@ -15,7 +15,7 @@
 
   let { open = $bindable(), title, dismissible = true, onclose, children, footer }: Props = $props();
 
-  let dialogEl: HTMLDivElement | undefined;
+  let dialogEl = $state<HTMLDivElement | undefined>(undefined);
   let previousFocus: HTMLElement | null = null;
 
   // Capture focus before opening, restore on close

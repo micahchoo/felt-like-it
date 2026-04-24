@@ -21,7 +21,7 @@ describe('FiltersStore', () => {
     const mockLocation = new URL('http://localhost/map/test-map');
     vi.stubGlobal('location', mockLocation);
     vi.stubGlobal('history', { replaceState: vi.fn() });
-    store = new FiltersStore('test-map');
+    store = new FiltersStore(() => 'test-map');
   });
 
   afterEach(() => {

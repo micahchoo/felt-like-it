@@ -530,7 +530,7 @@
             <div
               class="h-full bg-primary transition-all duration-300 ease-out"
               style="width: {progress}%"
-            />
+            ></div>
           </div>
         </div>
       {/if}

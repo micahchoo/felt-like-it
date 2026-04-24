@@ -79,10 +79,12 @@
   let formLat = $state(0);
 
   // Pre-fill from measurement data
-  if (pendingMeasurementData) {
-    formType = 'text';
-    formText = pendingMeasurementData.content;
-  }
+  $effect(() => {
+    if (pendingMeasurementData) {
+      formType = 'text';
+      formText = pendingMeasurementData.content;
+    }
+  });
 
   function validateUrl(field: string, value: string) {
     if (!value.trim()) {

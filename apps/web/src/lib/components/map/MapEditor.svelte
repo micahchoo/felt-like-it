@@ -114,11 +114,11 @@
   });
 
   // ── Filter store (map-scoped, URL-reflected) ──────────────────────────────
-  const filtersStore = new FiltersStore(mapId);
+  const filtersStore = new FiltersStore(() => mapId);
 
   // ── Viewport persistence ──────────────────────────────────────────────────
   useViewportSave({
-    mapId,
+    get mapId() { return mapId; },
     getMapInstance: () => mapStore.mapInstance ?? undefined,
     saveViewportLocally: (id) => mapStore.saveViewportLocally(id),
   });
