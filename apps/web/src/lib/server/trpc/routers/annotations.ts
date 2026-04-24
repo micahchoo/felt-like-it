@@ -21,12 +21,15 @@ export const annotationsRouter = router({
     .input(z.object({
       mapId: z.string().uuid(),
       rootsOnly: z.boolean().optional(),
+      /** Phase 3 Wave D-α — narrow result set to one layer's annotations. */
+      layerId: z.string().uuid().optional(),
     }))
     .query(async ({ ctx, input }) => {
       const { items } = await annotationService.list({
         userId: ctx.user.id,
         mapId: input.mapId,
         ...(input.rootsOnly !== undefined ? { rootsOnly: input.rootsOnly } : {}),
+        ...(input.layerId !== undefined ? { layerId: input.layerId } : {}),
       });
       return items;
     }),
@@ -84,6 +87,7 @@ export const annotationsRouter = router({
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.groupId !== undefined ? { groupId: input.groupId } : {}),
+        ...(input.layerId !== undefined ? { layerId: input.layerId } : {}),
         ...(input.style !== undefined ? { style: input.style } : {}),
       });
     }),

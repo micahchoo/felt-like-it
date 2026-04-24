@@ -41,12 +41,17 @@ export const GET: RequestHandler = async ({ request, url, params, locals, getCli
   }
 
   const rootsOnly = url.searchParams.get('rootsOnly') === 'true';
+  // Phase 3 Wave D-α — optional ?layerId= filter for DataTable's per-layer view.
+  // Validated as UUID; malformed values are silently ignored (treated as no filter).
+  const rawLayerId = url.searchParams.get('layerId');
+  const layerId = rawLayerId && /^[0-9a-f-]{36}$/i.test(rawLayerId) ? rawLayerId : null;
   const { cursor, limit } = parsePaginationParams(url);
 
   const result = await annotationService.list({
     userId: auth.userId,
     mapId,
     rootsOnly,
+    ...(layerId !== null ? { layerId } : {}),
     ...(cursor !== null ? { cursor } : {}),
     limit,
   });
@@ -101,6 +106,7 @@ export const POST: RequestHandler = async (event) => {
         ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
         ...(parsed.data.description !== undefined ? { description: parsed.data.description } : {}),
         ...(parsed.data.groupId !== undefined ? { groupId: parsed.data.groupId } : {}),
+        ...(parsed.data.layerId !== undefined ? { layerId: parsed.data.layerId } : {}),
         ...(parsed.data.style !== undefined ? { style: parsed.data.style as Record<string, unknown> } : {}),
       });
 

@@ -258,6 +258,13 @@ export const annotationObjects = pgTable(
     description: text('description'),
     /** Felt-parity group/folder assignment. NULL = ungrouped (root of Sidebar List). */
     groupId: uuid('group_id').references(() => annotationGroups.id, { onDelete: 'set null' }),
+    /**
+     * Phase 3 Wave D-α — optional layer association. Set when the annotation
+     * is conceptually scoped to a layer (e.g. drawn while a layer was active
+     * in the editor). NULL means "map-scoped, ungrouped." ON DELETE SET NULL
+     * so dropping a layer doesn't lose the annotation.
+     */
+    layerId: uuid('layer_id').references(() => layers.id, { onDelete: 'set null' }),
     /** Felt-parity visual style payload (stroke, opacity, text variant, show-label, endcaps, etc.). NULL = renderer default. */
     style: jsonb('style').$type<Record<string, unknown>>(),
     templateId: uuid('template_id'),
@@ -270,6 +277,8 @@ export const annotationObjects = pgTable(
     index('annotation_objects_map_created_idx').on(t.mapId, t.createdAt),
     index('annotation_objects_thread_idx').on(t.mapId, t.parentId, t.ordinal),
     index('annotation_objects_template_idx').on(t.templateId),
+    /** Wave D-α — supports DataTable's per-layer filter and the new list({mapId, layerId}) query path. */
+    index('annotation_objects_map_layer_idx').on(t.mapId, t.layerId),
   ]
 );
 

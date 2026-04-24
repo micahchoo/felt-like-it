@@ -28,6 +28,8 @@ interface RawObjectRow {
   name: string | null;
   description: string | null;
   group_id: string | null;
+  /** Phase 3 Wave D-α — nullable layer association. */
+  layer_id: string | null;
   style: Record<string, unknown> | null;
   template_id: string | null;
   ordinal: number;
@@ -38,7 +40,7 @@ interface RawObjectRow {
 
 const OBJECT_COLS = sql.raw(`
   id, map_id, parent_id, author_id, author_name,
-  anchor, content, name, description, group_id, style, template_id, ordinal, version,
+  anchor, content, name, description, group_id, layer_id, style, template_id, ordinal, version,
   created_at, updated_at
 `);
 
@@ -54,6 +56,7 @@ function rowToObject(row: RawObjectRow): AnnotationObject {
     name: row.name,
     description: row.description,
     groupId: row.group_id,
+    layerId: row.layer_id,
     style: (row.style ?? null) as AnnotationObject['style'],
     templateId: row.template_id,
     ordinal: row.ordinal,
@@ -81,6 +84,8 @@ export const annotationService = {
     name?: string;
     description?: string;
     groupId?: string;
+    /** Phase 3 Wave D-α — set for drawn shapes; absent for viewport / measurement / feature anchors. */
+    layerId?: string;
     style?: Record<string, unknown>;
   }): Promise<AnnotationObject> {
     // 1. Access check (read-only, no mutation to wrap)
@@ -131,7 +136,7 @@ export const annotationService = {
       const rows = await typedExecute<RawObjectRow>(sql`
         INSERT INTO annotation_objects (
           map_id, parent_id, author_id, author_name,
-          anchor, content, name, description, group_id, style, template_id, ordinal
+          anchor, content, name, description, group_id, layer_id, style, template_id, ordinal
         )
         VALUES (
           ${params.mapId}::uuid,
@@ -143,6 +148,7 @@ export const annotationService = {
           ${params.name ?? null},
           ${params.description ?? null},
           ${params.groupId ?? null}::uuid,
+          ${params.layerId ?? null}::uuid,
           ${styleJson}::jsonb,
           ${params.templateId ?? null}::uuid,
           ${ordinal}
@@ -176,12 +182,19 @@ export const annotationService = {
     userId: string | null;
     mapId: string;
     rootsOnly?: boolean;
+    /**
+     * Phase 3 Wave D-α — narrow the result set to one layer's annotations.
+     * Used by DataTable's per-layer view. Omit for the full map list
+     * (AnnotationPanel default).
+     */
+    layerId?: string;
     cursor?: { createdAt: Date; id: string };
     limit?: number;
   }): Promise<{ items: AnnotationObject[]; totalCount: number }> {
     if (params.userId) await requireMapAccess(params.userId, params.mapId, 'viewer');
 
     const rootFilter = params.rootsOnly === true ? sql`AND parent_id IS NULL` : sql``;
+    const layerFilter = params.layerId ? sql`AND layer_id = ${params.layerId}::uuid` : sql``;
     // Pagination keys on (created_at, id). The cursor carries created_at at JS
     // `Date` precision (millisecond); Postgres stores microsecond. Truncate the
     // column to ms on both filter and order so the strict `>` comparison is
@@ -195,13 +208,13 @@ export const annotationService = {
       typedExecute<RawObjectRow>(sql`
         SELECT ${OBJECT_COLS}
         FROM annotation_objects
-        WHERE map_id = ${params.mapId}::uuid ${rootFilter} ${cursorFilter}
+        WHERE map_id = ${params.mapId}::uuid ${rootFilter} ${layerFilter} ${cursorFilter}
         ORDER BY date_trunc('milliseconds', created_at) ASC, id ASC
         ${limitClause}
       `),
       typedExecute<{ cnt: string }>(sql`
         SELECT COUNT(*)::text AS cnt FROM annotation_objects
-        WHERE map_id = ${params.mapId}::uuid ${rootFilter}
+        WHERE map_id = ${params.mapId}::uuid ${rootFilter} ${layerFilter}
       `),
     ]);
 

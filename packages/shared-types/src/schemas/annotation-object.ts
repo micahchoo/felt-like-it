@@ -124,6 +124,13 @@ export const AnnotationObjectSchema = z.object({
   description: z.string().max(5000).nullable().optional(),
   /** Assigned group/folder. NULL = ungrouped (root of the Sidebar List). */
   groupId: z.string().uuid().nullable().optional(),
+  /**
+   * Phase 3 Wave D-α — optional layer association. Set for drawn shapes
+   * (point/path/region anchors) at create time; NULL for viewport +
+   * measurement annotations and for feature-anchored annotations
+   * (which carry layerId inside the anchor).
+   */
+  layerId: z.string().uuid().nullable().optional(),
   /** User-controlled visual style. Renderer falls back to defaults when NULL. */
   style: AnnotationStyleSchema.nullable().optional(),
   ordinal: z.number().int(),
@@ -145,6 +152,8 @@ export const CreateAnnotationObjectSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().max(5000).optional(),
   groupId: z.string().uuid().optional(),
+  /** Phase 3 Wave D-α — drawn shapes pass the active layer's id. */
+  layerId: z.string().uuid().optional(),
   style: AnnotationStyleSchema.optional(),
 });
 
