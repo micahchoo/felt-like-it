@@ -299,3 +299,59 @@ describe('mixed input separation', () => {
     expect(measurements.features[0]!.properties['annotationId']).toBe('meas-1');
   });
 });
+
+// ─── Style folding (per-annotation paint expression support) ─────────────────
+// Renderer paint expressions of the form `['coalesce', ['get', 'strokeColor'], DEFAULT]`
+// require the fields to live flat on feature.properties. Gap here → annotations
+// silently render with defaults even when a user set a style.
+
+describe('style folding into feature properties', () => {
+  it('folds AnnotationStyle fields flat onto pin properties', () => {
+    const pin = makePoint('pin-1', [10, 20, 0], {
+      style: {
+        strokeColor: '#ff0000',
+        strokeWidth: 3,
+        strokeOpacity: 0.5,
+        fillColor: '#00ff00',
+        fillOpacity: 0.8,
+        strokeStyle: 'dashed',
+        showLabel: false,
+      },
+    });
+    const { properties } = deriveAnnotationPins([pin]).features[0]!;
+    expect(properties.strokeColor).toBe('#ff0000');
+    expect(properties.strokeWidth).toBe(3);
+    expect(properties.strokeOpacity).toBe(0.5);
+    expect(properties.fillColor).toBe('#00ff00');
+    expect(properties.fillOpacity).toBe(0.8);
+    expect(properties.strokeStyle).toBe('dashed');
+    expect(properties.showLabel).toBe(false);
+  });
+
+  it('folds AnnotationStyle fields flat onto region properties', () => {
+    const region = makeRegion('reg-1', {
+      style: { fillColor: '#123456', fillOpacity: 0.4 },
+    });
+    const { properties } = deriveAnnotationRegions([region]).features[0]!;
+    expect(properties.fillColor).toBe('#123456');
+    expect(properties.fillOpacity).toBe(0.4);
+  });
+
+  it('omits absent style keys so coalesce fallbacks apply (null style)', () => {
+    const pin = makePoint('pin-2', [10, 20, 0], { style: null });
+    const { properties } = deriveAnnotationPins([pin]).features[0]!;
+    // No style fields leak in — renderer coalesces to defaults.
+    expect(properties).not.toHaveProperty('strokeColor');
+    expect(properties).not.toHaveProperty('fillColor');
+  });
+
+  it('sparse style: only set fields appear on properties', () => {
+    const pin = makePoint('pin-3', [10, 20, 0], {
+      style: { strokeWidth: 5 },
+    });
+    const { properties } = deriveAnnotationPins([pin]).features[0]!;
+    expect(properties.strokeWidth).toBe(5);
+    expect(properties).not.toHaveProperty('strokeColor');
+    expect(properties).not.toHaveProperty('fillOpacity');
+  });
+});

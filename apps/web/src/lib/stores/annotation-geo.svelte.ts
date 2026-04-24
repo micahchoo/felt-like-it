@@ -7,10 +7,29 @@
  * Extracted from MapEditor.svelte to allow unit testing and reuse.
  */
 
-import type { AnnotationObject } from '@felt-like-it/shared-types';
+import type { AnnotationObject, AnnotationStyle } from '@felt-like-it/shared-types';
 
 // Re-export the canonical row type under the local alias used throughout this file.
 export type AnnotationRow = AnnotationObject;
+
+// ─── Feature properties ──────────────────────────────────────────────────────
+// Style fields are folded flat into properties so MapLibre `['get', 'strokeColor']`
+// expressions can drive per-annotation paint. Kept optional so the renderer's
+// `coalesce` fallbacks restore hard-coded defaults for annotations without style.
+
+type AnnotationFeatureProperties = {
+  authorName: string;
+  createdAt: string;
+  contentJson: string;
+  anchorType: string;
+  strokeColor?: string;
+  strokeWidth?: number;
+  strokeOpacity?: number;
+  fillColor?: string;
+  fillOpacity?: number;
+  strokeStyle?: 'solid' | 'dashed' | 'dotted';
+  showLabel?: boolean;
+};
 
 // ─── Return types ─────────────────────────────────────────────────────────────
 
@@ -20,12 +39,7 @@ export type AnnotationPinCollection = {
     type: 'Feature';
     id: string;
     geometry: { type: 'Point'; coordinates: [number, number] };
-    properties: {
-      authorName: string;
-      createdAt: string;
-      contentJson: string;
-      anchorType: string;
-    };
+    properties: AnnotationFeatureProperties;
   }[];
 };
 
@@ -35,12 +49,7 @@ export type AnnotationRegionCollection = {
     type: 'Feature';
     id: string;
     geometry: { type: 'Polygon'; coordinates: number[][][] };
-    properties: {
-      authorName: string;
-      createdAt: string;
-      contentJson: string;
-      anchorType: string;
-    };
+    properties: AnnotationFeatureProperties;
   }[];
 };
 
@@ -54,6 +63,24 @@ export type MeasurementFeatureCollection = {
 };
 
 // ─── Pure derivation functions (testable without Svelte) ─────────────────────
+
+/**
+ * Fold AnnotationStyle into a flat properties bag so MapLibre paint expressions
+ * of the form `['get', 'strokeColor']` can drive per-annotation rendering. Undefined
+ * fields are omitted so `['coalesce', ['get', ...], DEFAULT]` falls back cleanly.
+ */
+function styleProps(style: AnnotationStyle | null | undefined): Partial<AnnotationFeatureProperties> {
+  if (!style) return {};
+  const out: Partial<AnnotationFeatureProperties> = {};
+  if (style.strokeColor !== undefined) out.strokeColor = style.strokeColor;
+  if (style.strokeWidth !== undefined) out.strokeWidth = style.strokeWidth;
+  if (style.strokeOpacity !== undefined) out.strokeOpacity = style.strokeOpacity;
+  if (style.fillColor !== undefined) out.fillColor = style.fillColor;
+  if (style.fillOpacity !== undefined) out.fillOpacity = style.fillOpacity;
+  if (style.strokeStyle !== undefined) out.strokeStyle = style.strokeStyle;
+  if (style.showLabel !== undefined) out.showLabel = style.showLabel;
+  return out;
+}
 
 export function deriveAnnotationPins(rows: AnnotationRow[]): AnnotationPinCollection {
   return {
@@ -72,6 +99,7 @@ export function deriveAnnotationPins(rows: AnnotationRow[]): AnnotationPinCollec
           createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
           contentJson: JSON.stringify(a.content),
           anchorType: a.anchor.type,
+          ...styleProps(a.style),
         },
       })),
   };
@@ -94,6 +122,7 @@ export function deriveAnnotationRegions(rows: AnnotationRow[]): AnnotationRegion
           createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
           contentJson: JSON.stringify(a.content),
           anchorType: a.anchor.type,
+          ...styleProps(a.style),
         },
       })),
   };

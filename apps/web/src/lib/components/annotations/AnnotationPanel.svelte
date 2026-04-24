@@ -8,11 +8,13 @@
     AnnotationObject,
     Anchor,
     AnnotationContent as AC,
+    AnnotationStyle,
   } from '@felt-like-it/shared-types';
   import type { SaveAsAnnotationPayload } from '$lib/stores/measurement-store.svelte.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import AnnotationForm from './AnnotationForm.svelte';
   import AnnotationList from './AnnotationList.svelte';
+  import AnnotationGroups from './AnnotationGroups.svelte';
   import {
     createAnnotationMutationOptions,
     deleteAnnotationMutationOptions,
@@ -152,6 +154,17 @@
   let selectedAnnotationId = $state<string | null>(null);
   let replyingTo = $state<string | null>(null);
   let replyText = $state('');
+  /** Group filter is local UI-only — the list query returns all annotations
+   *  and we filter below. Keeps the query cache single-keyed per mapId. */
+  let selectedGroupFilter = $state<string | null>(null);
+
+  // Client-side group filter. Null = show all; a group id filters the list.
+  // Declared after state so order matches Svelte 5's "declare before use" rule.
+  const filteredAnnotations = $derived(
+    selectedGroupFilter === null
+      ? annotations
+      : annotations.filter((a) => ('groupId' in a ? a.groupId === selectedGroupFilter : false)),
+  );
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -196,6 +209,19 @@
     if (updateAnnotation.isPending) return;
     try {
       await updateAnnotation.mutateAsync(input);
+    } catch {
+      // mutation.onError already surfaced a user-facing toast (incl. CONFLICT)
+    }
+  }
+
+  async function handleStyleChange(annotation: AnnotationObject, style: AnnotationStyle | null) {
+    if (updateAnnotation.isPending) return;
+    try {
+      await updateAnnotation.mutateAsync({
+        id: annotation.id,
+        version: annotation.version,
+        style,
+      });
     } catch {
       // mutation.onError already surfaced a user-facing toast (incl. CONFLICT)
     }
@@ -347,10 +373,15 @@
     />
   </div>
 
+  <!-- Groups (folders) — create, rename, hide, delete. Membership dropdown + drag-drop deferred. -->
+  <div class="shrink-0">
+    <AnnotationGroups {mapId} selectedGroupId={selectedGroupFilter} onselect={(id) => (selectedGroupFilter = id)} />
+  </div>
+
   <!-- List section -->
   <div class="flex-1 min-h-0 overflow-y-auto">
     <AnnotationList
-      {annotations}
+      annotations={filteredAnnotations}
       {comments}
       {userId}
       expandedAnnotationId={selectedAnnotationId}
@@ -383,6 +414,7 @@
       onconverttopoint={handleConvertToPoint}
       onfetchnavplace={handleFetchNavPlace}
       onpromotetolayer={handlePromoteToLayer}
+      onstylechange={handleStyleChange}
     />
   </div>
 

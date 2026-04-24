@@ -1,7 +1,8 @@
 <script lang="ts">
-  import type { AnnotationObject } from '@felt-like-it/shared-types';
+  import type { AnnotationObject, AnnotationStyle } from '@felt-like-it/shared-types';
   import AnnotationContent from './AnnotationContent.svelte';
   import AnnotationThread from './AnnotationThread.svelte';
+  import AnnotationStylePanel from './AnnotationStylePanel.svelte';
   import Button from '$lib/components/ui/Button.svelte';
 
   interface CommentEntry {
@@ -35,6 +36,7 @@
     onconverttopoint: (annotation: AnnotationObject) => void;
     onfetchnavplace: (annotation: AnnotationObject) => void;
     onpromotetolayer?: (annotationId: string) => void;
+    onstylechange?: (annotation: AnnotationObject, style: AnnotationStyle | null) => void;
   }
 
   let {
@@ -56,10 +58,12 @@
     onconverttopoint,
     onfetchnavplace,
     onpromotetolayer,
+    onstylechange,
   }: Props = $props();
 
   let editingId = $state<string | null>(null);
   let editText = $state('');
+  let stylingId = $state<string | null>(null);
 </script>
 
 {#if listLoading}
@@ -255,6 +259,16 @@
             Promote to layer
           </button>
         {/if}
+        {#if annotation.authorId === userId && onstylechange && (annotation.anchor.type === 'point' || annotation.anchor.type === 'region')}
+          <button
+            onclick={() => (stylingId = stylingId === annotation.id ? null : annotation.id)}
+            class="text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-40"
+            disabled={isMutating}
+            title="Adjust colour, width, and opacity"
+          >
+            {stylingId === annotation.id ? 'Close style' : 'Style'}
+          </button>
+        {/if}
         {#if annotation.authorId === userId}
           <button
             onclick={() => ondelete(annotation.id)}
@@ -265,6 +279,16 @@
           </button>
         {/if}
       </div>
+
+      {#if stylingId === annotation.id && onstylechange}
+        <div class="mt-1 border-t border-white/5">
+          <AnnotationStylePanel
+            {annotation}
+            disabled={isMutating}
+            onchange={(style) => onstylechange(annotation, style)}
+          />
+        </div>
+      {/if}
     </div>
   {/each}
 {/if}

@@ -72,13 +72,32 @@
 
   // ── Stable paint/layout constants ──────────────────────────────────────────
   // New object references per render cause infinite loops in svelte-maplibre-gl.
+  //
+  // Per-annotation style: feature properties (strokeColor, strokeWidth, …) are
+  // folded in at derive-time by `annotation-geo.svelte.ts#styleProps`. Paint
+  // expressions below use `['coalesce', ['get', 'foo'], DEFAULT]` so annotations
+  // without a style render with the original hard-coded defaults.
+  // `line-dasharray` is NOT data-driven in MapLibre GL JS — per-feature dash
+  // styling (Felt-parity plan Task 3.3) is a known gap; only solid lines vary
+  // per-feature. See seeds for follow-up.
 
   const ANNOTATION_PIN_PAINT = {
-    'circle-radius': 10, 'circle-color': '#f59e0b',
-    'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.92,
-  };
-  const ANNOTATION_REGION_FILL_PAINT = { 'fill-color': '#3b82f6', 'fill-opacity': 0.15 };
-  const ANNOTATION_REGION_LINE_PAINT = { 'line-color': '#3b82f6', 'line-width': 2, 'line-opacity': 0.6 };
+    'circle-radius': 10,
+    'circle-color': ['coalesce', ['get', 'fillColor'], '#f59e0b'],
+    'circle-stroke-width': ['coalesce', ['get', 'strokeWidth'], 2],
+    'circle-stroke-color': ['coalesce', ['get', 'strokeColor'], '#ffffff'],
+    'circle-opacity': ['coalesce', ['get', 'fillOpacity'], 0.92],
+    'circle-stroke-opacity': ['coalesce', ['get', 'strokeOpacity'], 1],
+  } as any;
+  const ANNOTATION_REGION_FILL_PAINT = {
+    'fill-color': ['coalesce', ['get', 'fillColor'], '#3b82f6'],
+    'fill-opacity': ['coalesce', ['get', 'fillOpacity'], 0.15],
+  } as any;
+  const ANNOTATION_REGION_LINE_PAINT = {
+    'line-color': ['coalesce', ['get', 'strokeColor'], '#3b82f6'],
+    'line-width': ['coalesce', ['get', 'strokeWidth'], 2],
+    'line-opacity': ['coalesce', ['get', 'strokeOpacity'], 0.6],
+  } as any;
   const BADGE_CIRCLE_PAINT = {
     'circle-radius': 8, 'circle-color': '#f59e0b',
     'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff',

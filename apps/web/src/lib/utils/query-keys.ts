@@ -5,6 +5,8 @@ export const queryKeys = {
       ['annotations', 'list', params] as const,
     thread: (params: { annotationId: string }) =>
       ['annotations', 'getThread', params] as const,
+    groups: (params: { mapId: string }) =>
+      ['annotations', 'listGroups', params] as const,
   },
   comments: {
     all: ['comments'] as const,

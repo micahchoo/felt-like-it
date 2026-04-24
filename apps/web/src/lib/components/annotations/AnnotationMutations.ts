@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/svelte-query';
 import type { MutationOptions } from '@tanstack/svelte-query';
 import { trpc } from '$lib/utils/trpc.js';
 import { queryKeys } from '$lib/utils/query-keys.js';
-import type { AnnotationObject, Anchor, AnnotationContent as AC } from '@felt-like-it/shared-types';
+import type { AnnotationObject, Anchor, AnnotationContent as AC, AnnotationStyle } from '@felt-like-it/shared-types';
 import { toastStore } from '$lib/components/ui/Toast.svelte';
 
 /**
@@ -155,6 +155,7 @@ export function updateAnnotationMutationOptions(
     anchor?: Anchor;
     name?: string | null;
     description?: string | null;
+    style?: AnnotationStyle | null;
   }
 > {
   return {
@@ -165,6 +166,7 @@ export function updateAnnotationMutationOptions(
       anchor?: Anchor;
       name?: string | null;
       description?: string | null;
+      style?: AnnotationStyle | null;
     }) => trpc.annotations.update.mutate(input),
     onSuccess: () => {
       deps.queryClient.invalidateQueries({
@@ -225,6 +227,94 @@ export function convertAnnotationsToLayerMutationOptions(
     },
     onError: (err) => {
       toastStore.error(describeError(err, 'Failed to convert annotation to layer.'));
+    },
+  };
+}
+
+export function convertLayerFeaturesToAnnotationsMutationOptions(
+  deps: MutationDeps,
+): MutationOptions<
+  Awaited<ReturnType<typeof trpc.annotations.convertLayerFeaturesToAnnotations.mutate>>,
+  Error,
+  { mapId: string; layerId: string; featureIds: string[] }
+> {
+  return {
+    mutationFn: (input) => trpc.annotations.convertLayerFeaturesToAnnotations.mutate(input),
+    onSuccess: () => {
+      // New annotations appear in the list — the source layer's features remain.
+      deps.queryClient.invalidateQueries({
+        queryKey: queryKeys.annotations.list({ mapId: deps.mapId }),
+      });
+    },
+    onError: (err) => {
+      toastStore.error(describeError(err, 'Failed to convert features to annotations.'));
+    },
+  };
+}
+
+// ── Annotation group (folder) mutations ─────────────────────────────────────
+
+export function createAnnotationGroupMutationOptions(
+  deps: MutationDeps,
+): MutationOptions<
+  Awaited<ReturnType<typeof trpc.annotations.createGroup.mutate>>,
+  Error,
+  { mapId: string; name: string; parentGroupId?: string | null; visible?: boolean }
+> {
+  return {
+    mutationFn: (input) => trpc.annotations.createGroup.mutate(input),
+    onSuccess: () => {
+      deps.queryClient.invalidateQueries({
+        queryKey: queryKeys.annotations.groups({ mapId: deps.mapId }),
+      });
+    },
+    onError: (err) => {
+      toastStore.error(describeError(err, 'Failed to create group.'));
+    },
+  };
+}
+
+export function updateAnnotationGroupMutationOptions(
+  deps: MutationDeps,
+): MutationOptions<
+  Awaited<ReturnType<typeof trpc.annotations.updateGroup.mutate>>,
+  Error,
+  { id: string; name?: string; parentGroupId?: string | null; ordinal?: number; visible?: boolean }
+> {
+  return {
+    mutationFn: (input) => trpc.annotations.updateGroup.mutate(input),
+    onSuccess: () => {
+      deps.queryClient.invalidateQueries({
+        queryKey: queryKeys.annotations.groups({ mapId: deps.mapId }),
+      });
+    },
+    onError: (err) => {
+      toastStore.error(describeError(err, 'Failed to update group.'));
+    },
+  };
+}
+
+export function deleteAnnotationGroupMutationOptions(
+  deps: MutationDeps,
+): MutationOptions<
+  Awaited<ReturnType<typeof trpc.annotations.deleteGroup.mutate>>,
+  Error,
+  { id: string }
+> {
+  return {
+    mutationFn: (input) => trpc.annotations.deleteGroup.mutate(input),
+    onSuccess: () => {
+      deps.queryClient.invalidateQueries({
+        queryKey: queryKeys.annotations.groups({ mapId: deps.mapId }),
+      });
+      // Annotations may have had their groupId set to null by the service's
+      // on-delete policy — list view needs a refresh too.
+      deps.queryClient.invalidateQueries({
+        queryKey: queryKeys.annotations.list({ mapId: deps.mapId }),
+      });
+    },
+    onError: (err) => {
+      toastStore.error(describeError(err, 'Failed to delete group.'));
     },
   };
 }
