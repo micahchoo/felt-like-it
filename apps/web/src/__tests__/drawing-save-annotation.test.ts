@@ -64,6 +64,8 @@ function createAnnotationSaveFlow(deps: {
   undoPush: (cmd: UndoCommand) => void;
   toastError: (msg: string) => void;
   getActiveLayer: () => { id: string; mapId: string } | null;
+  /** Wave A.4 — narrow callback for cross-cutting concerns (activity log). */
+  onannotationdrawn?: (annotation: { id: string; anchorType: Anchor['type'] }) => void;
 }) {
   function deriveAnchor(geometry: { type: string; coordinates: unknown }): Anchor | null {
     if (geometry.type === 'Point') {
@@ -120,6 +122,8 @@ function createAnnotationSaveFlow(deps: {
           handle.version = recreated.version;
         },
       });
+
+      deps.onannotationdrawn?.({ id: created.id, anchorType: anchor.type });
     } catch {
       // createAnnotationMutationOptions.onError owns rollback + toast
     }
@@ -171,6 +175,7 @@ function makeDeps(overrides: Record<string, any> = {}) {
     undoPush: vi.fn(),
     toastError: vi.fn(),
     getActiveLayer: vi.fn().mockReturnValue({ id: LAYER_ID, mapId: MAP_ID }),
+    onannotationdrawn: vi.fn(),
     ...overrides,
   };
 }
@@ -324,6 +329,44 @@ describe('DrawingToolbar saveAsAnnotation mutation flow', () => {
       // onError owns user-facing rollback + toast. saveAsAnnotation only catches
       // to prevent the unhandled-rejection from bubbling into TerraDraw.
       expect(deps.toastError).not.toHaveBeenCalled();
+    });
+
+    it('createAnnotation rejection means no onannotationdrawn fire', async () => {
+      deps.createAnnotation.mockRejectedValueOnce(new Error('network'));
+      await flow.saveAsAnnotation(SAMPLE_POINT);
+      expect(deps.onannotationdrawn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('onannotationdrawn callback (Wave A.4)', () => {
+    it('fires once per successful save with id + anchorType', async () => {
+      await flow.saveAsAnnotation(SAMPLE_POINT);
+      expect(deps.onannotationdrawn).toHaveBeenCalledTimes(1);
+      expect(deps.onannotationdrawn).toHaveBeenCalledWith({
+        id: CREATED_ID,
+        anchorType: 'point',
+      });
+    });
+
+    it('passes the derived anchorType (path for LineString)', async () => {
+      await flow.saveAsAnnotation(SAMPLE_LINE);
+      expect(deps.onannotationdrawn).toHaveBeenCalledWith({
+        id: CREATED_ID,
+        anchorType: 'path',
+      });
+    });
+
+    it('passes the derived anchorType (region for Polygon)', async () => {
+      await flow.saveAsAnnotation(SAMPLE_POLYGON);
+      expect(deps.onannotationdrawn).toHaveBeenCalledWith({
+        id: CREATED_ID,
+        anchorType: 'region',
+      });
+    });
+
+    it('does not fire for unsupported geometry (no annotation created)', async () => {
+      await flow.saveAsAnnotation(SAMPLE_MULTIPOINT);
+      expect(deps.onannotationdrawn).not.toHaveBeenCalled();
     });
   });
 });

@@ -41,6 +41,11 @@
     layerData: Record<string, { type: 'FeatureCollection'; features: GeoJSONFeature[] }>;
     onfeaturedrawn?: (_layerId: string, _feature: Record<string, unknown> & { id?: string | undefined }) => void;
     /**
+     * Wave A.4 — fires after a TerraDraw commit creates an annotation row.
+     * Carries the persisted id + anchor type. Pass-through to DrawingToolbar.
+     */
+    onannotationdrawn?: (_annotation: { id: string; anchorType: 'point' | 'path' | 'region' | 'feature' | 'viewport' | 'measurement' }) => void;
+    /**
      * Annotation pins rendered as a dedicated amber circle layer.
      * Omit (or pass undefined) to hide annotation pins — used in the share viewer.
      */
@@ -79,7 +84,7 @@
     onfeatureannotate?: (_payload: { featureId: string; layerId: string }) => void;
   }
 
-  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions, annotationPaths, annotatedFeatures, onbadgeclick, measurementAnnotations, filtersStore, onfeatureannotate }: Props = $props();
+  let { readonly = false, layerData, onfeaturedrawn, onannotationdrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions, annotationPaths, annotatedFeatures, onbadgeclick, measurementAnnotations, filtersStore, onfeatureannotate }: Props = $props();
 
   const editorState = getMapEditorState();
   let mapInstance = $state<MapLibreMap | undefined>(undefined);
@@ -396,6 +401,7 @@
     <DrawingToolbar
       map={mapInstance}
       {...(onfeaturedrawn !== undefined ? { onfeaturedrawn } : {})}
+      {...(onannotationdrawn !== undefined ? { onannotationdrawn } : {})}
       {...(onmeasured !== undefined ? { onmeasured } : {})}
       {...(onregiondrawn !== undefined ? { onregiondrawn } : {})}
     />

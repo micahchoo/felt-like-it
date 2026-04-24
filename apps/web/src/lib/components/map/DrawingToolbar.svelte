@@ -32,7 +32,22 @@
 
   interface Props {
     map: MapLibreMap;
+    /**
+     * Wave A.2 legacy — fires after saveFeature persists to the features table.
+     * saveFeature is unreachable from the live dispatch (Wave A.2 routed
+     * through saveAsAnnotation). Both saveFeature and this callback are
+     * scheduled for removal in Wave B.
+     */
     onfeaturedrawn?: ((_layerId: string, _feature: Record<string, unknown> & { id?: string | undefined }) => void) | undefined;
+    /**
+     * Wave A.4 — fires after saveAsAnnotation creates an annotation row.
+     * Carries the persisted id + anchor type so the parent can drive
+     * cross-cutting concerns (activity logging today; future panel-scroll /
+     * focus-management would also flow through here). Deliberately NOT a
+     * full annotation row — keeping the surface narrow makes the contract
+     * easier to keep stable.
+     */
+    onannotationdrawn?: ((_annotation: { id: string; anchorType: Anchor['type'] }) => void) | undefined;
     /**
      * When provided, the drawing toolbar enters measurement mode: drawn features
      * are NOT saved to any layer — instead, the computed measurement is passed
@@ -47,7 +62,7 @@
     onregiondrawn?: ((_geometry: { type: 'Polygon'; coordinates: number[][][] }) => void) | undefined;
   }
 
-  let { map, onfeaturedrawn, onmeasured, onregiondrawn }: Props = $props();
+  let { map, onfeaturedrawn, onannotationdrawn, onmeasured, onregiondrawn }: Props = $props();
 
   const editorState = getMapEditorState();
   const queryClient = useQueryClient();
@@ -352,19 +367,13 @@
         },
       });
 
-      // Wave A.2 bridge — keep the old onfeaturedrawn callback firing until
-      // Wave A.4 introduces onannotationdrawn. Reasons (per plan risk note):
-      //   1. The await synchronizes parent re-render with TerraDraw's
-      //      removeFeatures() call, preventing a visual-flash race.
-      //   2. activityStore.log + (eventually) the post-draw selection
-      //      transition still need an entrypoint until A.4 rewires them.
-      // Known A.2 regression: parent's transitionTo({featureSelected, ...})
-      // will pass an annotation id where it expects a feature id; the highlight
-      // simply won't match. Fixed in A.4 by replacing the callback with
-      // onannotationdrawn that carries {id, anchor} for an annotation-aware
-      // selection transition.
-      const geometry = f.geometry as unknown as Record<string, unknown>;
-      await onfeaturedrawn?.(activeLayer.id, { geometry, properties, id: created.id });
+      // Wave A.4 — narrow annotation-aware callback for cross-cutting concerns
+      // (activity logging today; future panel-scroll / focus-management). Carries
+      // only what the parent needs to act on (id + anchor type), not the full
+      // row. The annotation-renderer / panel re-render is owned by tanstack
+      // query cache invalidation in createAnnotationMutationOptions.onSuccess —
+      // no parent involvement needed for that.
+      onannotationdrawn?.({ id: created.id, anchorType: anchor.type });
     } catch (err) {
       // createAnnotationMutationOptions.onError already rolled back the cache + toasted.
       console.error('[DrawingToolbar] saveAsAnnotation failed:', err);

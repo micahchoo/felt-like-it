@@ -289,6 +289,18 @@
     });
   }
 
+  // Wave A.4 — TerraDraw commits now persist annotations (Wave A.2 dispatch
+  // flip). The post-draw selection-feedback that handleFeatureDrawn provides
+  // is a feature-popup-model concept; annotations follow a panel-model where
+  // the new row is surfaced via cache invalidation. So this handler does the
+  // single cross-cutting thing the cache can't: fire the activity event.
+  function handleAnnotationDrawn(annotation: { id: string; anchorType: string }) {
+    activityStore.log('annotation.drawn', {
+      annotationId: annotation.id,
+      anchorType: annotation.anchorType,
+    });
+  }
+
   async function saveViewport() {
     savingViewport = true;
     try {
@@ -634,6 +646,7 @@
         {layerData}
         {filtersStore}
         onfeaturedrawn={handleFeatureDrawn}
+        onannotationdrawn={handleAnnotationDrawn}
         annotationPins={annotationGeo.pins}
         annotationRegions={annotationGeo.regions}
         annotationPaths={annotationGeo.paths}
