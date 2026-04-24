@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   deriveAnnotationPins,
   deriveAnnotationRegions,
+  deriveAnnotationPaths,
   deriveAnnotatedFeaturesIndex,
   deriveMeasurementData,
 } from '$lib/stores/annotation-geo.svelte.js';
@@ -45,6 +46,17 @@ function makeRegion(id: string, overrides: Partial<AnnotationRow> = {}): Annotat
         type: 'Polygon',
         coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
       },
+    },
+    ...overrides,
+  });
+}
+
+function makePath(id: string, overrides: Partial<AnnotationRow> = {}): AnnotationRow {
+  return makeBase({
+    id,
+    anchor: {
+      type: 'path',
+      geometry: { type: 'LineString', coordinates: [[0, 0], [1, 1], [2, 0]] },
     },
     ...overrides,
   });
@@ -297,6 +309,49 @@ describe('mixed input separation', () => {
     // Measurements: only measurement-anchored
     expect(measurements.features).toHaveLength(1);
     expect(measurements.features[0]!.properties['annotationId']).toBe('meas-1');
+  });
+});
+
+// ─── deriveAnnotationPaths ───────────────────────────────────────────────────
+
+describe('deriveAnnotationPaths', () => {
+  it('returns empty FeatureCollection for empty input', () => {
+    const result = deriveAnnotationPaths([]);
+    expect(result.type).toBe('FeatureCollection');
+    expect(result.features).toHaveLength(0);
+  });
+
+  it('maps path-anchored annotations to LineString features', () => {
+    const result = deriveAnnotationPaths([makePath('p-1')]);
+    expect(result.features).toHaveLength(1);
+    const f = result.features[0]!;
+    expect(f.id).toBe('p-1');
+    expect(f.geometry.type).toBe('LineString');
+    expect(f.geometry.coordinates).toHaveLength(3);
+  });
+
+  it('excludes non-path anchors', () => {
+    const result = deriveAnnotationPaths([makePath('p-1'), makeRegion('r-1')]);
+    expect(result.features).toHaveLength(1);
+    expect(result.features[0]!.id).toBe('p-1');
+  });
+
+  it('excludes replies (parentId set)', () => {
+    const result = deriveAnnotationPaths([
+      makePath('root'),
+      makePath('reply', { parentId: 'root' }),
+    ]);
+    expect(result.features).toHaveLength(1);
+    expect(result.features[0]!.id).toBe('root');
+  });
+
+  it('folds style onto path properties', () => {
+    const result = deriveAnnotationPaths([
+      makePath('p-1', { style: { strokeColor: '#ff9900', strokeWidth: 4 } }),
+    ]);
+    const props = result.features[0]!.properties;
+    expect(props.strokeColor).toBe('#ff9900');
+    expect(props.strokeWidth).toBe(4);
   });
 });
 

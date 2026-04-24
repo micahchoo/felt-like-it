@@ -28,7 +28,7 @@
   import AnnotationRenderer from './AnnotationRenderer.svelte';
   import type { HeatmapLayerDef } from './DeckGLOverlay.svelte';
   import type { LayerStyle } from '@felt-like-it/shared-types';
-  import type { AnnotationPinCollection, AnnotationRegionCollection } from './AnnotationRenderer.svelte';
+  import type { AnnotationPinCollection, AnnotationRegionCollection, AnnotationPathCollection } from './AnnotationRenderer.svelte';
   import { PUBLIC_MARTIN_URL } from '$env/static/public';
 
   // ── Annotated feature highlight + badge computations ────────────────────
@@ -58,6 +58,11 @@
      * Region-anchored annotation polygons rendered as a dedicated fill layer.
      */
     annotationRegions?: AnnotationRegionCollection;
+    /**
+     * Path-anchored annotation lines rendered as a dedicated line layer. Added
+     * per unified-annotations.md rule 1 (line features convert to `path`).
+     */
+    annotationPaths?: AnnotationPathCollection;
     /** Feature IDs that have annotations — used for highlight sublayers and badge indicators. */
     annotatedFeatures?: Map<string, { layerId: string; count: number }>;
     /** Called when a feature annotation badge is clicked. */
@@ -74,7 +79,7 @@
     onfeatureannotate?: (_payload: { featureId: string; layerId: string }) => void;
   }
 
-  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions, annotatedFeatures, onbadgeclick, measurementAnnotations, filtersStore, onfeatureannotate }: Props = $props();
+  let { readonly = false, layerData, onfeaturedrawn, annotationPins, onmeasured, onregiondrawn, annotationRegions, annotationPaths, annotatedFeatures, onbadgeclick, measurementAnnotations, filtersStore, onfeatureannotate }: Props = $props();
 
   const editorState = getMapEditorState();
   let mapInstance = $state<MapLibreMap | undefined>(undefined);
@@ -377,6 +382,7 @@
     <AnnotationRenderer
       {annotationPins}
       {annotationRegions}
+      {annotationPaths}
       {badgeGeoJson}
       {measurementAnnotations}
       {onbadgeclick}

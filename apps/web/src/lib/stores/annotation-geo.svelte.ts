@@ -53,6 +53,16 @@ export type AnnotationRegionCollection = {
   }[];
 };
 
+export type AnnotationPathCollection = {
+  type: 'FeatureCollection';
+  features: {
+    type: 'Feature';
+    id: string;
+    geometry: { type: 'LineString'; coordinates: number[][] };
+    properties: AnnotationFeatureProperties;
+  }[];
+};
+
 export type MeasurementFeatureCollection = {
   type: 'FeatureCollection';
   features: {
@@ -128,6 +138,29 @@ export function deriveAnnotationRegions(rows: AnnotationRow[]): AnnotationRegion
   };
 }
 
+export function deriveAnnotationPaths(rows: AnnotationRow[]): AnnotationPathCollection {
+  return {
+    type: 'FeatureCollection',
+    features: rows
+      .filter((a) => a.anchor.type === 'path' && !('parentId' in a && a.parentId))
+      .map((a) => ({
+        type: 'Feature' as const,
+        id: a.id,
+        geometry:
+          a.anchor.type === 'path'
+            ? a.anchor.geometry
+            : { type: 'LineString' as const, coordinates: [] },
+        properties: {
+          authorName: a.authorName,
+          createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : String(a.createdAt),
+          contentJson: JSON.stringify(a.content),
+          anchorType: a.anchor.type,
+          ...styleProps(a.style),
+        },
+      })),
+  };
+}
+
 export function deriveAnnotatedFeaturesIndex(rows: AnnotationRow[]): Map<string, { layerId: string; count: number }> {
   const featureAnchored = rows.filter(
     (a: { anchor: { type: string } }) => a.anchor.type === 'feature'
@@ -170,6 +203,7 @@ export function createAnnotationGeoStore(getRows: () => AnnotationRow[]) {
   return {
     get pins() { return deriveAnnotationPins(rows); },
     get regions() { return deriveAnnotationRegions(rows); },
+    get paths() { return deriveAnnotationPaths(rows); },
     get index() { return deriveAnnotatedFeaturesIndex(rows); },
     get measurements() { return deriveMeasurementData(rows); },
   };

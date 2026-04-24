@@ -45,6 +45,18 @@
     features: AnnotationRegion[];
   }
 
+  interface AnnotationPath {
+    type: 'Feature';
+    id: string;
+    geometry: { type: 'LineString'; coordinates: number[][] };
+    properties: AnnotationPinProperties;
+  }
+
+  export interface AnnotationPathCollection {
+    type: 'FeatureCollection';
+    features: AnnotationPath[];
+  }
+
   /** State for the annotation popup — set when an annotation pin/region is clicked. */
   interface SelectedAnnotationPopup {
     content: AnnotationObjectContent;
@@ -59,12 +71,13 @@
   interface Props {
     annotationPins?: AnnotationPinCollection | undefined;
     annotationRegions?: AnnotationRegionCollection | undefined;
+    annotationPaths?: AnnotationPathCollection | undefined;
     badgeGeoJson: { type: 'FeatureCollection'; features: Feature<Point>[] };
     measurementAnnotations?: { type: 'FeatureCollection'; features: { type: 'Feature'; geometry: unknown; properties: Record<string, unknown> }[] } | undefined;
     onbadgeclick?: ((_featureId: string) => void) | undefined;
   }
 
-  let { annotationPins, annotationRegions, badgeGeoJson, measurementAnnotations, onbadgeclick }: Props = $props();
+  let { annotationPins, annotationRegions, annotationPaths, badgeGeoJson, measurementAnnotations, onbadgeclick }: Props = $props();
 
   // ── Context ────────────────────────────────────────────────────────────────
 
@@ -97,6 +110,13 @@
     'line-color': ['coalesce', ['get', 'strokeColor'], '#3b82f6'],
     'line-width': ['coalesce', ['get', 'strokeWidth'], 2],
     'line-opacity': ['coalesce', ['get', 'strokeOpacity'], 0.6],
+  } as any;
+  // Freely-drawn path anchors. Default colour matches the region stroke so a
+  // user's palette stays coherent across geometries. Same dash limitation applies.
+  const ANNOTATION_PATH_PAINT = {
+    'line-color': ['coalesce', ['get', 'strokeColor'], '#3b82f6'],
+    'line-width': ['coalesce', ['get', 'strokeWidth'], 2],
+    'line-opacity': ['coalesce', ['get', 'strokeOpacity'], 0.85],
   } as any;
   const BADGE_CIRCLE_PAINT = {
     'circle-radius': 8, 'circle-color': '#f59e0b',
@@ -290,6 +310,79 @@
     <LineLayer
       id="layer-annotation-regions-outline"
       paint={ANNOTATION_REGION_LINE_PAINT}
+    />
+  </GeoJSONSource>
+{/if}
+
+<!-- Annotation paths — line-anchored annotations; rendered below pins, above data layers -->
+{#if annotationPaths && annotationPaths.features.length > 0}
+  <GeoJSONSource
+    id="source-annotation-paths"
+    data={annotationPaths as unknown as { type: 'FeatureCollection'; features: GeoJSONFeature[] }}
+  >
+    <LineLayer
+      id="layer-annotation-paths"
+      paint={ANNOTATION_PATH_PAINT}
+      onmouseenter={(e) => {
+        const map = mapStore.mapInstance;
+        if (map) map.getCanvas().style.cursor = 'pointer';
+        const f = e.features?.[0];
+        if (!f) return;
+        const props = f.properties as AnnotationPinProperties | null;
+        if (!props?.contentJson) return;
+        try {
+          const raw: unknown = JSON.parse(props.contentJson);
+          const result = AnnotationObjectContentSchema.safeParse(raw);
+          if (!result.success) return;
+          hoveredAnnotation = {
+            content: result.data,
+            authorName: props.authorName,
+            createdAt: props.createdAt,
+            anchorType: props.anchorType ?? 'path',
+            lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat },
+          };
+        } catch { /* invalid JSON */ }
+      }}
+      onmouseleave={() => {
+        const map = mapStore.mapInstance;
+        if (map) map.getCanvas().style.cursor = '';
+        hoveredAnnotation = null;
+      }}
+      onclick={(e) => {
+        const tool = editorState.activeTool;
+        if (tool === 'point' || tool === 'line' || tool === 'polygon') return;
+
+        const now = performance.now();
+        if (now - _lastClickTs < CLICK_DEDUP_MS) return;
+        _lastClickTs = now;
+
+        const f = e.features?.[0];
+        if (!f) return;
+        const props = f.properties as AnnotationPinProperties | null;
+        if (!props?.contentJson) return;
+
+        let parsed: AnnotationObjectContent;
+        try {
+          const raw: unknown = JSON.parse(props.contentJson);
+          const result = AnnotationObjectContentSchema.safeParse(raw);
+          if (!result.success) return;
+          parsed = result.data;
+        } catch {
+          return;
+        }
+
+        const lngLat = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+        queueMicrotask(() => {
+          hoveredAnnotation = null;
+          selectedAnnotation = {
+            content: parsed,
+            authorName: props.authorName,
+            createdAt: props.createdAt,
+            anchorType: props.anchorType ?? 'path',
+            lngLat,
+          };
+        });
+      }}
     />
   </GeoJSONSource>
 {/if}

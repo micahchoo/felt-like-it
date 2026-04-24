@@ -636,6 +636,7 @@
         onfeaturedrawn={handleFeatureDrawn}
         annotationPins={annotationGeo.pins}
         annotationRegions={annotationGeo.regions}
+        annotationPaths={annotationGeo.paths}
         {...measurement.measureActive
           ? {
               onmeasured: (r: DistanceMeasurement | AreaMeasurement) => {
