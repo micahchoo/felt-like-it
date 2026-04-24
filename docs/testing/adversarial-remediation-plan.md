@@ -149,9 +149,11 @@ Deferred to follow-up (new seeds issue):
 
 ---
 
-## Wave 4 — Infrastructure (defer, bigger lift)
+## Wave 4 — Infrastructure (deferred — doc-only)
 
-### W4 — Distributed rate limiter (M3)
+**Decision: defer Redis migration of middleware.ts:rateLimit.** During W1 we discovered `lib/server/rate-limit.ts` is already Redis-backed (used by share-token IP path + login IP path via `createRateLimiter`). The per-auth (userId) counter in `middleware.ts` is still in-memory — correct for a single-pod deploy. Re-evaluation trigger: first day a second pod spins up. Recorded as a mulch decision under the `infrastructure` domain: `in-memory-per-auth-rate-limiter-defer-redis`.
+
+### W4 — Distributed rate limiter (M3) — historical plan
 
 Only one task, but it touches every route. Two options:
 
