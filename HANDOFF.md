@@ -2,13 +2,15 @@
 
 ## Goal
 
-Resumed prior `2250bc0` handoff (Wave A pre-flight done, scope of Wave A revised to 4 sub-tasks). User-driven workflow: `/check-handoff and executer` → "continue as per plan" (×4) → "this product has no users, no retrofitting necessary" → user picked **D-α** (schema migration) when Wave D resolution required product input → on the fourth "continue per plan", picked D.4-A (annotations replace features in DataTable) as the cleanest break aligned with the no-users / no-retrofit caveat.
+Resumed prior `2250bc0` handoff. User-driven workflow: `/check-handoff and executer` → "continue as per plan" (×5) → "this product has no users, no retrofitting necessary" → user picked **D-α** for Wave D, then "do 2 and 1" for migration + smoke, then F13 Sharing as next epic.
 
-**Phase 3 epic baa4 is now code-complete under the D-α resolution.** Waves A → D shipped this session; Waves E (deprecation headers) and F (table-drop) are NOT-PLANNED under the resolved path (the features table is permanent, just write-locked outside the documented boundary). Only the smoke test remains as a user task.
+**Phase 3 epic baa4 closed under D-α resolution.** Waves A → D shipped + DB-layer smoke verified. Migration applied to dev DB.
+
+**F13 Sharing 3/4 sub-waves shipped:** F13.1 (hash-state viewport URL), F13.2 (dedupe token resolution), F13.3 (link expiration: backend + UI). F13.4 (lightweight viewer / bundle-split) deferred to next session — riskiest sub-wave, deserves a fresh head.
 
 ## Progress
 
-### Commits this session (12 total — A: 4, B: 2, plan: 1, D-α: 3, handoff: 1, mulch sync: 1)
+### Commits this session (16+ total — A:4, B:2, D-α plan:1, D-α D.1+D.2:1, D.3:1, D.4-A:1, handoff:2, mulch sync:1, F13.1:1, F13.2:1, F13.3:1)
 
 **Wave A — TerraDraw → annotations dispatch flip:**
 - 🔼 `62b37e4` — A.1 saveAsAnnotation parallel function in DrawingToolbar (+~75 LOC, additive only)
@@ -24,9 +26,18 @@ Resumed prior `2250bc0` handoff (Wave A pre-flight done, scope of Wave A revised
 - 🔼 `50ce980` — surfaced Wave D blockers (annotation_objects has no layerId — required design decision) + rescoped Wave E/F under different D-resolution paths.
 
 **Wave D-α — full path (D.1-D.4):**
-- 🔼 `31640eb` — D.1+D.2 atomic: migration `0019_add_layer_id_to_annotations.sql` (ADD layer_id UUID NULL REFERENCES layers ON DELETE SET NULL + composite index) + drizzle schema + shared-types `AnnotationObjectSchema` / `CreateAnnotationObjectSchema` + `annotationService.list({layerId})` filter + `annotationService.create({layerId})` insert + tRPC list/create + REST GET layerId param + REST POST + `toAnnotation` serializer.
+- 🔼 `31640eb` — D.1+D.2 atomic: migration `0019_add_layer_id_to_annotations.sql` (ADD layer_id UUID NULL REFERENCES layers ON DELETE SET NULL + composite index) + drizzle schema + shared-types `AnnotationObjectSchema` / `CreateAnnotationObjectSchema` + `annotationService.list({layerId})` filter + `annotationService.create({layerId})` insert + tRPC list/create + REST GET layerId param + REST POST + `toAnnotation` serializer. **Migration applied to dev DB (`docker exec ... psql`).**
 - 🔼 `9abdc13` — D.3 wire DrawingToolbar.saveAsAnnotation to pass `layerId: activeLayer.id`. Updated test harness (21/21 pass).
 - 🔼 `8ef0ee5` — D.4-A: `annotation-row-mapper.ts` (project AnnotationObject → GeoJSONFeature for DataTable) + 15-test characterization spec. Wired into MapEditor: small-layer DataTable consumes annotations (from existing `annotationPinsQuery` cache, filtered by `activeLayer.id`); large-layer DataTable still reads features via viewportStore.
+
+**F13 Sharing — 3/4 sub-waves shipped:**
+- 🔼 `bfed31e` — F13.1 hash-state viewport URL. `viewport-hash.ts` codec (#zoom/lat/lng, 2dp/5dp precision) + `use-share-viewport-hash.svelte.ts` composable (debounced replaceState, hashchange listener, returns stop fn). 20-test codec spec. Wired into ShareViewerScreen via $effect on mapInstance.
+- 🔼 `4e2a1b5` — F13.2 dedupe token resolution. New `resolve-share-token.ts` returns discriminated `{kind: 'ok'|'not_found'}`. +page.server.ts and tRPC shares.resolve both consume it. -36 LOC of duplicated SQL.
+- 🔼 `737847b` — F13.3 link expiration. Migration `0020_add_share_expires_at.sql`. **Migration applied to dev DB.** `resolveShareToken` returns `kind: 'expired'` discriminant. ShareDialog UI dropdown (None / 1d / 7d / 30d). 8-test resolve-share-token spec including equal-to-now boundary.
+
+**Database smoke test:**
+- 🔼 Migration 0019 applied + verified: ALTER TABLE / FK ON DELETE SET NULL / composite index. Test row INSERT/SELECT/cleanup cycle confirms `Index Scan using annotation_objects_map_layer_idx`. 2117 pre-existing annotations have NULL layer_id (expected — predate D-α; user's "no retrofitting" caveat).
+- 🔼 Migration 0020 applied + verified: ADD COLUMN expires_at TIMESTAMPTZ NULL.
 
 ### Smoke test (still pending — user task, NOW the only Phase 3 gate)
 
@@ -92,21 +103,22 @@ No infrastructure changes this session. No plugin updates, no hooks, no skills, 
 
 ## Next Steps
 
-Phase 3 baa4 is code-complete. Two tracks open:
+**F13.4 — lightweight viewer / bundle-split** (next session, ~1-2 sessions):
+- ShareViewerScreen currently mounts MapEditor with `readonly={true}`. MapEditor still imports the full editing tree (undo store, drawing toolbar, filter mutation paths, annotation-create mutations).
+- Audit ShareViewerScreen's dependency tree first (bundle-analyzer or `rollup-plugin-visualizer`) to size the actual bloat.
+- Two implementation paths: (a) gate features inside MapEditor on the existing `readonly` prop — denser refactor but keeps one component; (b) build a parallel `ReadOnlyMapViewer.svelte` that imports a narrower set of components.
+- Acceptance: bundle-analyzer shows N% JS reduction on the share route. No regression in viewport / annotations display.
 
-**Phase 3 close-out (small):**
-- Run migration `0019_add_layer_id_to_annotations.sql` against dev DB.
-- Smoke-test the full A→D flow per the checklist above.
-- Decide on `e5fb` (orphan-flag wiring): trigger / hooks / retire.
-- Revisit `convertAnnotationsToLayer` survival (open question in the plan).
-- Optional refinement: D.4-B (toggle between Annotations and Features views in DataTable) is a small additive change if you decide D.4-A's clean break loses too much. ~30 LOC on top of what's shipped.
+**Phase 3 follow-ups (small, design-y):**
+- Decide `e5fb` (`flagOrphanedAnnotations` orphan-flag wiring strategy): postgres trigger on features DELETE / server-side hook at every features-DELETE callsite / retire the concept.
+- Revisit `convertAnnotationsToLayer` survival (open question in the unified-annotations-phase-3.md plan).
+- Browser smoke test (still pending): UI portion of Phase 3 + F13.1-F13.3 — DataTable shows annotations, hash-URL syncs, expiration UI works end-to-end.
 
-**Next epic (per `flow-architecture-program.md`):**
-- **F13 Sharing** (`felt-like-it-1c79`, ~1-2 sessions): hash-state viewport URL (`#zoom/lat/lng`), dedupe token resolution, lightweight read-only viewer. Independent of Phase 3.
-- **F14 Embedding** (`felt-like-it-d2d6`, ~1-2 sessions): scroll-jack-free embed, lazy-load ships only what's needed. Alternates with F13.
-- **N01 Cluster, N02 Marker, N03 Data join** — new-flow seeds, separate discovery cycle.
+**Next epic options after F13.4:**
+- **F14 Embedding** (`felt-like-it-d2d6`, ~1-2 sessions): cooperative gestures + bundle-split for the embed flow. Pairs naturally with F13.4 (both produce read-only viewers; share the bundle-split insight).
+- **N01 Cluster, N02 Marker, N03 Data join** — new-flow seeds.
 
-⚠ unverified: I have NOT smoke-tested the full Phase 3 flow in a real browser — only typecheck + vitest. The visual-flash mitigation (optimistic `setQueryData` in `createAnnotationMutationOptions.onMutate`) is unproven outside of unit tests. **Smoke test before starting F13** — building on top of unverified Phase 3 risks compounding failures.
+⚠ unverified: real browser smoke for the full session's work. Optimistic `setQueryData`, hash-sync race against `moveend` debounce, expiration UI rendering. **DB layer is verified** (migrations applied + index hit confirmed); **UI layer is not.**
 
 ## Context Files
 
