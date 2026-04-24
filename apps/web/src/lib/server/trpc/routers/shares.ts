@@ -3,9 +3,10 @@ import { TRPCError } from '@trpc/server';
 import { eq } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { router, publicProcedure, protectedProcedure } from '../init.js';
-import { db, shares, maps, layers } from '../../db/index.js';
+import { db, shares } from '../../db/index.js';
 import { CreateShareSchema } from '@felt-like-it/shared-types';
 import { requireMapOwnership } from '../../geo/access.js';
+import { resolveShareToken } from '../../auth/resolve-share-token.js';
 import { appendAuditLog } from '../../audit/index.js';
 
 function generateToken(): string {
@@ -99,31 +100,14 @@ export const sharesRouter = router({
   resolve: publicProcedure
     .input(z.object({ token: z.string() }))
     .query(async ({ input }) => {
-      const [share] = await db
-        .select()
-        .from(shares)
-        .where(eq(shares.token, input.token));
-
-      if (!share) {
+      const result = await resolveShareToken(input.token);
+      if (result.kind === 'not_found') {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Share link not found or expired.' });
       }
-
-      const [map] = await db.select().from(maps).where(eq(maps.id, share.mapId));
-
-      if (!map) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Map not found.' });
-      }
-
-      const mapLayers = await db
-        .select()
-        .from(layers)
-        .where(eq(layers.mapId, map.id))
-        .orderBy(layers.zIndex);
-
       return {
-        share,
-        map,
-        layers: mapLayers,
+        share: result.share,
+        map: result.map,
+        layers: result.layers,
       };
     }),
 });
