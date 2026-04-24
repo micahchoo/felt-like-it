@@ -127,7 +127,10 @@
               // Measurement mode — compute result and notify parent; do NOT persist to DB
               measureFeature(f);
             } else {
-              await saveFeature(f);
+              // Wave A.2 (2026-04-25) — TerraDraw commits flow to annotation_objects.
+              // saveFeature() is unreachable from this dispatch; kept until Wave B
+              // for revertability and so its tests + helper still type-check.
+              await saveAsAnnotation(f);
             }
           }
 
@@ -185,6 +188,12 @@
     // Point geometry has no length/area — silently ignore
   }
 
+  // Wave A.2 (2026-04-25) — saveFeature + featureUpsertMutation +
+  // featureDeleteMutation are unreachable from the dispatch above (which now
+  // routes to saveAsAnnotation). They are kept compiled until Wave B
+  // (features table application-write lock-down) so the dispatch flip stays
+  // independently revertable. The void-references at the bottom of this
+  // function keep svelte-check 6133 quiet without disabling the rule.
   async function saveFeature(f: GeoJSONStoreFeatures) {
     const activeLayer = layersStore.active;
     if (!activeLayer) {
@@ -342,6 +351,20 @@
           handle.version = recreated.version;
         },
       });
+
+      // Wave A.2 bridge — keep the old onfeaturedrawn callback firing until
+      // Wave A.4 introduces onannotationdrawn. Reasons (per plan risk note):
+      //   1. The await synchronizes parent re-render with TerraDraw's
+      //      removeFeatures() call, preventing a visual-flash race.
+      //   2. activityStore.log + (eventually) the post-draw selection
+      //      transition still need an entrypoint until A.4 rewires them.
+      // Known A.2 regression: parent's transitionTo({featureSelected, ...})
+      // will pass an annotation id where it expects a feature id; the highlight
+      // simply won't match. Fixed in A.4 by replacing the callback with
+      // onannotationdrawn that carries {id, anchor} for an annotation-aware
+      // selection transition.
+      const geometry = f.geometry as unknown as Record<string, unknown>;
+      await onfeaturedrawn?.(activeLayer.id, { geometry, properties, id: created.id });
     } catch (err) {
       // createAnnotationMutationOptions.onError already rolled back the cache + toasted.
       console.error('[DrawingToolbar] saveAsAnnotation failed:', err);
@@ -464,6 +487,10 @@
     { id: 'line', label: 'Line', helpText: 'Click to add vertices, double-click to finish the line', icon: Spline, group: 'draw' },
     { id: 'polygon', label: 'Polygon', helpText: 'Click to add vertices, double-click to close the shape', icon: Pentagon, group: 'draw' },
   ];
+
+  // Wave A.2 (2026-04-25) — saveFeature is dead code pending Wave B removal.
+  // Reference it explicitly so svelte-check 6133 doesn't churn until then.
+  void saveFeature;
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
