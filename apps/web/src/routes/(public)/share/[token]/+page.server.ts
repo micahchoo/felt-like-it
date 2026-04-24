@@ -21,6 +21,11 @@ export const load: PageServerLoad = async ({ params, getClientAddress }) => {
   if (result.kind === 'not_found') {
     return { error: 'not_found' as const };
   }
+  if (result.kind === 'expired') {
+    // Surface a distinct error so the UI can show "this link has expired"
+    // instead of "not found." Owner can issue a new link via the dashboard.
+    return { error: 'expired' as const, expiredAt: result.expiredAt.toISOString() };
+  }
 
   return {
     map: {

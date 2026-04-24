@@ -41,6 +41,16 @@
   let creating = $state(false);
   let deleting = $state(false);
   let copiedKey = $state<string | null>(null);
+  /** F13.3 — opt-in expiration. 'none' is the default; 1/7/30-day windows cover the common shapes. */
+  let expiresOption = $state<'none' | '1d' | '7d' | '30d'>('none');
+
+  const EXPIRATION_DAYS: Record<'1d' | '7d' | '30d', number> = { '1d': 1, '7d': 7, '30d': 30 };
+
+  function expiresOptionToIso(option: typeof expiresOption): string | null {
+    if (option === 'none') return null;
+    const ms = EXPIRATION_DAYS[option] * 24 * 60 * 60 * 1000;
+    return new Date(Date.now() + ms).toISOString();
+  }
 
   const shareUrl = $derived(
     share ? `${window.location.origin}/share/${share.token}` : ''
@@ -88,9 +98,11 @@
   async function createShare(): Promise<void> {
     creating = true;
     try {
+      const expiresAtIso = expiresOptionToIso(expiresOption);
       const result = await trpc.shares.create.mutate({
         mapId,
         accessLevel: 'public',
+        ...(expiresAtIso !== null ? { expiresAt: expiresAtIso } : {}),
       });
       share = result as ShareRecord;
       toastStore.success('Share link created.');
@@ -343,8 +355,18 @@
         </Button>
       </div>
     {:else}
-      <div class="flex items-center justify-between">
-        <p class="text-xs text-on-surface-variant">Create a public link — no login required.</p>
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-xs text-on-surface-variant flex-1">Create a public link — no login required.</p>
+        <select
+          bind:value={expiresOption}
+          class="rounded-lg bg-surface-low border border-white/5 px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+          aria-label="Link expiration"
+        >
+          <option value="none">No expiration</option>
+          <option value="1d">Expires in 1 day</option>
+          <option value="7d">Expires in 7 days</option>
+          <option value="30d">Expires in 30 days</option>
+        </select>
         <button
           onclick={createShare}
           disabled={creating}

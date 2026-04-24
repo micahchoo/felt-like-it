@@ -29,11 +29,32 @@ export interface ResolveShareNotFound {
   kind: 'not_found';
 }
 
+export interface ResolveShareExpired {
+  kind: 'expired';
+  /** ISO timestamp the link expired at — surfaced to callers for UI / 410 Sunset header. */
+  expiredAt: Date;
+}
+
+export type ResolveShareResult =
+  | ResolveShareSuccess
+  | ResolveShareNotFound
+  | ResolveShareExpired;
+
 export async function resolveShareToken(
   token: string,
-): Promise<ResolveShareSuccess | ResolveShareNotFound> {
+  /**
+   * F13.3 — pluggable clock so tests can pin "now". Defaults to the system
+   * clock at call time. Pass () => new Date('2026-01-01') etc. in tests.
+   */
+  now: () => Date = () => new Date(),
+): Promise<ResolveShareResult> {
   const [share] = await db.select().from(shares).where(eq(shares.token, token));
   if (!share) return { kind: 'not_found' };
+
+  // F13.3 — reject expired links. NULL expires_at means no expiration.
+  if (share.expiresAt && share.expiresAt.getTime() < now().getTime()) {
+    return { kind: 'expired', expiredAt: share.expiresAt };
+  }
 
   const [map] = await db.select().from(maps).where(eq(maps.id, share.mapId));
   if (!map) return { kind: 'not_found' };

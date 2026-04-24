@@ -26,11 +26,23 @@ export const sharesRouter = router({
         .from(shares)
         .where(eq(shares.mapId, input.mapId));
 
+      // F13.3 — null vs undefined matters: explicit null clears any prior
+      // expiration; undefined leaves the column unchanged on update.
+      const expiresAtValue =
+        input.expiresAt === undefined
+          ? undefined
+          : input.expiresAt === null
+            ? null
+            : new Date(input.expiresAt);
+
       if (existing) {
-        // Update access level
+        // Update access level (+ optional expiration)
         const [updated] = await db
           .update(shares)
-          .set({ accessLevel: input.accessLevel })
+          .set({
+            accessLevel: input.accessLevel,
+            ...(expiresAtValue !== undefined ? { expiresAt: expiresAtValue } : {}),
+          })
           .where(eq(shares.id, existing.id))
           .returning();
 
@@ -40,7 +52,7 @@ export const sharesRouter = router({
           entityType: 'share',
           entityId: existing.id,
           mapId: input.mapId,
-          metadata: { accessLevel: input.accessLevel },
+          metadata: { accessLevel: input.accessLevel, expiresAt: input.expiresAt ?? null },
         });
 
         return updated;
@@ -53,6 +65,7 @@ export const sharesRouter = router({
           mapId: input.mapId,
           token: generateToken(),
           accessLevel: input.accessLevel,
+          ...(expiresAtValue !== undefined ? { expiresAt: expiresAtValue } : {}),
         })
         .returning();
 
@@ -102,7 +115,17 @@ export const sharesRouter = router({
     .query(async ({ input }) => {
       const result = await resolveShareToken(input.token);
       if (result.kind === 'not_found') {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Share link not found or expired.' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Share link not found.' });
+      }
+      if (result.kind === 'expired') {
+        // F13.3 — distinct error for expired links. tRPC has no native
+        // 410 Gone code; PRECONDITION_FAILED carries the right "the
+        // resource exists but is no longer valid" semantics + lets the
+        // UI distinguish from a true NOT_FOUND.
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: `Share link expired on ${result.expiredAt.toISOString()}.`,
+        });
       }
       return {
         share: result.share,

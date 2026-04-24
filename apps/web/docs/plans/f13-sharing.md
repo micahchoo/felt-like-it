@@ -47,15 +47,13 @@ F13.1 + F13.2 + F13.3 are independent; F13.4 ideally lands after the others (or 
 
 **Size.** 1 small session. Mostly grep + extract.
 
-### F13.3 — Link expiration (next session)
+### F13.3 — Link expiration ✅ DONE (this session)
 
-**Goal.** Owner can set an expiration on a share link; expired tokens reject with a clear error.
+**Shipped:** migration `0020_add_share_expires_at.sql` (ADD COLUMN expires_at TIMESTAMPTZ NULL), drizzle schema update, shared-types CreateShareSchema + ShareSchema gain optional `expiresAt`, tRPC create persists it, resolveShareToken returns `kind: 'expired'` discriminant when `expires_at < now()`, +page.server.ts surfaces `error: 'expired'`, tRPC resolve throws PRECONDITION_FAILED. ShareDialog UI: dropdown selector with No expiration / 1 day / 7 days / 30 days. 8 vitest cases including the equal-to-now boundary.
 
-**Approach.** Check the `shares` table schema for an `expires_at` column. If present, just surface in UI + enforce in `resolveShareToken`. If absent, schema migration: `ADD COLUMN expires_at TIMESTAMPTZ NULL`.
+**Not custom-date.** Plan called for "/ custom" option — dropped from this iteration. Three preset windows cover the common case; bespoke datetime picker is an additive change if requested.
 
-**Acceptance.** UI in share-creation modal accepts an expiration (no expiration / 1 day / 1 week / 30 days / custom). Expired tokens return `410 Gone` with `Link: <new-share-url>` if the owner has rotated. Vitest: pre-expiry resolves; post-expiry rejects.
-
-**Size.** 1 session.
+**Not 410-with-Link header.** Plan called for `Link: rel="successor-version"`. Without an automatic rotation feature, there's no successor URL to point to — the owner has to issue a new share manually. Documented as a follow-up if the auto-rotate UX materialises.
 
 ### F13.4 — Lightweight read-only viewer (separate session)
 

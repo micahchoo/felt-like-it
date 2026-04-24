@@ -130,6 +130,11 @@ export const shares = pgTable(
     token: text('token').notNull(),
     // 'public' | 'unlisted'
     accessLevel: text('access_level').notNull().default('unlisted'),
+    /**
+     * F13.3 — optional expiration timestamp. NULL = no expiration (default).
+     * resolveShareToken rejects when expires_at is non-null and in the past.
+     */
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
