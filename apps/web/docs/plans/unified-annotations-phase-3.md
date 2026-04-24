@@ -40,10 +40,16 @@ Pre-flight  ─►  Wave A  ─►  Wave B  ─┐
 
 **Goal.** When the user finishes drawing a point/line/polygon via the TerraDraw toolbar, the commit handler creates an `annotation_objects` row, not a `features` row.
 
-**Files (start here):**
-- `apps/web/src/lib/components/map/MapCanvas.svelte` — TerraDraw `on('finish')` handler currently calls `featuresStore.add()`. Re-route to `annotationsService.create()` with anchor derived from geometry type.
-- `apps/web/src/lib/stores/annotation-geo.svelte.ts` — likely needs a `createFromDraw(geometry, layerId)` helper.
-- `apps/web/src/lib/server/annotations/service.ts` — verify `create()` accepts the shape (already does for path/region/point).
+**Actual scope (revised 2026-04-24 after exploration of the existing path):**
+
+The original "1 line in `MapCanvas.svelte`" estimate was wrong. The TerraDraw commit handler lives in `apps/web/src/lib/components/map/DrawingToolbar.svelte:99-131` (`draw.on('finish', ...)`) — not MapCanvas. Its `saveFeature(f)` helper (lines 170-244) does FOUR jobs that all need annotation-equivalents:
+
+1. **Mutation:** `featureUpsertMutation` → must become `createAnnotationMutation` (helper exists at `apps/web/src/lib/components/annotations/AnnotationMutations.ts:46-101`).
+2. **Optimistic UI:** `hotOverlay.addHotFeature(layerId, ...)` (a global features-layer optimistic store) → must become tanstack query-cache optimism (the existing annotation pattern). These are two different mechanisms.
+3. **Undo/redo:** `undoStore.push({ undo: deleteFeature, redo: createFeature })` → must use `deleteAnnotationMutation` (exists in same helpers file).
+4. **Parent callback:** `onfeaturedrawn?.(layerId, {geometry, properties, id})` flows up through MapCanvas → MapEditor and triggers features-list refetch. If we silently drop it, parent's features list goes stale.
+
+**Plus:** `apps/web/src/__tests__/drawing-save.test.ts` is a long-form vitest characterization spec for the existing `saveFeature` flow. Flipping the persistence target either (a) breaks these tests and they need rewriting, or (b) requires saveFeature to remain coexisting alongside a new saveAsAnnotation, which is the safer rollout but creates dead-code-pending-Wave-B.
 
 **Anchor mapping** (per Phase 1 rule 1, already in `convert.ts:344-352`):
 - `Point` → `{type: 'point', geometry}`
@@ -51,14 +57,26 @@ Pre-flight  ─►  Wave A  ─►  Wave B  ─┐
 - `Polygon` → `{type: 'region', geometry}`
 - Other geometry types → reject at the TerraDraw config level (don't even surface a tool).
 
+### Wave A decomposed into 4 sub-tasks
+
+- **A.1** — In `DrawingToolbar.svelte`, ADD a parallel `saveAsAnnotation(f)` function (don't remove `saveFeature` yet). Wire `createAnnotationMutation` + anchor derivation. Wire annotation-store optimistic add. Wire undo via `deleteAnnotationMutation`. ~80-120 LOC added; saveFeature unchanged. Tests: add new vitest section for saveAsAnnotation (mirrors drawing-save.test.ts shape).
+- **A.2** — Switch the dispatch in `draw.on('finish')` to call `saveAsAnnotation(f)` instead of `saveFeature(f)`. The two CTA paths (`onregiondrawn`, `onmeasured`) are unchanged. saveFeature becomes unreachable but kept until Wave B.
+- **A.3** — Update `drawing-save.test.ts`: either rewrite to assert annotation-create OR add a parallel `drawing-save-annotation.test.ts` and mark the original as `.skip()` with a rename PR. Tests of `onfeaturedrawn`-callback-not-called become tests of `onannotationdrawn`-was-called (or the callback prop is removed in Wave B).
+- **A.4** — `onfeaturedrawn` chain: trace MapEditor consumer; it likely refetches features. Decide: (a) keep the callback firing for backward-compat (parent re-fetch is wasted but harmless); (b) replace with `onannotationdrawn` and update MapEditor; (c) remove entirely and let annotation cache invalidation handle parent updates. Default: (c) — annotation invalidation is already wired in `createAnnotationMutationOptions.onSuccess`.
+
+Each sub-task ends with `pnpm exec svelte-check` + relevant vitest run + visual smoke test in the dev browser. Sub-task commits are separately revertable.
+
 **Acceptance:**
 - Drawing a point via TerraDraw produces a row in `annotation_objects`, NOT `features`. Verify via `psql` and via the annotation panel showing the new row.
 - e2e: Playwright test that opens MapEditor, clicks the Point tool, clicks the canvas, asserts the annotation appears in the panel within 1s.
-- Old `featuresStore.add()` callsites in TerraDraw paths are removed. Import-pipeline callsites stay.
+- Old `featureUpsertMutation` is unused after A.2; physically removed in Wave B.
+- `drawing-save.test.ts` either updated or replaced; tests pass.
 
-**Risk.** TerraDraw also has an in-memory representation. Make sure the commit cleanly removes from TerraDraw's store after persisting to annotation_objects, otherwise the user sees a duplicate.
+**Risk.** TerraDraw also has an in-memory representation — `editorState.drawingInstance.removeFeatures([id])` clears it after the persist completes. The clear timing matters: if the annotation source GeoJSON hasn't loaded the new pin by the time TerraDraw clears its overlay, the user sees the pin disappear and re-appear (visual flash). Keep the existing `await onfeaturedrawn?.(...)` await pattern on the new annotation path until A.4 is decided.
 
-**Size:** 1 session.
+**Size:** **4 sub-sessions**, NOT 1. Roughly 1 morning per A.1/A.2 (code + tests), 1 afternoon for A.3 + A.4 together.
+
+**Pre-work for next session:** trace what `onfeaturedrawn` does in MapEditor.svelte specifically — what state it triggers, whether removing it breaks any user-visible behavior. That's the highest-uncertainty edge of A.4.
 
 ---
 
