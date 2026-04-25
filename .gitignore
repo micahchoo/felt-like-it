@@ -27,12 +27,17 @@ uploads/
 
 # Worktrees
 .worktrees/
+
+# Generated Claude artifacts
 .claude/anti-pattern-report.txt
-.worktrees/
+.claude/.skill-invocation-log
+.claude/SUGGESTED_SKILLS.md
+anti-pattern-report.txt
 
 # Foxhound context cache
 .context/
 **/.context/
+.foxhound-index.json
 
 # v8 compile cache
 v8-compile-cache-*/
