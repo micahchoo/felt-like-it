@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fly } from 'svelte/transition';
-  import { mapStore, BASEMAPS } from '$lib/stores/map.svelte.js';
+  import { BASEMAPS, getMapStore } from '$lib/stores/map.svelte.js';
+  const mapStore = getMapStore();
 
   let open = $state(false);
 </script>

@@ -2,7 +2,7 @@ import type { PageServerLoad } from './$types';
 import { isValidShareTokenFormat, shareTokenLimiter } from '$lib/server/auth/share-token.js';
 import { resolveShareToken } from '$lib/server/auth/resolve-share-token.js';
 
-export const load: PageServerLoad = async ({ params, getClientAddress }) => {
+export const load: PageServerLoad = async ({ params, getClientAddress, setHeaders }) => {
   const { token } = params;
 
   // H2/L1: reject malformed tokens without touching the DB, and rate-limit
@@ -27,6 +27,10 @@ export const load: PageServerLoad = async ({ params, getClientAddress }) => {
     return { error: 'expired' as const, expiredAt: result.expiredAt.toISOString() };
   }
 
+  // 05b0: resolved share data depends on the share row, the request's session,
+  // and token expiry — all per-request. No CDN/proxy may cache this response.
+  setHeaders({ 'Cache-Control': 'private, no-store' });
+
   return {
     map: {
       id: result.map.id,
@@ -34,7 +38,11 @@ export const load: PageServerLoad = async ({ params, getClientAddress }) => {
       viewport: result.map.viewport,
       basemap: result.map.basemap,
     },
-    layers: result.layers,
+    layers: result.layers.map((l) => ({
+      ...l,
+      createdAt: l.createdAt.toISOString(),
+      updatedAt: l.updatedAt.toISOString(),
+    })),
     share: { token: result.share.token, accessLevel: result.share.accessLevel },
   };
 };

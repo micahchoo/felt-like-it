@@ -44,7 +44,7 @@
   Accepts both raw AnnotationContent (legacy) and the AnnotationObjectContent
   wrapper (single/slotted) — the latter is unwrapped before rendering.
 -->
-<div class="text-sm text-on-surface space-y-2{featureDeleted ? ' opacity-60' : ''}" style="max-width: 22rem">
+<div class="text-sm text-on-surface space-y-2 max-w-[22rem]{featureDeleted ? ' opacity-60' : ''}">
   {#if featureDeleted}
     <div class="flex items-center gap-1.5 rounded bg-red-500/10 px-2 py-1 text-[11px] text-red-400">
       <span>Feature deleted</span>
@@ -114,8 +114,7 @@
         <img
           src={body.url}
           alt={body.altText ?? 'Animated GIF'}
-          class="rounded max-w-full object-contain"
-          style="max-height: 12rem"
+          class="rounded max-w-full object-contain max-h-48"
           loading="lazy"
         />
         {#if body.altText}
@@ -129,8 +128,7 @@
         <img
           src={body.url}
           alt={body.caption ?? 'Image annotation'}
-          class="rounded max-w-full object-contain"
-          style="max-height: 12rem"
+          class="rounded max-w-full object-contain max-h-48"
           loading="lazy"
         />
         {#if body.caption}
@@ -150,7 +148,7 @@
           <p class="font-medium text-on-surface truncate text-sm">{body.title}</p>
         {/if}
         {#if body.description}
-          <p class="text-xs text-on-surface-variant" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">
+          <p class="text-xs text-on-surface-variant line-clamp-2">
             {body.description}
           </p>
         {/if}

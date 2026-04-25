@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mapStore } from '../lib/stores/map.svelte.js';
+import { MapStore } from '../lib/stores/map.svelte.js';
 
 const MAP_ID = 'test-map-uuid-1234';
 const STORAGE_KEY = `felt-viewport-${MAP_ID}`;
 
+let mapStore: MapStore;
+
 describe('mapStore — localStorage viewport persistence', () => {
   beforeEach(() => {
     localStorage.clear();
+    mapStore = new MapStore();
   });
 
   afterEach(() => {

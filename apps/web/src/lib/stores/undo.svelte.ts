@@ -1,3 +1,5 @@
+import { getContext, setContext } from 'svelte';
+
 export interface Command {
   description: string;
   undo: () => void | Promise<void>;
@@ -6,39 +8,64 @@ export interface Command {
 
 const MAX_HISTORY = 50;
 
-let _past = $state<Command[]>([]);
-let _future = $state<Command[]>([]);
+const UNDO_STORE_KEY = Symbol('store:undo');
 
-export const undoStore = {
-  get canUndo() { return _past.length > 0; },
-  get canRedo() { return _future.length > 0; },
-  get undoLabel() { return _past[_past.length - 1]?.description ?? null; },
-  get redoLabel() { return _future[_future.length - 1]?.description ?? null; },
+export class UndoStore {
+  past = $state<Command[]>([]);
+  future = $state<Command[]>([]);
+
+  get canUndo(): boolean { return this.past.length > 0; }
+  get canRedo(): boolean { return this.future.length > 0; }
+  get undoLabel(): string | null {
+    return this.past[this.past.length - 1]?.description ?? null;
+  }
+  get redoLabel(): string | null {
+    return this.future[this.future.length - 1]?.description ?? null;
+  }
 
   /** Push a command that was already executed */
-  push(command: Command) {
-    _past = [..._past.slice(-MAX_HISTORY + 1), command];
-    _future = []; // Clear redo stack on new action
-  },
+  push(command: Command): void {
+    this.past = [...this.past.slice(-MAX_HISTORY + 1), command];
+    this.future = []; // Clear redo stack on new action
+  }
 
-  async undo() {
-    const command = _past[_past.length - 1];
+  async undo(): Promise<void> {
+    const command = this.past[this.past.length - 1];
     if (!command) return;
-    _past = _past.slice(0, -1);
-    _future = [..._future, command];
+    this.past = this.past.slice(0, -1);
+    this.future = [...this.future, command];
     await command.undo();
-  },
+  }
 
-  async redo() {
-    const command = _future[_future.length - 1];
+  async redo(): Promise<void> {
+    const command = this.future[this.future.length - 1];
     if (!command) return;
-    _future = _future.slice(0, -1);
-    _past = [..._past, command];
+    this.future = this.future.slice(0, -1);
+    this.past = [...this.past, command];
     await command.redo();
-  },
+  }
 
-  clear() {
-    _past = [];
-    _future = [];
-  },
-};
+  clear(): void {
+    this.past = [];
+    this.future = [];
+  }
+}
+
+export function createUndoStore(): UndoStore {
+  return new UndoStore();
+}
+
+/** Register a UndoStore on the current component's context. Call inside component init. */
+export function setUndoStore(store: UndoStore): UndoStore {
+  setContext(UNDO_STORE_KEY, store);
+  return store;
+}
+
+/** Retrieve the UndoStore registered on an ancestor. Throws if missing. */
+export function getUndoStore(): UndoStore {
+  const store = getContext<UndoStore | undefined>(UNDO_STORE_KEY);
+  if (!store) {
+    throw new Error('UndoStore not registered — did the root +layout.svelte call setUndoStore()?');
+  }
+  return store;
+}

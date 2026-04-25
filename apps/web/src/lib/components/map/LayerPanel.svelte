@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { layersStore } from '$lib/stores/layers.svelte.js';
-  import { styleStore } from '$lib/stores/style.svelte.js';
+  import { getLayersStore } from '$lib/stores/layers.svelte.js';
+  const layersStore = getLayersStore();
+  import { getStyleStore } from '$lib/stores/style.svelte.js';
+  const styleStore = getStyleStore();
   import { getMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
   import { trpc } from '$lib/utils/trpc.js';
   import { getErrorCode } from '$lib/utils/handle-error.js';

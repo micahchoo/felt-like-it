@@ -97,7 +97,7 @@
     <div class="endpoint-list">
       {#each endpoints as ep (ep.method + ep.path)}
         <div class="endpoint">
-          <span class="method" style="background: {methodColor(ep.method)}">{ep.method}</span>
+          <span class="method" style:background={methodColor(ep.method)}>{ep.method}</span>
           <code class="path">{BASE}{ep.path}</code>
           <span class="desc">{ep.desc}</span>
           <span class="auth-badge">{ep.auth}</span>

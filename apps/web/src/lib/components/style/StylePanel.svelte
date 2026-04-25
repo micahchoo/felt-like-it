@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { styleStore } from '$lib/stores/style.svelte.js';
-  import { layersStore } from '$lib/stores/layers.svelte.js';
+  import { getStyleStore } from '$lib/stores/style.svelte.js';
+  const styleStore = getStyleStore();
+  import { getLayersStore } from '$lib/stores/layers.svelte.js';
+  const layersStore = getLayersStore();
   import { trpc } from '$lib/utils/trpc.js';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -670,7 +672,7 @@
                   class="flex rounded overflow-hidden h-4 border-2 transition-colors {choroplethRamp === ramp ? 'border-primary' : 'border-transparent'}"
                 >
                   {#each colors as c (c)}
-                    <span class="flex-1 block" style="background:{c}"></span>
+                    <span class="flex-1 block" style:background={c}></span>
                   {/each}
                 </button>
               {/each}

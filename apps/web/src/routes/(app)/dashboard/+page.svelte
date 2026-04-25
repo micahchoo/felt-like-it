@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
 	import { trpc } from '$lib/utils/trpc.js';
 	import { toastStore } from '$lib/components/ui/Toast.svelte';
 	import DashboardScreen from '$lib/screens/DashboardScreen.svelte';
 	import type { DashboardData, DashboardActions } from '$lib/contracts/dashboard.js';
 	import type { MapRecord } from '@felt-like-it/shared-types';
+	import { INVALIDATE } from '$lib/contracts/invalidate-keys.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -17,7 +18,7 @@
 	};
 
 	function toMapRecord(
-		m: { id: string; title: string; description: string | null; basemap: string; createdAt: Date | string; updatedAt: Date | string; layerCount?: number; viewport?: MapRecord['viewport'] }
+		m: { id: string; title: string; description: string | null; basemap: string; createdAt: string; updatedAt: string; layerCount?: number; viewport?: MapRecord['viewport'] }
 	): MapRecord {
 		return {
 			id: m.id,
@@ -27,8 +28,8 @@
 			basemap: m.basemap,
 			viewport: m.viewport ?? DEFAULT_VIEWPORT,
 			layerCount: m.layerCount ?? 0,
-			createdAt: m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt),
-			updatedAt: m.updatedAt instanceof Date ? m.updatedAt : new Date(m.updatedAt),
+			createdAt: new Date(m.createdAt),
+			updatedAt: new Date(m.updatedAt),
 		};
 	}
 
@@ -62,7 +63,7 @@
 			try {
 				await trpc.maps.delete.mutate({ id });
 				toastStore.success('Map deleted.');
-				await invalidateAll();
+				await invalidate(INVALIDATE.dashboardMaps);
 			} catch (err) {
 				toastStore.error('Failed to delete map.');
 				console.error('[dashboard] delete failed:', err);
@@ -79,7 +80,7 @@
 			}
 		},
 		onRetry: async () => {
-			await invalidateAll();
+			await invalidate(INVALIDATE.dashboardMaps);
 		},
 	};
 </script>

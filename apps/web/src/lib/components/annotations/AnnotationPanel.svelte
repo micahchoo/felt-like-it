@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { untrack } from 'svelte';
   import { effectEnter, effectExit } from '$lib/debug/effect-tracker.js';
   import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { queryKeys } from '$lib/utils/query-keys.js';
@@ -23,8 +23,6 @@
     convertToPointMutationOptions,
     convertAnnotationsToLayerMutationOptions,
     createCommentMutationOptions,
-    deleteCommentMutationOptions,
-    resolveCommentMutationOptions,
   } from './AnnotationMutations.js';
 
   interface CommentEntry {
@@ -46,7 +44,6 @@
     onrequestfeaturepick?: () => void;
     regionGeometry?: { type: 'Polygon'; coordinates: number[][][] } | undefined;
     pickedFeature?: { featureId: string; layerId: string } | undefined;
-    embedded?: boolean;
     pendingMeasurement?:
       | {
           anchor: {
@@ -65,7 +62,6 @@
         }
       | null
       | undefined;
-    scrollToFeatureId?: string | null | undefined;
     oncountchange?: (annotationCount: number, commentCount: number) => void;
   }
 
@@ -78,8 +74,6 @@
     regionGeometry = undefined,
     pickedFeature,
     pendingMeasurement,
-    scrollToFeatureId,
-    embedded,
     oncountchange,
   }: Props = $props();
 
@@ -144,10 +138,6 @@
     convertAnnotationsToLayerMutationOptions({ queryClient, mapId })
   );
   const createComment = createMutation(() => createCommentMutationOptions({ queryClient, mapId }));
-  const deleteComment = createMutation(() => deleteCommentMutationOptions({ queryClient, mapId }));
-  const resolveComment = createMutation(() =>
-    resolveCommentMutationOptions({ queryClient, mapId })
-  );
 
   // ── Local state ─────────────────────────────────────────────────────────────
 
@@ -308,22 +298,6 @@
     }
   }
 
-  async function handleCommentDelete(id: string) {
-    try {
-      await deleteComment.mutateAsync({ id });
-    } catch {
-      toastStore.error('Failed to delete comment.');
-    }
-  }
-
-  async function handleCommentResolve(id: string) {
-    try {
-      await resolveComment.mutateAsync({ id });
-    } catch {
-      toastStore.error('Failed to resolve comment.');
-    }
-  }
-
   // ── Comment state ───────────────────────────────────────────────────────────
 
   let commentBody = $state('');
@@ -332,30 +306,17 @@
   // ── Blob cleanup ────────────────────────────────────────────────────────────
   // (AnnotationForm handles its own blob cleanup internally)
 
-  // ── Scroll to feature ───────────────────────────────────────────────────────
-
-  $effect(() => {
-    if (scrollToFeatureId) {
-      tick().then(() => {
-        // Scroll logic would go here if needed
-      });
-    }
-  });
-
   // ── Pending measurement ─────────────────────────────────────────────────────
-
-  let pendingMeasurementData = $state<SaveAsAnnotationPayload | null>(null);
-  $effect(() => {
-    if (pendingMeasurement) {
-      pendingMeasurementData = {
-        title: `Measurement: ${pendingMeasurement.content.measurementType}`,
-        content: pendingMeasurement.content.displayValue,
-        geometry: pendingMeasurement.anchor.geometry,
-      };
-    } else {
-      pendingMeasurementData = null;
-    }
-  });
+  // Pure projection of the prop — derived, not effect-mirrored. (audit M-1/L-1)
+  const pendingMeasurementData = $derived<SaveAsAnnotationPayload | null>(
+    pendingMeasurement
+      ? {
+          title: `Measurement: ${pendingMeasurement.content.measurementType}`,
+          content: pendingMeasurement.content.displayValue,
+          geometry: pendingMeasurement.anchor.geometry,
+        }
+      : null
+  );
 </script>
 
 <div class="flex flex-col h-full">

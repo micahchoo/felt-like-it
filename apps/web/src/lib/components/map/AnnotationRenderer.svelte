@@ -1,7 +1,8 @@
 <script lang="ts">
   /* global queueMicrotask */
   import { GeoJSONSource, CircleLayer, LineLayer, FillLayer, SymbolLayer, Popup } from 'svelte-maplibre-gl';
-  import { mapStore } from '$lib/stores/map.svelte.js';
+  import { getMapStore } from '$lib/stores/map.svelte.js';
+  const mapStore = getMapStore();
   import { getMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
   import { AnnotationObjectContentSchema } from '@felt-like-it/shared-types';
   import type { AnnotationObjectContent } from '@felt-like-it/shared-types';

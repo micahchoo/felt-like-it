@@ -1,5 +1,4 @@
 <script lang="ts">
-	import DataTable from '$lib/components/ui/DataTable.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import SearchInput from '$lib/components/ui/SearchInput.svelte';
@@ -51,7 +50,7 @@
 		<table class="w-full text-sm">
 			<thead>
 				<tr>
-					{#each columns as col}
+					{#each columns as col (col.key)}
 						<th
 							class="text-left font-display text-xs uppercase tracking-wide text-on-surface-variant px-4 py-3"
 						>

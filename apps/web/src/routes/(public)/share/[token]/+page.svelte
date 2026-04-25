@@ -31,7 +31,11 @@
   <ShareViewerScreen
     data={{
       map: data.map,
-      layers: data.layers as Layer[],
+      layers: data.layers.map((l) => ({
+        ...l,
+        createdAt: new Date(l.createdAt),
+        updatedAt: new Date(l.updatedAt),
+      })) as Layer[],
       shareToken: data.share.token,
     }}
     {actions}

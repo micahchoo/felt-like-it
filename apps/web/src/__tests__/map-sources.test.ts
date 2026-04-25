@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { describe, test, expect, beforeEach } from 'vitest';
-import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
+import { HotOverlayStore } from '$lib/utils/map-sources.svelte.js';
 
 describe('hotOverlay', () => {
+  let hotOverlay: HotOverlayStore;
   beforeEach(() => {
-    hotOverlay.clearHotFeatures();
+    hotOverlay = new HotOverlayStore();
   });
 
   const makeFeature = (id: string, coords: [number, number] = [0, 0]) => ({

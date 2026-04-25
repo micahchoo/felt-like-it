@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { layersStore } from '$lib/stores/layers.svelte.js';
-  import { styleStore } from '$lib/stores/style.svelte.js';
+  import { getLayersStore } from '$lib/stores/layers.svelte.js';
+  const layersStore = getLayersStore();
+  import { getStyleStore } from '$lib/stores/style.svelte.js';
+  const styleStore = getStyleStore();
   import type { LayerStyle, LegendEntry } from '@felt-like-it/shared-types';
 
   // Build legend entries from all visible layers
@@ -59,7 +61,7 @@
               <div class="flex items-center gap-2 py-0.5">
                 <span
                   class="w-3 h-3 rounded-sm shrink-0"
-                  style="background-color: {entry.color}"
+                  style:background-color={entry.color}
                 ></span>
                 <span class="text-xs text-on-surface truncate">{entry.label}</span>
               </div>
@@ -68,7 +70,7 @@
             <div class="flex items-center gap-2">
               <span
                 class="w-3 h-3 rounded-sm shrink-0"
-                style="background-color: {item.color}"
+                style:background-color={item.color}
               ></span>
               <span class="text-xs text-on-surface">{item.layerName}</span>
             </div>

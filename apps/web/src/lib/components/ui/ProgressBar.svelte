@@ -25,7 +25,7 @@
 	<div class="bg-surface-low rounded-full h-2" role="progressbar" aria-valuenow={clampedValue} aria-valuemin={0} aria-valuemax={100}>
 		<div
 			class="h-2 rounded-full transition-[width] duration-300 ease-out {fillClass}"
-			style="width: {clampedValue}%"
+			style:width="{clampedValue}%"
 		></div>
 	</div>
 </div>

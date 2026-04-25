@@ -53,7 +53,9 @@ export class MapEditorState {
 
   // Selection state
   #selectedFeatureIds = $state<Set<string>>(new Set());
-  #selectedFeature = $state<GeoJSONFeature | null>(null);
+  // $state.raw — selected feature is replaced wholesale (assigned in selectFeature/cleared in
+  // clearSelection); GeoJSONFeature internals are never mutated in place. Avoid Proxy overhead.
+  #selectedFeature = $state.raw<GeoJSONFeature | null>(null);
   #activeTool = $state<DrawTool>(null);
   #popupCoords = $state<{ lng: number; lat: number } | null>(null);
   #selectedLayerId = $state<string | null>(null);

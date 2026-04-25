@@ -47,7 +47,7 @@
 	<table class="w-full text-sm">
 		<thead>
 			<tr>
-				{#each columns as col}
+				{#each columns as col (col)}
 					<th
 						class="text-left font-display text-xs uppercase tracking-wide text-on-surface-variant px-4 py-3"
 					>

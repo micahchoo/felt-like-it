@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
 	import { toastStore } from '$lib/components/ui/Toast.svelte';
 	import SettingsScreen from '$lib/screens/SettingsScreen.svelte';
 	import type { SettingsData, SettingsActions, SettingsStatus } from '$lib/contracts/settings.js';
+	import { INVALIDATE } from '$lib/contracts/invalidate-keys.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -13,7 +14,11 @@
 
 	const screenData: SettingsData = $derived({
 		user: data.user,
-		apiKeys: data.apiKeys,
+		apiKeys: data.apiKeys.map((k) => ({
+			...k,
+			createdAt: new Date(k.createdAt),
+			lastUsedAt: k.lastUsedAt ? new Date(k.lastUsedAt) : null,
+		})),
 	});
 
 	async function submitAction(action: string, body: FormData): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }> {
@@ -33,7 +38,10 @@
 				const d = (result.data ?? {}) as Record<string, unknown>;
 				return { success: false, error: (d.message as string) ?? 'An error occurred.' };
 			} else if (result.type === 'redirect') {
-				window.location.href = result.location;
+				// Use SvelteKit goto() to preserve SPA semantics (no full reload).
+				// Auth-callback redirects (e.g. /auth/login) don't cross cookie boundaries
+				// — the session cookie is already set by the action handler before redirect.
+				await goto(result.location);
 				return { success: true };
 			}
 			return { success: false, error: 'Unexpected response.' };
@@ -44,7 +52,10 @@
 
 	const actions: SettingsActions = {
 		onRetry: async () => {
-			await invalidateAll();
+			await Promise.all([
+				invalidate(INVALIDATE.settingsProfile),
+				invalidate(INVALIDATE.settingsApiKeys),
+			]);
 		},
 
 		onUpdateProfile: async (changes) => {
@@ -53,7 +64,7 @@
 			const result = await submitAction('updateProfile', body);
 			if (result.success) {
 				toastStore.success('Profile updated.');
-				await invalidateAll();
+				await invalidate(INVALIDATE.settingsProfile);
 			} else {
 				toastStore.error(result.error ?? 'Failed to update profile.');
 			}
@@ -71,7 +82,7 @@
 					newKeyCopied = false;
 					toastStore.success('API key created. Copy it now — it won\'t be shown again.');
 				}
-				await invalidateAll();
+				await invalidate(INVALIDATE.settingsApiKeys);
 			} else {
 				toastStore.error(result.error ?? 'Failed to create API key.');
 			}
@@ -83,7 +94,7 @@
 			const result = await submitAction('revokeKey', body);
 			if (result.success) {
 				toastStore.success('API key revoked.');
-				await invalidateAll();
+				await invalidate(INVALIDATE.settingsApiKeys);
 			} else {
 				toastStore.error(result.error ?? 'Failed to revoke API key.');
 			}

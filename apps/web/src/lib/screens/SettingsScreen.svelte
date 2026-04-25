@@ -3,7 +3,6 @@
 	import TopBar from '$lib/components/ui/TopBar.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
-	import Badge from '$lib/components/ui/Badge.svelte';
 	import SkeletonLoader from '$lib/components/ui/SkeletonLoader.svelte';
 	import ErrorState from '$lib/components/ui/ErrorState.svelte';
 	import { toastStore } from '$lib/components/ui/Toast.svelte';
@@ -26,10 +25,14 @@
 	let newKeyScope = $state('read');
 	let savingProfile = $state(false);
 
+	// Initialise nameValue once per success transition — guards against refetch
+	// re-running the effect and erasing what the user just typed.
+	let lastStatus: SettingsStatus | null = null;
 	$effect(() => {
-		if (status === 'success') {
+		if (status === 'success' && lastStatus !== 'success') {
 			nameValue = data.user.name;
 		}
+		lastStatus = status;
 	});
 
 	function formatDate(d: Date | null | undefined): string {
@@ -123,7 +126,7 @@
 								<table class="w-full text-sm">
 									<thead>
 										<tr>
-											{#each apiKeyColumns as col}
+											{#each apiKeyColumns as col (col.key)}
 												<th class="text-left text-[10px] font-bold uppercase tracking-widest text-primary px-3 py-2">
 													{col.label}
 												</th>

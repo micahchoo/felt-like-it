@@ -209,8 +209,11 @@
   // Auto-generate output layer name when op or primary layer changes
   const primaryLayer = $derived(layers.find((l) => l.id === layerIdA));
   const defaultName = $derived(computeDefaultName(opType, primaryLayer?.name));
+  // Track whether the user has typed in the output name field — once they have,
+  // we stop auto-overwriting from defaultName so op/layer changes don't clobber edits.
+  let userEditedOutputName = $state(false);
   $effect(() => {
-    outputName = defaultName;
+    if (!userEditedOutputName) outputName = defaultName;
   });
 
   function computeDefaultName(op: OpType, layerName?: string): string {
@@ -507,6 +510,9 @@
           id="geo-name"
           type="text"
           bind:value={outputName}
+          oninput={() => {
+            userEditedOutputName = true;
+          }}
           class="w-full rounded bg-surface-low border border-white/5 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
@@ -529,7 +535,7 @@
           <div class="w-full h-1.5 bg-surface-high rounded-full overflow-hidden">
             <div
               class="h-full bg-primary transition-all duration-300 ease-out"
-              style="width: {progress}%"
+              style:width="{progress}%"
             ></div>
           </div>
         </div>

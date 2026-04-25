@@ -24,7 +24,7 @@
   }
 </script>
 
-<div class="measurement-tooltip" style="left: {position.x}px; top: {position.y}px;">
+<div class="measurement-tooltip" style:left="{position.x}px" style:top="{position.y}px">
   <div class="tooltip-header">
     <span class="tooltip-label">{formatLabel(result)}</span>
     <span class="tooltip-value">{formatValue(result)}</span>

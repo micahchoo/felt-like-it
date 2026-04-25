@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { layersStore } from '../lib/stores/layers.svelte.js';
+import { LayersStore } from '../lib/stores/layers.svelte.js';
 import type { Layer, LayerStyle } from '@felt-like-it/shared-types';
 
 function makeLayer(id: string, zIndex = 0, overrides: Partial<Layer> = {}): Layer {
@@ -20,9 +20,9 @@ function makeLayer(id: string, zIndex = 0, overrides: Partial<Layer> = {}): Laye
 }
 
 describe('layersStore', () => {
+  let layersStore: LayersStore;
   beforeEach(() => {
-    layersStore.set([]);
-    layersStore.setActive(null);
+    layersStore = new LayersStore();
   });
 
   describe('initial state', () => {

@@ -3,7 +3,8 @@
   import type { FillLayerSpecification, LineLayerSpecification, CircleLayerSpecification } from 'maplibre-gl';
   import type { Layer, GeoJSONFeature, LayerStyle } from '@felt-like-it/shared-types';
   import type { MapMouseEvent, MapLayerMouseEvent } from 'maplibre-gl';
-  import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
+  import { getHotOverlayStore } from '$lib/utils/map-sources.svelte.js';
+  const hotOverlay = getHotOverlayStore();
   import { PUBLIC_MARTIN_URL } from '$env/static/public';
 
   // TYPE_DEBT: symbolPaint/symbolLayout use any because MapLibre spec types are

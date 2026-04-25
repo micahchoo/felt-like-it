@@ -1,5 +1,6 @@
 <script lang="ts">
   import exifr from 'exifr';
+  import { untrack } from 'svelte';
   import { Type, Smile, Film, ImageIcon, Link2, Waypoints } from 'lucide-svelte';
   import type { Anchor, AnnotationContent as AC } from '@felt-like-it/shared-types';
   import type { SaveAsAnnotationPayload } from '$lib/stores/measurement-store.svelte.js';
@@ -87,11 +88,19 @@
   let formLng = $state(0);
   let formLat = $state(0);
 
-  // Pre-fill from measurement data
+  // Pre-fill from measurement data ONLY when the payload identity flips —
+  // untrack + id-diff prevents later prop re-fires from clobbering user edits to formText.
+  let lastPendingMeasurement: typeof pendingMeasurementData = null;
   $effect(() => {
-    if (pendingMeasurementData) {
-      formType = 'text';
-      formText = pendingMeasurementData.content;
+    if (pendingMeasurementData !== lastPendingMeasurement) {
+      lastPendingMeasurement = pendingMeasurementData;
+      if (pendingMeasurementData) {
+        const content = pendingMeasurementData.content;
+        untrack(() => {
+          formType = 'text';
+          formText = content;
+        });
+      }
     }
   });
 
@@ -399,8 +408,7 @@
         <img
           src={imagePreviewUrl}
           alt="Selected file preview"
-          class="rounded w-full object-contain bg-surface-lowest"
-          style="max-height: 8rem"
+          class="rounded w-full object-contain bg-surface-lowest max-h-32"
         />
         {#if gpsExtracted}<span
             class="absolute top-1 right-1 rounded-full bg-green-600/90 px-2 py-0.5 text-[10px] font-semibold text-white"

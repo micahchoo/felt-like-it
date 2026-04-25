@@ -8,7 +8,7 @@ export default defineConfig({
   reporter: 'html',
   globalSetup: './e2e/global-setup.ts',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:4173',
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
   },
@@ -22,15 +22,18 @@ export default defineConfig({
       name: 'api',
       testMatch: '**/api/**',
       use: {
-        baseURL: 'http://localhost:5173',
+        baseURL: 'http://localhost:4173',
         extraHTTPHeaders: { accept: 'application/json' },
       },
     },
   ],
+  // Run E2E against the production build via `vite preview`. Dev mode hides
+  // production-only bugs in MapLibre worker chunking (see vite.config.ts:9-14).
   webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:5173',
+    command:
+      'pnpm --filter @felt-like-it/web build && pnpm --filter @felt-like-it/web preview --host --port 4173',
+    url: 'http://localhost:4173',
     reuseExistingServer: true,
-    timeout: 30_000,
+    timeout: 180_000,
   },
 });

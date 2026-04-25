@@ -1,46 +1,68 @@
+import { getContext, setContext } from 'svelte';
 import type { Feature, FeatureCollection } from 'geojson';
 
-let _hotFeatures = $state<Record<string, Feature[]>>({});
+const HOT_OVERLAY_KEY = Symbol('store:hotOverlay');
 
-export const hotOverlay = {
-  get features() {
-    return _hotFeatures;
-  },
+/**
+ * Per-request hot overlay store — tracks features that have been mutated
+ * locally and need to render before the server-side query refresh lands.
+ */
+export class HotOverlayStore {
+  features = $state<Record<string, Feature[]>>({});
 
   getCollection(layerId: string): FeatureCollection {
     return {
       type: 'FeatureCollection',
-      features: _hotFeatures[layerId] ?? [],
+      features: this.features[layerId] ?? [],
     };
-  },
+  }
 
-  addHotFeature(layerId: string, feature: Feature) {
-    const existing = _hotFeatures[layerId] ?? [];
-    _hotFeatures = { ..._hotFeatures, [layerId]: [...existing, feature] };
-  },
+  addHotFeature(layerId: string, feature: Feature): void {
+    const existing = this.features[layerId] ?? [];
+    this.features = { ...this.features, [layerId]: [...existing, feature] };
+  }
 
-  removeHotFeature(layerId: string, featureId: string) {
-    const existing = _hotFeatures[layerId];
+  removeHotFeature(layerId: string, featureId: string): void {
+    const existing = this.features[layerId];
     if (!existing) return;
-    _hotFeatures = {
-      ..._hotFeatures,
+    this.features = {
+      ...this.features,
       [layerId]: existing.filter((f) => String(f.id) !== featureId),
     };
-  },
+  }
 
-  setSelectedHotFeature(layerId: string, feature: Feature) {
-    const existing = (_hotFeatures[layerId] ?? []).filter(
+  setSelectedHotFeature(layerId: string, feature: Feature): void {
+    const existing = (this.features[layerId] ?? []).filter(
       (f) => String(f.id) !== String(feature.id)
     );
-    _hotFeatures = { ..._hotFeatures, [layerId]: [...existing, feature] };
-  },
+    this.features = { ...this.features, [layerId]: [...existing, feature] };
+  }
 
-  clearHotFeatures(layerId?: string) {
+  clearHotFeatures(layerId?: string): void {
     if (layerId !== undefined) {
-      const { [layerId]: _, ...rest } = _hotFeatures;
-      _hotFeatures = rest;
+      const { [layerId]: _, ...rest } = this.features;
+      this.features = rest;
     } else {
-      _hotFeatures = {};
+      this.features = {};
     }
-  },
-};
+  }
+}
+
+export function createHotOverlayStore(): HotOverlayStore {
+  return new HotOverlayStore();
+}
+
+export function setHotOverlayStore(store: HotOverlayStore): HotOverlayStore {
+  setContext(HOT_OVERLAY_KEY, store);
+  return store;
+}
+
+export function getHotOverlayStore(): HotOverlayStore {
+  const store = getContext<HotOverlayStore | undefined>(HOT_OVERLAY_KEY);
+  if (!store) {
+    throw new Error(
+      'HotOverlayStore not registered — did the root +layout.svelte call setHotOverlayStore()?'
+    );
+  }
+  return store;
+}

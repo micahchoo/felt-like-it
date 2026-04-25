@@ -23,12 +23,21 @@ export const load: PageServerLoad = async ({ params, setHeaders }) => {
     .where(eq(layers.mapId, map.id))
     .orderBy(layers.zIndex);
 
-  // Allow this page to be embedded in any iframe.
-  // adapter-node does not set X-Frame-Options by default, but we set CSP
-  // frame-ancestors explicitly so the intent is unambiguous. A self-hoster
-  // that wants to restrict embedding can override this via their reverse proxy.
+  // 05b0: tighten frame-ancestors. The shares schema has no per-share embed
+  // allowlist or opt-in field today (see apps/web/src/lib/server/db/schema.ts —
+  // shares carries only id/mapId/token/accessLevel/expiresAt). Until that field
+  // exists we MUST NOT silently default to `*`; that would let any origin frame
+  // an authenticated-share's resolved content. Default-deny instead. Self-hosters
+  // that need embedding today can override via their reverse proxy.
+  // TODO(unified-embed-allowlist): replace 'none' with a space-separated list
+  // built from a future shares.embedDomains column. Opt-in only — empty/null
+  // stays 'none'.
+  //
+  // Cache-Control: same reasoning as the share route — per-request resolved
+  // data, must not be cached by any intermediary.
   setHeaders({
-    'Content-Security-Policy': "frame-ancestors *",
+    'Content-Security-Policy': "frame-ancestors 'none'",
+    'Cache-Control': 'private, no-store',
   });
 
   return {
@@ -38,6 +47,10 @@ export const load: PageServerLoad = async ({ params, setHeaders }) => {
       viewport: map.viewport,
       basemap: map.basemap,
     },
-    layers: mapLayers,
+    layers: mapLayers.map((l) => ({
+      ...l,
+      createdAt: l.createdAt.toISOString(),
+      updatedAt: l.updatedAt.toISOString(),
+    })),
   };
 };

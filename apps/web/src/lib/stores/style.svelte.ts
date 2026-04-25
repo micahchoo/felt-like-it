@@ -1,35 +1,52 @@
+import { getContext, setContext } from 'svelte';
 import type { LayerStyle } from '@felt-like-it/shared-types';
 
-// Style overrides: layerId → style
-let _styleOverrides = $state<Map<string, LayerStyle>>(new Map());
-let _showLegend = $state(true);
-let _editingLayerId = $state<string | null>(null);
+const STYLE_STORE_KEY = Symbol('store:style');
 
-export const styleStore = {
-  get showLegend() { return _showLegend; },
-  get editingLayerId() { return _editingLayerId; },
+export class StyleStore {
+  // Style overrides: layerId → style
+  styleOverrides = $state<Map<string, LayerStyle>>(new Map());
+  showLegend = $state(true);
+  editingLayerId = $state<string | null>(null);
 
   getStyle(layerId: string): LayerStyle | null {
-    return _styleOverrides.get(layerId) ?? null;
-  },
+    return this.styleOverrides.get(layerId) ?? null;
+  }
 
-  setStyle(layerId: string, style: LayerStyle) {
-    const next = new Map(_styleOverrides);
+  setStyle(layerId: string, style: LayerStyle): void {
+    const next = new Map(this.styleOverrides);
     next.set(layerId, style);
-    _styleOverrides = next;
-  },
+    this.styleOverrides = next;
+  }
 
-  clearStyle(layerId: string) {
-    const next = new Map(_styleOverrides);
+  clearStyle(layerId: string): void {
+    const next = new Map(this.styleOverrides);
     next.delete(layerId);
-    _styleOverrides = next;
-  },
+    this.styleOverrides = next;
+  }
 
-  toggleLegend() {
-    _showLegend = !_showLegend;
-  },
+  toggleLegend(): void {
+    this.showLegend = !this.showLegend;
+  }
 
-  setEditingLayer(layerId: string | null) {
-    _editingLayerId = layerId;
-  },
-};
+  setEditingLayer(layerId: string | null): void {
+    this.editingLayerId = layerId;
+  }
+}
+
+export function createStyleStore(): StyleStore {
+  return new StyleStore();
+}
+
+export function setStyleStore(store: StyleStore): StyleStore {
+  setContext(STYLE_STORE_KEY, store);
+  return store;
+}
+
+export function getStyleStore(): StyleStore {
+  const store = getContext<StyleStore | undefined>(STYLE_STORE_KEY);
+  if (!store) {
+    throw new Error('StyleStore not registered — did the root +layout.svelte call setStyleStore()?');
+  }
+  return store;
+}

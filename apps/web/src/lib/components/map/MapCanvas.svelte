@@ -4,8 +4,10 @@
   import { MapLibre, FeatureState, Popup } from 'svelte-maplibre-gl';
   import maplibregl from 'maplibre-gl';
   import type { Map as MapLibreMap, MapMouseEvent, SymbolLayerSpecification } from 'maplibre-gl';
-  import { mapStore } from '$lib/stores/map.svelte.js';
-  import { layersStore } from '$lib/stores/layers.svelte.js';
+  import { getMapStore } from '$lib/stores/map.svelte.js';
+  const mapStore = getMapStore();
+  import { getLayersStore } from '$lib/stores/layers.svelte.js';
+  const layersStore = getLayersStore();
   import { getMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
   import type { Layer, GeoJSONFeature } from '@felt-like-it/shared-types';
   import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
@@ -96,7 +98,8 @@
   });
 
   // ── Viewport sync: unidirectional during interaction, push on loadViewport ─
-  let mapCenter = $state<maplibregl.LngLatLike>({ lng: mapStore.center[0], lat: mapStore.center[1] });
+  // $state.raw — replaced wholesale (`mapCenter = { lng, lat }`); never mutated in place.
+  let mapCenter = $state.raw<maplibregl.LngLatLike>({ lng: mapStore.center[0], lat: mapStore.center[1] });
   let mapZoom = $state<number>(mapStore.zoom);
   let mapBearing = $state<number>(mapStore.bearing);
   let mapPitch = $state<number>(mapStore.pitch);

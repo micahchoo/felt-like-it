@@ -1,6 +1,7 @@
 /* global ReadableStream, TextEncoder */
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 import { db } from '$lib/server/db/index.js';
 import { importJobs, maps } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -26,8 +27,8 @@ import { toErrorResponse } from '../../errors.js';
  * CAP default 5; overridable via env for tests. Idle timeout 5 min caps
  * zombie streams when a client connects and never aborts.
  */
-const STREAM_CAP = parseInt(process.env.EXPORT_SSE_STREAM_CAP ?? '5', 10);
-const IDLE_TIMEOUT_MS = parseInt(process.env.EXPORT_SSE_IDLE_MS ?? '300000', 10); // 5 min
+const STREAM_CAP = parseInt(env.EXPORT_SSE_STREAM_CAP ?? '5', 10);
+const IDLE_TIMEOUT_MS = parseInt(env.EXPORT_SSE_IDLE_MS ?? '300000', 10); // 5 min
 
 const activeStreams = new Map<string, Set<AbortController>>();
 
@@ -60,7 +61,7 @@ function releaseStream(userId: string, controller: AbortController): void {
  * reserved long enough for concurrent attackers to pile up against the
  * CAP while self-healing for legitimate 404s within a second.
  */
-const ERROR_SLOT_HOLD_MS = parseInt(process.env.EXPORT_SSE_ERROR_HOLD_MS ?? '500', 10);
+const ERROR_SLOT_HOLD_MS = parseInt(env.EXPORT_SSE_ERROR_HOLD_MS ?? '500', 10);
 
 function releaseStreamDeferred(userId: string, controller: AbortController): void {
   setTimeout(() => releaseStream(userId, controller), ERROR_SLOT_HOLD_MS);

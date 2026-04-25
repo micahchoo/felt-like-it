@@ -2,7 +2,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { QueryClient } from '@tanstack/svelte-query';
 import { queryKeys } from '$lib/utils/query-keys.js';
-import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
+import { HotOverlayStore } from '$lib/utils/map-sources.svelte.js';
 
 function makeQueryClient() {
   return new QueryClient({
@@ -171,8 +171,9 @@ describe('comment resolve → optimistic toggle + rollback', () => {
 });
 
 describe('feature upsert → cache + hot overlay', () => {
+  let hotOverlay: HotOverlayStore;
   beforeEach(() => {
-    hotOverlay.clearHotFeatures();
+    hotOverlay = new HotOverlayStore();
   });
 
   test('onSuccess invalidates features list so GeoJSON source refreshes', async () => {

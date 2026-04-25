@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { MapEditorData, MapEditorActions, MapEditorStatus } from '$lib/contracts/map-editor.js';
-	import { mapStore } from '$lib/stores/map.svelte.js';
+	import { getMapStore } from '$lib/stores/map.svelte.js';
+	const mapStore = getMapStore();
 	import MapEditor from '$lib/components/map/MapEditor.svelte';
 	import SkeletonLoader from '$lib/components/ui/SkeletonLoader.svelte';
 	import ErrorState from '$lib/components/ui/ErrorState.svelte';

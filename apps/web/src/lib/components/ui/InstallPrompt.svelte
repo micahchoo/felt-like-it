@@ -1,4 +1,7 @@
 <script lang="ts">
+  // Use <svelte:window> for beforeinstallprompt / appinstalled — Svelte handles
+  // cleanup automatically. Initial localStorage / matchMedia probes still need
+  // $effect (mount-only, browser-guarded).
   let deferredPrompt: Event | null = $state(null);
   let dismissed = $state(false);
   let isInstalled = $state(false);
@@ -12,17 +15,21 @@
     }
     isInstalled = window.matchMedia('(display-mode: standalone)').matches;
 
-    const handleBeforeInstall = (e: Event) => {
-      e.preventDefault();
-      deferredPrompt = e;
+    // `appinstalled` isn't in Svelte's SvelteWindowAttributes typing, so we
+    // can't bind it via <svelte:window>; fall back to addEventListener with
+    // explicit cleanup. `beforeinstallprompt` IS supported and bound below.
+    const handleAppInstalled = () => {
+      isInstalled = true;
+      deferredPrompt = null;
     };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-    };
+    window.addEventListener('appinstalled', handleAppInstalled);
+    return () => window.removeEventListener('appinstalled', handleAppInstalled);
   });
+
+  function handleBeforeInstall(e: Event) {
+    e.preventDefault();
+    deferredPrompt = e;
+  }
 
   function handleInstall() {
     if (deferredPrompt && 'prompt' in deferredPrompt) {
@@ -40,6 +47,8 @@
     }
   }
 </script>
+
+<svelte:window onbeforeinstallprompt={handleBeforeInstall} />
 
 {#if deferredPrompt && !dismissed && !isInstalled}
   <div class="fixed bottom-4 left-4 right-4 z-50 glass-panel p-4 flex items-center justify-between gap-4 max-w-md mx-auto">

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { mapStore } from '$lib/stores/map.svelte.js';
+  import { getMapStore } from '$lib/stores/map.svelte.js';
+  const mapStore = getMapStore();
   import type { GeoJSONFeature, LayerStyle } from '@felt-like-it/shared-types';
   import { computeBbox } from '@felt-like-it/geo-engine';
   import { formatAttributeValue } from '$lib/utils/format.js';

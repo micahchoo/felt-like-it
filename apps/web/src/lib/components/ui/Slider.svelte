@@ -46,7 +46,7 @@
 			[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-sm
 			[&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full
 			[&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-sm"
-		style="background: linear-gradient(to right, var(--color-primary) {progress}%, var(--color-surface-low) {progress}%)"
+		style:background="linear-gradient(to right, var(--color-primary) {progress}%, var(--color-surface-low) {progress}%)"
 		aria-label={label}
 		aria-valuemin={min}
 		aria-valuemax={max}

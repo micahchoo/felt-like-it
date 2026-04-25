@@ -1,16 +1,13 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mapStore, BASEMAPS } from '../lib/stores/map.svelte.js';
+import { MapStore, BASEMAPS } from '../lib/stores/map.svelte.js';
 import type { BasemapId, InteractionMode } from '../lib/stores/map.svelte.js';
 
-// Reset store to known defaults before each test to prevent cross-test contamination.
-// The store uses module-level $state, so we reset explicitly via loadViewport + setters.
+// Per-test instance — avoids cross-test contamination since the store is now
+// instantiated per request (no shared module-level $state).
+let mapStore: MapStore;
 function resetStore() {
-  mapStore.loadViewport({ center: [-98.35, 39.5], zoom: 4, bearing: 0, pitch: 0 });
-  mapStore.setBasemap('osm');
-  mapStore.setInteractionMode('default');
-  mapStore.setMapInstance(undefined);
-  mapStore.setMapContainerEl(undefined);
+  mapStore = new MapStore();
 }
 
 describe('mapStore — defaults', () => {

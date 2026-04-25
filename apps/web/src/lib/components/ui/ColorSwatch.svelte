@@ -25,7 +25,7 @@
 		{sizeClasses[size]}
 		{selected ? 'ring-2 ring-primary ring-offset-1 ring-offset-surface' : ''}
 		{onclick ? 'cursor-pointer' : ''}"
-	style="background-color: {color}"
+	style:background-color={color}
 	aria-label={color}
 	onclick={onclick}
 	disabled={!onclick}

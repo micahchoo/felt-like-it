@@ -3,6 +3,7 @@ import { readdir, stat } from 'fs/promises';
 import { join } from 'path';
 import { db } from '$lib/server/db/index.js';
 import { users, importJobs, auditLog } from '$lib/server/db/schema.js';
+import { INVALIDATE } from '$lib/contracts/invalidate-keys.js';
 import type { PageServerLoad } from './$types';
 
 const UPLOAD_DIR = process.env['UPLOAD_DIR'] ?? 'uploads';
@@ -32,7 +33,12 @@ async function getDirectoryStats(dir: string): Promise<{ totalBytes: number; fil
 	}
 }
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ depends }) => {
+	depends(INVALIDATE.adminUsers);
+	depends(INVALIDATE.adminAudit);
+	depends(INVALIDATE.adminStorage);
+	depends(INVALIDATE.adminImports);
+
 	const [userList, jobList, auditEntries, storageStats] = await Promise.all([
 		db
 			.select({
@@ -78,9 +84,19 @@ export const load: PageServerLoad = async () => {
 	]);
 
 	return {
-		users: userList,
-		importJobs: jobList,
-		auditLog: auditEntries,
+		users: userList.map((u) => ({
+			...u,
+			createdAt: u.createdAt.toISOString(),
+			disabledAt: u.disabledAt ? u.disabledAt.toISOString() : null,
+		})),
+		importJobs: jobList.map((j) => ({
+			...j,
+			createdAt: j.createdAt.toISOString(),
+		})),
+		auditLog: auditEntries.map((e) => ({
+			...e,
+			createdAt: e.createdAt.toISOString(),
+		})),
 		storageStats: {
 			uploadVolumeBytes: storageStats.totalBytes,
 			uploadVolumeMax: UPLOAD_VOLUME_MAX,

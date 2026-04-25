@@ -2,9 +2,10 @@
 	import AdminScreen from '$lib/screens/AdminScreen.svelte';
 	import { trpc } from '$lib/utils/trpc.js';
 	import { toastStore } from '$lib/components/ui/Toast.svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
 	import type { PageData } from './$types';
 	import type { AdminData, AdminActions } from '$lib/contracts/admin.js';
+	import { INVALIDATE } from '$lib/contracts/invalidate-keys.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -14,10 +15,10 @@
 				id: u.id,
 				name: u.name,
 				email: u.email,
-				createdAt: u.createdAt,
-				updatedAt: u.createdAt,
+				createdAt: new Date(u.createdAt),
+				updatedAt: new Date(u.createdAt),
 				isAdmin: u.isAdmin,
-				disabledAt: u.disabledAt,
+				disabledAt: u.disabledAt ? new Date(u.disabledAt) : null,
 			})),
 			totalCount: data.users.length,
 			nextCursor: null,
@@ -31,24 +32,32 @@
 				entityId: e.entityId ?? null,
 				mapId: e.mapId,
 				metadata: e.metadata ?? {},
-				createdAt: e.createdAt,
+				createdAt: new Date(e.createdAt),
 			})),
 			totalCount: data.auditLog.length,
 			nextCursor: null,
 		},
 		storageStats: data.storageStats,
-		importJobs: data.importJobs as AdminData['importJobs'],
+		importJobs: data.importJobs.map((j) => ({
+			...j,
+			createdAt: new Date(j.createdAt),
+		})) as AdminData['importJobs'],
 	});
 
 	const actions: AdminActions = {
 		onRetry: async () => {
-			await invalidateAll();
+			await Promise.all([
+				invalidate(INVALIDATE.adminUsers),
+				invalidate(INVALIDATE.adminAudit),
+				invalidate(INVALIDATE.adminStorage),
+				invalidate(INVALIDATE.adminImports),
+			]);
 		},
 		onDisableUser: async (id: string) => {
 			try {
 				await trpc.admin.toggleDisabled.mutate({ userId: id });
 				toastStore.success('User disabled.');
-				await invalidateAll();
+				await invalidate(INVALIDATE.adminUsers);
 			} catch (e: unknown) {
 				toastStore.error(e instanceof Error ? e.message : 'Failed to disable user.');
 			}
@@ -57,7 +66,7 @@
 			try {
 				await trpc.admin.toggleDisabled.mutate({ userId: id });
 				toastStore.success('User enabled.');
-				await invalidateAll();
+				await invalidate(INVALIDATE.adminUsers);
 			} catch (e: unknown) {
 				toastStore.error(e instanceof Error ? e.message : 'Failed to enable user.');
 			}
@@ -70,7 +79,7 @@
 					password: userData.password,
 				});
 				toastStore.success('User created.');
-				await invalidateAll();
+				await invalidate(INVALIDATE.adminUsers);
 			} catch (e: unknown) {
 				toastStore.error(e instanceof Error ? e.message : 'Failed to create user.');
 				throw e;

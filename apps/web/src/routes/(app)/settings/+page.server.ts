@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword } from '$lib/server/auth/password.js';
 import { lucia } from '$lib/server/auth/index.js';
 import { insertFeatures } from '$lib/server/geo/queries.js';
 import type { Geometry } from '@felt-like-it/shared-types';
+import { INVALIDATE } from '$lib/contracts/invalidate-keys.js';
 
 const DEMO_EMAIL = 'demo@felt-like-it.local';
 
@@ -43,8 +44,10 @@ const SF_PARKS_FEATURES: Array<{
   },
 ];
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, depends }) => {
   if (!locals.user) redirect(302, '/auth/login');
+  depends(INVALIDATE.settingsProfile);
+  depends(INVALIDATE.settingsApiKeys);
 
   const userKeys = await db
     .select({
@@ -64,7 +67,11 @@ export const load: PageServerLoad = async ({ locals }) => {
       email: (locals.user as { id: string; email: string; name: string }).email,
       name: (locals.user as { id: string; email: string; name: string }).name,
     },
-    apiKeys: userKeys,
+    apiKeys: userKeys.map((k) => ({
+      ...k,
+      createdAt: k.createdAt.toISOString(),
+      lastUsedAt: k.lastUsedAt ? k.lastUsedAt.toISOString() : null,
+    })),
   };
 };
 

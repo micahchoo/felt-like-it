@@ -282,7 +282,7 @@
           <div class="h-1.5 bg-surface-container rounded-full overflow-hidden">
             <div
               class="h-full bg-primary rounded-full transition-all duration-300"
-              style="width: {progress}%"
+              style:width="{progress}%"
             ></div>
           </div>
         </div>

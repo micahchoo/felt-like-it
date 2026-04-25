@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { AdminData, AdminActions, AdminStatus } from '$lib/contracts/admin.js';
 	import TopBar from '$lib/components/ui/TopBar.svelte';
-	import Badge from '$lib/components/ui/Badge.svelte';
 	import SkeletonLoader from '$lib/components/ui/SkeletonLoader.svelte';
 	import ErrorState from '$lib/components/ui/ErrorState.svelte';
 	import UserList from '$lib/components/admin/UserList.svelte';
@@ -142,7 +141,7 @@
 
 				<!-- Tab bar -->
 				<div class="flex gap-2 flex-wrap">
-					{#each tabs as tab}
+					{#each tabs as tab (tab.key)}
 						<button
 							type="button"
 							class="px-4 py-2 rounded-lg font-mono text-[10px] uppercase tracking-widest transition-colors cursor-pointer

@@ -1,9 +1,10 @@
 <script lang="ts">
   import { toPng } from 'html-to-image';
+  import { untrack } from 'svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
-  import Button from '$lib/components/ui/Button.svelte';
   import { toastStore } from '$lib/components/ui/Toast.svelte';
-  import { mapStore } from '$lib/stores/map.svelte.js';
+  import { getMapStore } from '$lib/stores/map.svelte.js';
+  const mapStore = getMapStore();
   import { createExportStore, type ExportFormat } from '$lib/stores/export-store.svelte.js';
   import type { Layer } from '@felt-like-it/shared-types';
 
@@ -16,8 +17,13 @@
   let { layers, mapId, open = $bindable() }: Props = $props();
 
   let selectedLayerId = $state('');
+  // untrack(layers) so this effect only re-fires when selectedLayerId changes —
+  // prevents reactive layer-list updates from re-seeding (or fighting) user selection.
   $effect(() => {
-    if (!selectedLayerId && layers[0]) selectedLayerId = layers[0].id;
+    if (!selectedLayerId) {
+      const first = untrack(() => layers[0]?.id);
+      if (first) selectedLayerId = first;
+    }
   });
 
   // Unified export store replaces 6 individual boolean states
@@ -382,7 +388,7 @@
         <div class="h-1.5 w-full rounded-full bg-surface-low">
           <div
             class="h-1.5 rounded-full bg-primary transition-all duration-300"
-            style="width: {exportStore.isActive ? exportStore.state.progress : 66}%"
+            style:width="{exportStore.isActive ? exportStore.state.progress : 66}%"
           ></div>
         </div>
         <div class="flex items-center justify-between text-xs text-on-surface-variant">

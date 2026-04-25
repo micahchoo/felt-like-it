@@ -3,8 +3,10 @@
   import type { Map as MapLibreMap } from 'maplibre-gl';
   import { effectEnter, effectExit } from '$lib/debug/effect-tracker.js';
   import { getMapEditorState, type DrawTool } from '$lib/stores/map-editor-state.svelte.js';
-  import { layersStore } from '$lib/stores/layers.svelte.js';
-  import { undoStore } from '$lib/stores/undo.svelte.js';
+  import { getLayersStore } from '$lib/stores/layers.svelte.js';
+  const layersStore = getLayersStore();
+  import { getUndoStore } from '$lib/stores/undo.svelte.js';
+  const undoStore = getUndoStore();
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { MousePointer2, Circle, Spline, Pentagon } from 'lucide-svelte';
@@ -289,29 +291,27 @@
     effectExit('DT:syncToolToTerraDraw');
   });
 
-  // Cancel in-progress drawing on Escape key
-  $effect(() => {
+  // Cancel in-progress drawing on Escape key. Bound via <svelte:document> below
+  // (declarative — runtime cleanup, no manual removeEventListener boilerplate).
+  // Guarded internally by isDrawingReady since Svelte's directive can't be
+  // conditionally mounted as ergonomically.
+  function handleEscapeCancel(e: KeyboardEvent) {
     if (!editorState.isDrawingReady) return;
-    function handleKeydown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        const snapshot = editorState.drawingInstance?.getSnapshot();
-        if (snapshot) {
-          // TYPE_DEBT: terra-draw GeoJSONStoreFeatures properties are typed as Record<string,unknown>
-          const inProgress = snapshot.filter((f: SnapshotFeature) => f.properties?.mode !== 'static');
-          if (inProgress.length > 0) {
-            try {
-              editorState.drawingInstance?.removeFeatures(inProgress.map((f: SnapshotFeature) => f.id!));
-            } catch (e) {
-              console.warn('[DrawingToolbar] removeFeatures on Escape failed:', e);
-            }
-          }
+    if (e.key !== 'Escape') return;
+    const snapshot = editorState.drawingInstance?.getSnapshot();
+    if (snapshot) {
+      // TYPE_DEBT: terra-draw GeoJSONStoreFeatures properties are typed as Record<string,unknown>
+      const inProgress = snapshot.filter((f: SnapshotFeature) => f.properties?.mode !== 'static');
+      if (inProgress.length > 0) {
+        try {
+          editorState.drawingInstance?.removeFeatures(inProgress.map((f: SnapshotFeature) => f.id!));
+        } catch (err) {
+          console.warn('[DrawingToolbar] removeFeatures on Escape failed:', err);
         }
-        editorState.setActiveTool('select');
       }
     }
-    document.addEventListener('keydown', handleKeydown);
-    return () => document.removeEventListener('keydown', handleKeydown);
-  });
+    editorState.setActiveTool('select');
+  }
 
   /** Check whether Terra Draw is mid-draw (incomplete geometry in progress). */
   function isDrawing(): boolean {
@@ -367,6 +367,7 @@
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
+<svelte:document onkeydown={handleEscapeCancel} />
 
 <div
   class="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 glass-panel rounded-xl px-2 py-1.5 shadow-2xl border border-white/5"

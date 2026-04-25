@@ -2,12 +2,15 @@
   import { effectEnter, effectExit } from '$lib/debug/effect-tracker.js';
   import { browser } from '$app/environment';
   import { trpc } from '$lib/utils/trpc.js';
-  import { layersStore } from '$lib/stores/layers.svelte.js';
-  import { mapStore } from '$lib/stores/map.svelte.js';
+  import { getLayersStore } from '$lib/stores/layers.svelte.js';
+  const layersStore = getLayersStore();
+  import { getMapStore } from '$lib/stores/map.svelte.js';
+  const mapStore = getMapStore();
   import { FiltersStore } from '$lib/stores/filters-store.svelte.js';
   import { setMapEditorState } from '$lib/stores/map-editor-state.svelte.js';
   import { EditorLayout } from '$lib/stores/editor-layout.svelte.js';
-  import { undoStore } from '$lib/stores/undo.svelte.js';
+  import { getUndoStore } from '$lib/stores/undo.svelte.js';
+  const undoStore = getUndoStore();
   import { toastStore } from '$lib/components/ui/Toast.svelte';
   import MapCanvas from './MapCanvas.svelte';
   import LayerPanel from './LayerPanel.svelte';
@@ -20,7 +23,8 @@
   import ExportDialog from '$lib/components/data/ExportDialog.svelte';
   import StylePanel from '$lib/components/style/StylePanel.svelte';
   import Legend from '$lib/components/style/Legend.svelte';
-  import { styleStore } from '$lib/stores/style.svelte.js';
+  import { getStyleStore } from '$lib/stores/style.svelte.js';
+  const styleStore = getStyleStore();
   import Button from '$lib/components/ui/Button.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import ActivityFeed from './ActivityFeed.svelte';
@@ -28,7 +32,6 @@
   import GeoprocessingPanel from '$lib/components/geoprocessing/GeoprocessingPanel.svelte';
   import AnnotationPanel from '$lib/components/annotations/AnnotationPanel.svelte';
   import SidePanel from './SidePanel.svelte';
-  import type { SectionId } from './SidePanel.svelte';
   import { createAnnotationGeoStore } from '$lib/stores/annotation-geo.svelte.js';
   import { createViewportStore } from '$lib/stores/viewport.svelte.js';
   import type { DistanceMeasurement, AreaMeasurement } from '@felt-like-it/geo-engine';
@@ -50,7 +53,8 @@
   import { VECTOR_TILE_THRESHOLD } from '$lib/utils/constants.js';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { queryKeys } from '$lib/utils/query-keys.js';
-  import { hotOverlay } from '$lib/utils/map-sources.svelte.js';
+  import { getHotOverlayStore } from '$lib/utils/map-sources.svelte.js';
+  const hotOverlay = getHotOverlayStore();
   // interactionModes removed — replaced by MapEditorState
 
   function isLargeLayer(layer: Layer): boolean {
@@ -156,35 +160,13 @@
     editorLayout.syncToUrl();
   });
 
-  // ── Dialog open state (local $state bound to dialogs, synced with editorLayout.activeDialog) ──
-  let importDialogOpen = $state(false);
-  let exportDialogOpen = $state(false);
-  let shareDialogOpen = $state(false);
-
-  // Sync dialog local state FROM editorLayout.activeDialog
-  $effect(() => {
-    const dialog = editorLayout.activeDialog;
-    importDialogOpen = dialog === 'import';
-    exportDialogOpen = dialog === 'export';
-    shareDialogOpen = dialog === 'share';
-  });
-
-  // Sync dialog local state TO editorLayout when dialog closes itself
-  $effect(() => {
-    if (!importDialogOpen && editorLayout.activeDialog === 'import') {
-      editorLayout.openDialog(null);
-    }
-  });
-  $effect(() => {
-    if (!exportDialogOpen && editorLayout.activeDialog === 'export') {
-      editorLayout.openDialog(null);
-    }
-  });
-  $effect(() => {
-    if (!shareDialogOpen && editorLayout.activeDialog === 'share') {
-      editorLayout.openDialog(null);
-    }
-  });
+  // ── Dialog open state — derived from editorLayout.activeDialog ──
+  // Single source of truth: editorLayout.activeDialog. Each dialog reads its
+  // boolean via a $derived; child writes (e.g. internal `open = false` on
+  // Cancel) flow back through bind:get,set, which clears activeDialog atomically.
+  const importDialogOpen = $derived(editorLayout.activeDialog === 'import');
+  const exportDialogOpen = $derived(editorLayout.activeDialog === 'export');
+  const shareDialogOpen = $derived(editorLayout.activeDialog === 'share');
 
   function closeAllDialogs() {
     editorLayout.openDialog(null);
@@ -228,8 +210,6 @@
   // State lives in MapEditorState class, provided via Svelte 5 context.
   const { transitionTo } = editorState;
   const interactionState = $derived(editorState.interactionState);
-
-  let scrollToAnnotationFeatureId = $state<string | null>(null);
 
   // Section/design-mode reactions (replaces useInteractionBridge effects)
   // NOTE: handleSectionChange removed — panel layout is now orthogonal to interaction modes
@@ -634,22 +614,19 @@
           : {}}
         annotatedFeatures={annotationGeo.index}
         measurementAnnotations={annotationGeo.measurements}
-        onbadgeclick={(featureId) => {
+        onbadgeclick={(_featureId) => {
           editorLayout.rightSection = 'annotations';
-          scrollToAnnotationFeatureId = featureId;
         }}
         onfeatureannotate={({ featureId, layerId }) => {
           // Feature popup's Annotate CTA — routes into the annotation panel.
-          // If the user has no annotation yet for this feature, the form
-          // pre-fills via `pickedFeature`. If one exists, we scroll to it
-          // via the shared scrollToAnnotationFeatureId signal (same channel
-          // the badge click uses, so behaviour stays consistent).
+          // The form pre-fills via `pickedFeature`. Scroll-to-feature was
+          // never wired to a real implementation; removed when the no-op
+          // effect in AnnotationPanel was deleted.
           transitionTo({
             type: 'pickFeature',
             picked: { featureId, layerId },
           });
           editorLayout.rightSection = 'annotations';
-          scrollToAnnotationFeatureId = featureId;
         }}
       />
 
@@ -771,9 +748,9 @@
       {@const rawFeatures = layerData[activeLayer.id]?.features ?? []}
       <div
         class="border-t border-surface-high shrink-0 flex flex-col overflow-hidden"
-        style="height: {editorLayout.filterPanelOpen && !isLargeLayer(activeLayer)
+        style:height={editorLayout.filterPanelOpen && !isLargeLayer(activeLayer)
           ? '22rem'
-          : '16rem'}"
+          : '16rem'}
       >
         {#if isLargeLayer(activeLayer)}
           <div
@@ -846,7 +823,6 @@
   {#snippet annotationsContent()}
     <AnnotationPanel
       {mapId}
-      embedded
       {...userId !== undefined ? { userId } : {}}
       onannotationsaved={(action) => {
         if (action === 'created') {
@@ -871,7 +847,6 @@
       pendingMeasurement={interactionState.type === 'pendingMeasurement'
         ? { anchor: interactionState.anchor, content: interactionState.content }
         : null}
-      scrollToFeatureId={scrollToAnnotationFeatureId}
       oncountchange={(a, c) => {
         activityStore.annotationCount = a;
         activityStore.commentCount = c;
@@ -994,17 +969,25 @@
 
 <!-- Dialogs -->
 {#if editorLayout.activeDialog === 'import'}
-  <ImportDialog {mapId} bind:open={importDialogOpen} onimported={handleImportComplete} />
+  <ImportDialog
+    {mapId}
+    bind:open={() => importDialogOpen, (v) => { if (!v) editorLayout.openDialog(null); }}
+    onimported={handleImportComplete}
+  />
 {/if}
 
 {#if editorLayout.activeDialog === 'export'}
-  <ExportDialog layers={layersStore.all} {mapId} bind:open={exportDialogOpen} />
+  <ExportDialog
+    layers={layersStore.all}
+    {mapId}
+    bind:open={() => exportDialogOpen, (v) => { if (!v) editorLayout.openDialog(null); }}
+  />
 {/if}
 
 {#if editorLayout.activeDialog === 'share'}
   <ShareDialog
     {mapId}
-    bind:open={shareDialogOpen}
+    bind:open={() => shareDialogOpen, (v) => { if (!v) editorLayout.openDialog(null); }}
     onclose={closeAllDialogs}
     {isOwner}
     {...userId !== undefined ? { userId } : {}}

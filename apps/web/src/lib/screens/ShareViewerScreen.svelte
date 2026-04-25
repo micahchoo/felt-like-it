@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { ShareViewerData, ShareViewerActions, ShareViewerStatus } from '$lib/contracts/share-viewer.js';
-	import { mapStore } from '$lib/stores/map.svelte.js';
+	import { getMapStore } from '$lib/stores/map.svelte.js';
+	const mapStore = getMapStore();
 	import MapEditor from '$lib/components/map/MapEditor.svelte';
 	import GuestCommentPanel from '$lib/components/map/GuestCommentPanel.svelte';
 	import SkeletonLoader from '$lib/components/ui/SkeletonLoader.svelte';

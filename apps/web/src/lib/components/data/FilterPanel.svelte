@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import {
     FILTER_OPERATOR_LABELS,
     type FilterOperator,
@@ -34,11 +35,13 @@
   let newOperator = $state<FilterOperator>('eq');
   let newValue = $state('');
 
-  // Keep newField in sync when availableFields changes
+  // Seed newField once when fields first appear — untrack(availableFields) so
+  // the effect only fires when newField changes, preventing later feature-set
+  // re-derivation from clobbering the user's selected column.
   $effect(() => {
-    const fields = availableFields;
-    if (!newField && fields.length > 0) {
-      newField = fields[0] ?? '';
+    if (!newField) {
+      const first = untrack(() => availableFields[0]);
+      if (first) newField = first;
     }
   });
 

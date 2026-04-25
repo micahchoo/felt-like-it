@@ -30,7 +30,11 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     .orderBy(layers.zIndex);
 
   return {
-    map,
+    map: {
+      ...map,
+      createdAt: map.createdAt.toISOString(),
+      updatedAt: map.updatedAt.toISOString(),
+    },
     layers: mapLayers,
     userId: locals.user.id,
     userRole,

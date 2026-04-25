@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { env } from '$env/dynamic/private';
 import { db, shares } from '$lib/server/db/index.js';
 import { resolveApiKey } from '$lib/server/auth/api-key.js';
 import { isValidShareTokenFormat, shareTokenLimiter } from '$lib/server/auth/share-token.js';
@@ -125,7 +126,7 @@ export function jsonResponse(body: unknown, status = 200): Response {
 const WINDOW_MS = 1000;
 const counters = new Map<string, { count: number; resetAt: number }>();
 
-const API_KEY_LIMIT = parseInt(process.env.API_RATE_LIMIT ?? '100', 10);
+const API_KEY_LIMIT = parseInt(env.API_RATE_LIMIT ?? '100', 10);
 const SHARE_TOKEN_LIMIT = 30;
 
 /**

@@ -1,3 +1,4 @@
+import { untrack } from 'svelte';
 import type { MeasurementStore } from '$lib/stores/measurement-store.svelte.js';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 
@@ -44,8 +45,15 @@ export function useMeasurementTooltip(deps: {
     }
   });
 
+  // Track only `measureActive`. The `clear()` call mutates `currentResult` —
+  // which the position effect above tracks — so untrack the read+mutation to
+  // avoid re-firing this effect on its own write. (audit svelte-runes M-3)
   $effect(() => {
-    if (!measureActive) deps.getMeasurementStore().clear();
+    if (!measureActive) {
+      untrack(() => {
+        deps.getMeasurementStore().clear();
+      });
+    }
   });
 
   return {

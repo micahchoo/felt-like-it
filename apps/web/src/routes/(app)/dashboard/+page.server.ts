@@ -5,6 +5,7 @@ import { layers, mapCollaborators } from '$lib/server/db/schema.js';
 import { sql } from 'drizzle-orm';
 import { fail, redirect } from '@sveltejs/kit';
 import { createMap, deleteMap, cloneMap, createFromTemplate } from '$lib/server/maps/operations.js';
+import { INVALIDATE } from '$lib/contracts/invalidate-keys.js';
 
 /** Shape returned for each template in PageData.templates */
 interface TemplateEntry {
@@ -15,8 +16,9 @@ interface TemplateEntry {
   basemap: string;
 }
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, depends }) => {
   if (!locals.user) redirect(302, '/auth/login');
+  depends(INVALIDATE.dashboardMaps);
   const userId = locals.user.id;
 
   const userMaps = await db
@@ -87,10 +89,16 @@ export const load: PageServerLoad = async ({ locals }) => {
   return {
     maps: userMaps.map((m) => ({
       ...m,
+      createdAt: m.createdAt.toISOString(),
+      updatedAt: m.updatedAt.toISOString(),
       layerCount: Number(countMap.get(m.id) ?? 0),
     })),
     templates,
-    sharedMaps,
+    sharedMaps: sharedMaps.map((m) => ({
+      ...m,
+      createdAt: m.createdAt.toISOString(),
+      updatedAt: m.updatedAt.toISOString(),
+    })),
   };
 };
 
@@ -100,7 +108,7 @@ export const actions: Actions = {
     const formData = await request.formData();
     const title = (formData.get('title') as string | null)?.trim() ?? 'Untitled Map';
     const map = await createMap(locals.user.id, title).catch(() => null);
-    if (!map) return fail(500, { message: 'Failed to create map.' });
+    if (!map) return fail(500, { field: 'createMap', message: 'Failed to create map.' });
     redirect(302, `/map/${map.id}`);
   },
 
@@ -109,7 +117,7 @@ export const actions: Actions = {
     const formData = await request.formData();
     const mapId = formData.get('mapId') as string;
     const result = await deleteMap(locals.user.id, mapId).catch(() => null);
-    if (!result) return fail(500, { error: 'Failed to delete map.' });
+    if (!result) return fail(500, { field: 'deleteMap', message: 'Failed to delete map.' });
     return { deleted: true };
   },
 
@@ -118,7 +126,7 @@ export const actions: Actions = {
     const formData = await request.formData();
     const mapId = formData.get('mapId') as string;
     const newMap = await cloneMap(locals.user.id, mapId).catch(() => null);
-    if (!newMap) return fail(500, { message: 'Failed to clone map.' });
+    if (!newMap) return fail(500, { field: 'cloneMap', message: 'Failed to clone map.' });
     redirect(302, `/map/${newMap.id}`);
   },
 
@@ -127,7 +135,7 @@ export const actions: Actions = {
     const formData = await request.formData();
     const templateId = formData.get('templateId') as string;
     const newMap = await createFromTemplate(locals.user.id, templateId).catch(() => null);
-    if (!newMap) return fail(500, { message: 'Failed to create map from template.' });
+    if (!newMap) return fail(500, { field: 'useTemplate', message: 'Failed to create map from template.' });
     redirect(302, `/map/${newMap.id}`);
   },
 };

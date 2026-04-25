@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { undoStore } from '../lib/stores/undo.svelte.js';
+import { UndoStore } from '../lib/stores/undo.svelte.js';
 
 describe('undoStore', () => {
+  let undoStore: UndoStore;
   beforeEach(() => {
-    undoStore.clear();
+    undoStore = new UndoStore();
   });
 
   describe('initial state', () => {
